@@ -2,8 +2,12 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-const UPLOAD_DIR = path.join(__dirname, '../../uploads/design-ideas');
-const USER_DESIGN_DIR = path.join(__dirname, '../../uploads/user-designs');
+const baseUploads = process.env.VERCEL
+  ? path.join('/tmp', 'curi-uploads')
+  : path.join(__dirname, '../../uploads');
+
+const UPLOAD_DIR = path.join(baseUploads, 'design-ideas');
+const USER_DESIGN_DIR = path.join(baseUploads, 'user-designs');
 
 [UPLOAD_DIR, USER_DESIGN_DIR].forEach((dir) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

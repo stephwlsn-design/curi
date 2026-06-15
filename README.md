@@ -28,22 +28,21 @@ npm run dev
 - **API Health** → http://localhost:5000/health
 - **Roast Tool** → http://localhost:5173/roast
 
-### Production (https://curi.corpcrunch.io)
+### Production (https://curi.corpcrunch.io) — Vercel
 
-**Git deploy** — push to `main` triggers GitHub Actions → server `git pull` → Docker rebuild.
+Deploy from GitHub to Vercel (frontend + API serverless):
 
-```bash
-# First time only — create repo at github.com/new named "curi", then:
-git remote add origin https://github.com/YOUR_ORG/curi.git
-git push -u origin main
-```
+1. Import [github.com/stephwlsn-design/curi](https://github.com/stephwlsn-design/curi) at [vercel.com/new](https://vercel.com/new)
+2. Set env vars: `MONGODB_URI`, `JWT_SECRET`, `GEMINI_API_KEY`, `CLIENT_URL=https://curi.corpcrunch.io`
+3. Add domain `curi.corpcrunch.io` in Vercel → Domains (use CNAME to Vercel)
 
-Server setup + GitHub secrets: [deploy/DEPLOY.md](deploy/DEPLOY.md)
+Full guide: [deploy/VERCEL.md](deploy/VERCEL.md)
 
 ```bash
-npm run deploy:git    # manual pull + rebuild on server
-npm run deploy:prod   # local docker production stack
+git push origin main   # auto-deploys via Vercel Git integration or GitHub Actions
 ```
+
+**Docker/VPS** (full background workers): [deploy/DEPLOY.md](deploy/DEPLOY.md)
 
 ### Development Docker
 
