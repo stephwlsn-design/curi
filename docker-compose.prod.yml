@@ -1,0 +1,72 @@
+# Production stack for https://curi.corpcrunch.io
+# Usage: docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build: ./server
+    restart: unless-stopped
+    env_file: ./server/.env.production
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongo:27017/curi
+      REDIS_URL: redis://redis:6379
+      CLIENT_URL: https://curi.corpcrunch.io
+      SEED_DEMO_USER: ${SEED_DEMO_USER:-false}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+      - server_logs:/app/logs
+
+  client:
+    build: ./client
+    restart: unless-stopped
+    depends_on:
+      - server
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - client
+
+volumes:
+  mongo_data:
+  redis_data:
+  uploads_data:
+  server_logs:
+  caddy_data:
+  caddy_config:

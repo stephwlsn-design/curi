@@ -1,0 +1,496 @@
+import { useState, useEffect, useCallback } from 'react'
+import { API, useAuth } from '../context/AuthContext'
+import toast from 'react-hot-toast'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
+import DesignPreview from '../components/DesignPreview'
+import DesignCanvasEditor from '../components/DesignCanvasEditor'
+import VideoPreview from '../components/VideoPreview'
+import DesignIdeaUpload from '../components/DesignIdeaUpload'
+import { toDesignPreview, toVideoPreview } from '../utils/creative'
+import { useDraftModule } from '../context/DraftContext'
+import SaveDraftButton from '../components/SaveDraftButton'
+import BulkDesignUpload from '../components/BulkDesignUpload'
+
+const WORKFLOW_STEPS = [
+  'Brand Setup',
+  'Topic Discovery',
+  'Content Strategy',
+  'Content Generation',
+  'Creative Generation',
+  'Video Generation',
+  'Creative Scoring',
+  'Approval & Scheduling',
+  'Learning Update',
+]
+
+const CHANNELS = ['linkedin', 'instagram', 'twitter', 'tiktok', 'facebook']
+
+const runLabel = (r) => {
+  if (r.label) return r.label
+  const d = new Date(r.completedAt || r.createdAt)
+  return `${r.days}-Day · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+}
+
+const statusBadge = (status) => {
+  if (status === 'completed') return 'bg-curi-green/15 text-curi-green'
+  if (status === 'running' || status === 'queued') return 'bg-curi-pink/15 text-curi-pink'
+  if (status === 'failed') return 'bg-red-500/15 text-red-400'
+  return 'bg-theme-subtle/10 text-theme-muted/40'
+}
+
+export default function Autonomous() {
+  const { workspaceId, workspace, setWorkspace, fetchMe } = useAuth()
+  const navigate = useNavigate()
+  const [days, setDays] = useState(30)
+  const [channels, setChannels] = useState(['linkedin', 'instagram'])
+  const [loading, setLoading] = useState(false)
+  const [run, setRun] = useState(null)
+  const [historyRuns, setHistoryRuns] = useState([])
+  const [entries, setEntries] = useState([])
+  const [posts, setPosts] = useState([])
+  const [designs, setDesigns] = useState([])
+  const [videos, setVideos] = useState([])
+  const [topics, setTopics] = useState([])
+  const [designIdea, setDesignIdea] = useState(workspace?.brandProfile?.designIdea || null)
+  const [editingDesign, setEditingDesign] = useState(null)
+  const [userTemplates, setUserTemplates] = useState([])
+  const [onboarding, setOnboarding] = useState({
+    companyName: '', industry: '', website: '', targetAudience: '',
+    brandVoice: 'professional', socialChannels: [], brandColors: [], competitors: '',
+  })
+
+  useDraftModule('autonomous', () => ({
+    days, channels, designIdea, onboarding,
+    runId: run?._id, runStatus: run?.status,
+  }), (s) => {
+    if (s.days) setDays(s.days)
+    if (s.channels) setChannels(s.channels)
+    if (s.designIdea) setDesignIdea(s.designIdea)
+    if (s.onboarding) setOnboarding(prev => ({ ...prev, ...s.onboarding }))
+  })
+
+  const brandReady = workspace?.brandProfile?.name || workspace?.onboarding?.complete || workspace?.brandProfile?.url
+
+  const fetchHistory = useCallback(async () => {
+    if (!workspaceId) return
+    try {
+      const { data } = await API.get(`/autonomous/history?workspaceId=${workspaceId}`)
+      setHistoryRuns(data.runs || [])
+      return data.runs || []
+    } catch {
+      return []
+    }
+  }, [workspaceId])
+
+  const loadRunResults = useCallback(async (runId) => {
+    if (!workspaceId || !runId) return
+    try {
+      const { data } = await API.get(`/autonomous/run/${runId}`)
+      setRun(data.run)
+      setPosts(data.posts || [])
+      setDesigns((data.designs || []).map(toDesignPreview))
+      setVideos((data.videos || []).map(toVideoPreview))
+      const cal = await API.get(`/autonomous/calendar?workspaceId=${workspaceId}&runId=${runId}`)
+      setEntries(cal.data.entries || [])
+    } catch {
+      toast.error('Could not load campaign results')
+    }
+  }, [workspaceId])
+
+  const pollRun = useCallback(async (runId) => {
+    try {
+      const { data } = await API.get(`/autonomous/run/${runId}`)
+      setRun(data.run)
+      setPosts(data.posts || [])
+      setDesigns((data.designs || []).map(toDesignPreview))
+      setVideos((data.videos || []).map(toVideoPreview))
+      if (data.run.status === 'completed') {
+        const cal = await API.get(`/autonomous/calendar?workspaceId=${workspaceId}&runId=${runId}`)
+        setEntries(cal.data.entries || [])
+        await fetchHistory()
+        toast.success(`${data.run.days}-day campaign saved to history`)
+        setLoading(false)
+      } else if (data.run.status === 'failed') {
+        await fetchHistory()
+        toast.error(data.run.error || 'Pipeline failed')
+        setLoading(false)
+      } else {
+        const cal = await API.get(`/autonomous/calendar?workspaceId=${workspaceId}&runId=${runId}`).catch(() => ({ data: { entries: [] } }))
+        if (cal.data.entries?.length) setEntries(cal.data.entries)
+        setTimeout(() => pollRun(runId), 2000)
+      }
+    } catch {
+      setLoading(false)
+    }
+  }, [workspaceId, fetchHistory])
+
+  useEffect(() => {
+    if (!workspaceId) return
+    API.get(`/autonomous/topics?workspaceId=${workspaceId}`).then(r => setTopics(r.data.topics || [])).catch(() => {})
+    API.get(`/design/templates?workspaceId=${workspaceId}`).then(r => setUserTemplates(r.data.templates || [])).catch(() => {})
+    fetchHistory().then(runs => {
+      const active = runs.find(x => x.status === 'running' || x.status === 'queued')
+      if (active) {
+        setLoading(true)
+        pollRun(active._id)
+        return
+      }
+      const last = runs.find(x => x.status === 'completed')
+      if (last) loadRunResults(last._id)
+    })
+    API.get('/workspace').then(r => {
+      const ob = r.data.onboarding
+      const bp = r.data.brandProfile
+      if (ob || bp) {
+        const competitors = Array.isArray(ob?.competitors) ? ob.competitors.join(', ') : (ob?.competitors || '')
+        setOnboarding(prev => ({
+          ...prev,
+          companyName: ob?.companyName || bp?.name || prev.companyName,
+          website: ob?.website || bp?.url || prev.website,
+          industry: bp?.industry || prev.industry,
+          targetAudience: ob?.targetAudience || bp?.audience || prev.targetAudience,
+          brandVoice: ob?.brandVoice || bp?.voice || prev.brandVoice,
+          ...ob,
+          competitors,
+        }))
+      }
+      if (bp) {
+        setWorkspace(prev => prev ? { ...prev, brandProfile: bp, onboarding: ob } : prev)
+        if (bp.designIdea) setDesignIdea(bp.designIdea)
+      }
+    }).catch(() => {})
+  }, [workspaceId, pollRun, fetchHistory, loadRunResults])
+
+  const saveOnboarding = async () => {
+    try {
+      const competitors = Array.isArray(onboarding.competitors)
+        ? onboarding.competitors
+        : String(onboarding.competitors || '').split(',').map(s => s.trim()).filter(Boolean)
+      const { data } = await API.post('/workspace/onboarding', { ...onboarding, competitors })
+      setWorkspace(data.workspace)
+      fetchMe?.()
+      toast.success('Brand profile saved')
+    } catch (err) {
+      toast.error(err.response?.data?.details?.join(', ') || err.response?.data?.error || 'Save failed')
+    }
+  }
+
+  const generate = async () => {
+    if (!brandReady && !onboarding.companyName) {
+      return toast.error('Complete brand setup first')
+    }
+    setLoading(true)
+    setRun(null)
+    setEntries([])
+    setPosts([])
+    setDesigns([])
+    setVideos([])
+    try {
+      const { data } = await API.post('/autonomous/generate', { workspaceId, days, channels, designIdea })
+      setRun(data.run)
+      toast.success('Autonomous engine started')
+      fetchMe?.()
+      pollRun(data.run._id)
+    } catch (err) {
+      toast.error(err.response?.data?.details?.join(', ') || err.response?.data?.error || 'Failed to start')
+      setLoading(false)
+    }
+  }
+
+  const toggleChannel = (ch) => {
+    setChannels(prev => prev.includes(ch) ? (prev.length > 1 ? prev.filter(c => c !== ch) : prev) : [...prev, ch])
+  }
+
+  return (
+    <div className="p-8 max-w-6xl">
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-theme-text mb-2">Curi Autonomous Content Engine</h1>
+          <p className="text-theme-muted/50">Connect your brand, click one button, and Curi finds trends, builds strategy, writes content, creates designs and videos, scores creatives, and schedules your next campaign.</p>
+        </div>
+        <SaveDraftButton />
+      </div>
+
+      {/* Workflow visualization */}
+      <div className="card p-6 mb-6 overflow-x-auto">
+        <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-4">Autonomous Workflow</div>
+        <div className="flex items-center gap-1 min-w-max">
+          {WORKFLOW_STEPS.map((step, i) => {
+            const runStep = run?.steps?.find(s => s.name === step)
+            const status = runStep?.status
+            return (
+              <div key={step} className="flex items-center">
+                <div className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  status === 'completed' ? 'bg-curi-green/15 text-curi-green'
+                  : status === 'running' ? 'bg-curi-pink/15 text-curi-pink animate-pulse'
+                  : status === 'failed' ? 'bg-red-500/15 text-red-400'
+                  : 'bg-theme-subtle/5 text-theme-muted/40'
+                }`}>
+                  {step}
+                </div>
+                {i < WORKFLOW_STEPS.length - 1 && (
+                  <div className={`w-4 h-0.5 mx-0.5 ${status === 'completed' ? 'bg-curi-green/40' : 'bg-theme-border'}`} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        {/* Brand onboarding */}
+        <div className="col-span-1 space-y-4">
+          <div className="card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">Brand Setup</div>
+              {brandReady && <span className="badge bg-curi-green/15 text-curi-green">Ready</span>}
+            </div>
+            <div className="space-y-3">
+              <input className="input text-sm" placeholder="Company name" value={onboarding.companyName}
+                onChange={e => setOnboarding(p => ({ ...p, companyName: e.target.value }))} />
+              <input className="input text-sm" placeholder="Website" value={onboarding.website}
+                onChange={e => setOnboarding(p => ({ ...p, website: e.target.value }))} />
+              <input className="input text-sm" placeholder="Industry" value={onboarding.industry}
+                onChange={e => setOnboarding(p => ({ ...p, industry: e.target.value }))} />
+              <input className="input text-sm" placeholder="Target audience" value={onboarding.targetAudience}
+                onChange={e => setOnboarding(p => ({ ...p, targetAudience: e.target.value }))} />
+              <button onClick={saveOnboarding} className="btn-secondary w-full text-sm">Save Brand Profile</button>
+              <button onClick={() => navigate('/discover')} className="text-xs text-curi-blue font-bold hover:underline">
+                Or run Discover from URL
+              </button>
+            </div>
+          </div>
+
+          <div className="card p-4">
+            <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Channels</div>
+            <div className="flex flex-wrap gap-1.5">
+              {CHANNELS.map(ch => (
+                <button key={ch} onClick={() => toggleChannel(ch)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${channels.includes(ch) ? 'bg-curi-pink/15 text-curi-pink' : 'bg-theme-subtle/5 text-theme-muted/50'}`}>
+                  {ch}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="card p-4">
+            <DesignIdeaUpload
+              workspaceId={workspaceId}
+              value={designIdea}
+              onChange={setDesignIdea}
+              compact
+            />
+          </div>
+
+          <div className="card p-4">
+            <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Campaign Length</div>
+            <div className="flex gap-2">
+              {[30, 60, 90].map(d => (
+                <button key={d} onClick={() => setDays(d)}
+                  className={`flex-1 py-2 rounded-xl text-sm font-bold ${days === d ? 'bg-curi-blue text-white' : 'bg-theme-subtle/5 text-theme-muted/50'}`}>
+                  {d}d
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {historyRuns.length > 0 && (
+            <div className="card p-4">
+              <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Campaign History</div>
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {historyRuns.map(h => (
+                  <button
+                    key={h._id}
+                    type="button"
+                    onClick={() => loadRunResults(h._id)}
+                    className={`w-full text-left p-3 rounded-xl border transition-all ${
+                      run?._id === h._id
+                        ? 'border-curi-pink/40 bg-curi-pink/5'
+                        : 'border-theme-border hover:border-theme-border/80 bg-theme-subtle/5'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-sm font-bold text-theme-text truncate">{runLabel(h)}</span>
+                      <span className={`badge text-[10px] capitalize flex-shrink-0 ${statusBadge(h.status)}`}>{h.status}</span>
+                    </div>
+                    {h.stats && (
+                      <div className="text-[10px] text-theme-muted/40 font-medium">
+                        {h.stats.contentGenerated || 0} posts · {h.stats.designsGenerated || 0} designs · {h.stats.videosGenerated || 0} videos
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Main action + progress */}
+        <div className="col-span-2 space-y-5">
+          <div className="card p-6 bg-gradient-to-br from-curi-pink/10 to-curi-blue/10 border-curi-pink/20">
+            <h2 className="text-xl font-extrabold text-theme-text mb-2">Generate Next {days} Days</h2>
+            <p className="text-theme-muted/60 text-sm mb-5">
+              Curi builds your strategy, writes up to 8 posts, creates designs and videos, scores assets, and schedules publishing — optimized for your AI quota.
+            </p>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-theme-muted/40 font-medium">100 credits</span>
+              <button onClick={generate} disabled={loading} className="btn-primary px-10">
+                {loading ? 'Engine Running...' : `Generate Next ${days} Days`}
+              </button>
+            </div>
+          </div>
+
+          {(run || entries.length > 0) && (
+            <BulkDesignUpload
+              workspaceId={workspaceId}
+              runId={run?._id}
+              entries={entries}
+              onComplete={() => {
+                if (run?._id) loadRunResults(run._id)
+              }}
+            />
+          )}
+
+          <AnimatePresence>
+            {run && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="font-bold text-theme-text capitalize">{run.status} — {run.progress}%</span>
+                  <span className="badge bg-curi-blue/15 text-curi-blue">{runLabel(run)}</span>
+                </div>
+                <div className="h-2 bg-theme-subtle/10 rounded-full overflow-hidden mb-4">
+                  <div className="h-full bg-curi-gradient rounded-full transition-all duration-500" style={{ width: `${run.progress}%` }} />
+                </div>
+                {run.status === 'running' && run.steps?.find(s => s.status === 'running') && (
+                  <p className="text-sm text-theme-muted/60 mb-3">
+                    {run.steps.find(s => s.status === 'running').name}
+                    {run.steps.find(s => s.status === 'running').summary
+                      ? ` — ${run.steps.find(s => s.status === 'running').summary}`
+                      : ''}
+                  </p>
+                )}
+                {run.stats && (
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    {[
+                      { l: 'Topics', v: run.stats.topicsFound },
+                      { l: 'Content', v: run.stats.contentGenerated },
+                      { l: 'Designs', v: run.stats.designsGenerated },
+                      { l: 'Videos', v: run.stats.videosGenerated },
+                      { l: 'Approved', v: run.stats.approved },
+                      { l: 'Scheduled', v: run.stats.scheduled },
+                    ].map(s => (
+                      <div key={s.l} className="bg-theme-subtle/5 rounded-xl py-2">
+                        <div className="text-lg font-black text-curi-pink">{s.v}</div>
+                        <div className="text-[10px] text-theme-muted/40 font-medium">{s.l}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {run.status === 'completed' && (
+                  <div className="flex gap-3 mt-4">
+                    <button onClick={() => navigate('/approvals')} className="btn-secondary text-sm">Review Approvals</button>
+                    <button onClick={() => navigate('/design')} className="btn-secondary text-sm">Open Design Library</button>
+                    <button onClick={() => navigate('/calendar')} className="btn-secondary text-sm">View Calendar</button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {(designs.length > 0 || videos.length > 0 || posts.length > 0) && (
+            <div className="space-y-5">
+              {posts.length > 0 && (
+                <div className="card p-5">
+                  <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-4">
+                    Generated Posts ({posts.length})
+                  </div>
+                  <div className="space-y-3 max-h-80 overflow-y-auto">
+                    {posts.map(p => (
+                      <div key={p._id} className="p-4 rounded-xl bg-theme-subtle/5 border border-theme-border">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="badge bg-curi-blue/15 text-curi-blue capitalize text-[10px]">{p.platform}</span>
+                          <span className={`badge text-[10px] capitalize ${p.status === 'scheduled' ? 'bg-curi-green/15 text-curi-green' : 'bg-theme-subtle/10 text-theme-muted/40'}`}>{p.status}</span>
+                        </div>
+                        <div className="text-sm font-bold text-theme-text mb-1">{p.title}</div>
+                        <p className="text-sm text-theme-muted/60 whitespace-pre-wrap line-clamp-4">{p.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {designs.length > 0 && (
+                <div className="card p-5">
+                  <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-4">
+                    Generated Designs ({designs.length})
+                  </div>
+                  <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+                    {designs.map(d => (
+                      <DesignPreview key={d._id} design={d} onEdit={setEditingDesign} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {videos.length > 0 && (
+                <div className="card p-5">
+                  <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-4">
+                    Generated Videos ({videos.length})
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    {videos.map(v => (
+                      <VideoPreview key={v._id} video={v} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {topics.length > 0 && !run && !loading && (
+            <div className="card p-5">
+              <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Discovered Topics</div>
+              <div className="flex flex-wrap gap-2">
+                {topics.slice(0, 12).map(t => (
+                  <span key={t._id} className="badge bg-theme-subtle/10 text-theme-muted/60">
+                    {t.topic} <span className="text-curi-pink ml-1">{t.relevance}%</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {entries.length > 0 && (
+            <div className="card p-5">
+              <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Generated Calendar Preview</div>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {entries.slice(0, 15).map(e => (
+                  <div key={e._id} className="flex gap-3 items-center py-2 border-b border-theme-border last:border-0">
+                    <span className="w-8 h-8 rounded-lg bg-curi-gradient text-white text-xs font-black flex items-center justify-center flex-shrink-0">{e.day}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-theme-text truncate">{e.topic}</div>
+                      <div className="text-xs text-theme-muted/40 capitalize">{e.platform} · {e.type} · {e.publishTime}</div>
+                    </div>
+                    <span className={`badge text-[10px] ${e.status === 'scheduled' ? 'bg-curi-green/15 text-curi-green' : 'bg-theme-subtle/10 text-theme-muted/40'}`}>{e.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {editingDesign && (
+        <DesignCanvasEditor
+          design={editingDesign}
+          workspaceId={workspaceId}
+          userTemplates={userTemplates}
+          onClose={() => setEditingDesign(null)}
+          onSaved={(updated) => {
+            setDesigns(prev => prev.map(d => d._id === updated._id ? { ...d, ...updated } : d))
+            setEditingDesign(null)
+          }}
+        />
+      )}
+    </div>
+  )
+}

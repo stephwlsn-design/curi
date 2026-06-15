@@ -1,0 +1,5 @@
+curi.corpcrunch.io {
+	encode gzip zstd
+
+	reverse_proxy client:80
+}

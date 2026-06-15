@@ -1,0 +1,274 @@
+import { useState, useEffect } from 'react'
+import { API } from '../context/AuthContext'
+import { useAuth } from '../context/AuthContext'
+import { useCoreWorkflow } from '../context/CoreWorkflowContext'
+import { useDraftModule } from '../context/DraftContext'
+import CoreWorkflowNav from '../components/CoreWorkflowNav'
+import toast from 'react-hot-toast'
+import { motion, AnimatePresence } from 'framer-motion'
+
+const PLATFORMS = [
+  { id: 'linkedin', label: 'LinkedIn', color: 'bg-blue-600/20 text-blue-400 border-blue-600/30' },
+  { id: 'twitter', label: 'X / Twitter', color: 'bg-sky-500/20 text-sky-400 border-sky-500/30' },
+  { id: 'instagram', label: 'Instagram', color: 'bg-pink-500/20 text-pink-400 border-pink-500/30' },
+  { id: 'facebook', label: 'Facebook', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
+  { id: 'tiktok', label: 'TikTok', color: 'bg-theme-subtle/10 text-theme-text border-theme-border' },
+  { id: 'universal', label: 'Universal', color: 'bg-curi-green/20 text-curi-green border-curi-green/30' },
+]
+
+const TONES = ['professional', 'casual', 'witty', 'bold']
+const TYPES = [
+  { id: 'social_post', label: 'Social Post' },
+  { id: 'ad_copy', label: 'Ad Copy' },
+  { id: 'product_description', label: 'Product Description' },
+  { id: 'landing_page_copy', label: 'Landing Page Copy' },
+]
+
+export default function Create() {
+  const { workspaceId, fetchMe } = useAuth()
+  const { workflow, setContent } = useCoreWorkflow()
+  const [platform, setPlatform] = useState('linkedin')
+  const [tone, setTone] = useState('professional')
+  const [type, setType] = useState('social_post')
+  const [topic, setTopic] = useState(workflow.topic || '')
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [result, setResult] = useState(null)
+  const [editedContent, setEditedContent] = useState('')
+  const [saved, setSaved] = useState(workflow.createSaved)
+  const [copied, setCopied] = useState(false)
+  const [history, setHistory] = useState([])
+
+  useDraftModule('create', () => ({
+    platform, tone, type, topic, editedContent, result, saved, history,
+  }), (s) => {
+    if (s.platform) setPlatform(s.platform)
+    if (s.tone) setTone(s.tone)
+    if (s.type) setType(s.type)
+    if (s.topic) setTopic(s.topic)
+    if (s.editedContent) setEditedContent(s.editedContent)
+    if (s.result) setResult(s.result)
+    if (s.saved != null) setSaved(s.saved)
+    if (s.history) setHistory(s.history)
+  })
+
+  useEffect(() => {
+    if (workflow.topic && !topic) setTopic(workflow.topic)
+  }, [workflow.topic])
+
+  useEffect(() => {
+    if (result) setEditedContent(result.content || '')
+  }, [result])
+
+  const generate = async () => {
+    if (!topic.trim()) return toast.error('Enter a topic first')
+    setLoading(true)
+    setSaved(false)
+    try {
+      const { data } = await API.post('/create/post', { workspaceId, platform, tone, type, topic })
+      setResult(data.content)
+      setEditedContent(data.content.content || '')
+      setSaved(true)
+      setContent({
+        contentId: data.content._id,
+        contentText: data.content.content,
+        topic,
+        saved: true,
+      })
+      setHistory(h => [data.content, ...h.slice(0, 4)])
+      toast.success('Content generated and saved!')
+      fetchMe?.()
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Generation failed')
+    } finally { setLoading(false) }
+  }
+
+  const save = async (asDraft = false) => {
+    if (!result?._id) return toast.error('Generate content first')
+    setSaving(true)
+    try {
+      const { data } = await API.patch(`/create/${result._id}`, {
+        workspaceId,
+        content: editedContent,
+        status: asDraft ? 'draft' : 'approved',
+      })
+      setResult(data.content)
+      setSaved(true)
+      setContent({
+        contentId: data.content._id,
+        contentText: editedContent,
+        topic,
+        saved: !asDraft,
+      })
+      toast.success(asDraft ? 'Saved as draft' : 'Content saved!')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Save failed')
+    } finally { setSaving(false) }
+  }
+
+  const schedule = async () => {
+    if (!result?._id) return toast.error('Generate content first')
+    if (!saved) await save()
+    const scheduledAt = new Date()
+    scheduledAt.setDate(scheduledAt.getDate() + 1)
+    scheduledAt.setHours(9, 0, 0, 0)
+    try {
+      await API.post('/publish/schedule', { contentId: result._id, scheduledAt })
+      toast.success('Scheduled for tomorrow at 9 AM')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Schedule failed')
+    }
+  }
+
+  const copy = () => {
+    navigator.clipboard.writeText(editedContent || '')
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+    toast.success('Copied!')
+  }
+
+  const handleBeforeNext = async () => {
+    if (!result) {
+      toast.error('Generate content before continuing')
+      return false
+    }
+    if (!saved || editedContent !== result.content) {
+      try {
+        await API.patch(`/create/${result._id}`, {
+          workspaceId,
+          content: editedContent,
+          status: 'approved',
+        })
+        setContent({ contentId: result._id, contentText: editedContent, topic, saved: true })
+        setSaved(true)
+      } catch {
+        toast.error('Save failed — fix errors before continuing')
+        return false
+      }
+    }
+    return true
+  }
+
+  return (
+    <div className="p-8 max-w-5xl">
+      <CoreWorkflowNav
+        stepId="create"
+        canProceed={!!result}
+        onBeforeNext={handleBeforeNext}
+      />
+
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-theme-text mb-2">Curi Create</h1>
+        <p className="text-theme-muted/50">Generate platform-native content in your brand voice. One click.</p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        <div className="col-span-1 space-y-5">
+          <div className="card p-4">
+            <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Platform</div>
+            <div className="space-y-2">
+              {PLATFORMS.map(p => (
+                <button key={p.id} onClick={() => setPlatform(p.id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all ${platform === p.id ? p.color : 'border-transparent text-theme-muted/50 hover:text-theme-text hover:bg-theme-subtle/5'}`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="card p-4">
+            <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Tone</div>
+            <div className="grid grid-cols-2 gap-2">
+              {TONES.map(t => (
+                <button key={t} onClick={() => setTone(t)}
+                  className={`py-2 rounded-lg text-sm font-medium capitalize transition-all ${tone === t ? 'bg-curi-gradient text-white' : 'bg-theme-subtle/5 text-theme-muted/50 hover:text-theme-text'}`}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="card p-4">
+            <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Content Type</div>
+            <div className="space-y-1.5">
+              {TYPES.map(t => (
+                <button key={t.id} onClick={() => setType(t.id)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${type === t.id ? 'bg-curi-pink/20 text-curi-pink' : 'text-theme-muted/50 hover:text-theme-text hover:bg-theme-subtle/5'}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="col-span-2 space-y-4">
+          <div className="card p-5">
+            <label className="label">What do you want to write about?</label>
+            <textarea
+              className="input resize-none h-24"
+              placeholder="E.g. our new product launch, a customer success story, a hot industry trend..."
+              value={topic}
+              onChange={e => setTopic(e.target.value)}
+            />
+            <button onClick={generate} disabled={loading} className="btn-primary w-full mt-3 py-3">
+              {loading ? 'Generating...' : 'Generate Content'}
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {result && (
+              <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-theme-text capitalize">{platform} Post</span>
+                    <span className="badge bg-theme-subtle/5 text-theme-muted/30">{editedContent?.length} chars</span>
+                    {saved && <span className="badge bg-curi-green/15 text-curi-green">Saved</span>}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={copy} className="btn-secondary text-xs py-1.5 px-3">
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                    <button onClick={generate} className="btn-secondary text-xs py-1.5 px-3">Retry</button>
+                    <button onClick={() => save(true)} disabled={saving} className="btn-secondary text-xs py-1.5 px-3">
+                      Save Draft
+                    </button>
+                    <button onClick={() => save(false)} disabled={saving} className="btn-primary text-xs py-1.5 px-3">
+                      {saving ? 'Saving...' : 'Save'}
+                    </button>
+                    <button onClick={schedule} className="btn-secondary text-xs py-1.5 px-3">Schedule</button>
+                  </div>
+                </div>
+
+                <textarea
+                  className="input resize-none min-h-[160px] text-sm leading-relaxed"
+                  value={editedContent}
+                  onChange={e => { setEditedContent(e.target.value); setSaved(false) }}
+                />
+
+                {result.hashtags?.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {result.hashtags.map((h, i) => <span key={i} className="badge bg-curi-blue/15 text-curi-blue">#{h.replace('#', '')}</span>)}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {history.length > 1 && (
+            <div>
+              <div className="text-xs font-semibold text-theme-muted/30 uppercase tracking-wider mb-2">Previous Generations</div>
+              <div className="space-y-2">
+                {history.slice(1).map((item, i) => (
+                  <button key={i} onClick={() => { setResult(item); setEditedContent(item.content || ''); setSaved(true) }}
+                    className="card p-3 w-full text-left hover:border-theme-border transition-all">
+                    <div className="text-theme-muted/60 text-xs line-clamp-2">{item.content}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
