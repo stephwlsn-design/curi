@@ -30,17 +30,20 @@ npm run dev
 
 ### Production (https://curi.corpcrunch.io)
 
-```bash
-# 1. Point DNS: curi.corpcrunch.io → your server IP
-# 2. Configure production secrets
-cp server/.env.production.example server/.env.production
-# Edit JWT_SECRET, GEMINI_API_KEY, etc.
+**Git deploy** — push to `main` triggers GitHub Actions → server `git pull` → Docker rebuild.
 
-# 3. Deploy with Docker + automatic HTTPS (Caddy)
-npm run deploy:prod
+```bash
+# First time only — create repo at github.com/new named "curi", then:
+git remote add origin https://github.com/YOUR_ORG/curi.git
+git push -u origin main
 ```
 
-Full guide: [deploy/DEPLOY.md](deploy/DEPLOY.md)
+Server setup + GitHub secrets: [deploy/DEPLOY.md](deploy/DEPLOY.md)
+
+```bash
+npm run deploy:git    # manual pull + rebuild on server
+npm run deploy:prod   # local docker production stack
+```
 
 ### Development Docker
 
