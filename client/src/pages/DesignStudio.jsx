@@ -8,6 +8,7 @@ import DesignStepGuide, { DESIGN_STEPS } from '../components/DesignStepGuide'
 import DesignTemplateGallery from '../components/DesignTemplateGallery'
 import PexelsMediaPanel from '../components/PexelsMediaPanel'
 import DesignCanvasEditor from '../components/DesignCanvasEditor'
+import { useDesignCreation } from '../hooks/useDesignCreation'
 import { isDraftDesign } from '../utils/localDesign'
 import toast from 'react-hot-toast'
 
