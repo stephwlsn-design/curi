@@ -28,7 +28,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchMe = async () => {
     try {
-      const { data } = await API.get('/auth/me');
+      const { data } = await API.get('/auth/me', { timeout: 20000 });
       applySession(data);
     } catch {
       localStorage.removeItem('curi_token');

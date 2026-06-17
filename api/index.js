@@ -110,6 +110,27 @@ const handleDesignMedia = async (req, res) => {
   return sendJson(res, 200, result);
 };
 
+const isAuthMeRequest = (req) => {
+  const pathOnly = requestPath(req);
+  return req.method === 'GET' && (pathOnly === '/api/auth/me' || pathOnly === '/auth/me');
+};
+
+const handleAuthMe = async (req, res) => {
+  const { connectDB } = require('../server/src/config/database');
+  const { findAccessibleWorkspace } = require('../server/src/utils/workspaceAccess');
+  await connectDB();
+  const user = await authenticateRequest(req);
+
+  let workspace = user.currentWorkspace
+    ? await findAccessibleWorkspace(user.currentWorkspace, user._id)
+    : null;
+  if (!workspace) {
+    workspace = await findAccessibleWorkspace(null, user._id);
+  }
+
+  return sendJson(res, 200, { user: formatUser(user), workspace });
+};
+
 const isAuthRequest = (req) => {
   const pathOnly = requestPath(req);
   if (pathOnly.startsWith('/api/auth') || pathOnly.startsWith('/auth')) return true;
@@ -349,6 +370,15 @@ module.exports = async (req, res) => {
     } catch (err) {
       console.error('[api] health failed:', err);
       return sendJson(res, 503, { status: 'error', error: err.message });
+    }
+  }
+
+  if (isAuthMeRequest(req)) {
+    try {
+      return await handleAuthMe(req, res);
+    } catch (err) {
+      console.error('[api] auth/me failed:', err);
+      return sendJson(res, err.status || 401, { error: err.message });
     }
   }
 
