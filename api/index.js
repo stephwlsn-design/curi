@@ -50,6 +50,66 @@ const normalizeRequestUrl = (req) => {
   }
 };
 
+const getQueryParams = (req) => {
+  const rawUrl = req.url || req.path || '';
+  try {
+    const url = new URL(rawUrl, 'http://vercel.local');
+    return Object.fromEntries(url.searchParams);
+  } catch {
+    return {};
+  }
+};
+
+const isDesignMediaRequest = (req) => {
+  const pathOnly = requestPath(req);
+  return req.method === 'GET' && (
+    pathOnly.startsWith('/api/design/media/photos')
+    || pathOnly.startsWith('/api/design/media/videos')
+  );
+};
+
+const authenticateRequest = async (req) => {
+  const jwt = require('jsonwebtoken');
+  const User = require('../server/src/models/User');
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    const err = new Error('No token provided');
+    err.status = 401;
+    throw err;
+  }
+  if (!process.env.JWT_SECRET) {
+    const err = new Error('JWT_SECRET is not configured');
+    err.status = 503;
+    throw err;
+  }
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  const user = await User.findById(decoded.id).select('-password');
+  if (!user) {
+    const err = new Error('User not found');
+    err.status = 401;
+    throw err;
+  }
+  return user;
+};
+
+const handleDesignMedia = async (req, res) => {
+  const { connectDB } = require('../server/src/config/database');
+  const pexelsService = require('../server/src/services/pexelsService');
+  await connectDB();
+  await authenticateRequest(req);
+
+  const pathOnly = requestPath(req);
+  const q = getQueryParams(req);
+  const page = Number(q.page) || 1;
+  const perPage = Number(q.perPage) || (pathOnly.includes('/videos') ? 15 : 24);
+
+  const result = pathOnly.includes('/videos')
+    ? await pexelsService.searchVideos({ query: q.query, page, perPage })
+    : await pexelsService.searchPhotos({ query: q.query, page, perPage });
+
+  return sendJson(res, 200, result);
+};
+
 const isAuthRequest = (req) => {
   const pathOnly = requestPath(req);
   if (pathOnly.startsWith('/api/auth') || pathOnly.startsWith('/auth')) return true;
@@ -298,6 +358,15 @@ module.exports = async (req, res) => {
     } catch (err) {
       console.error('[api] auth failed:', err);
       return sendJson(res, 503, { status: 'error', error: err.message });
+    }
+  }
+
+  if (isDesignMediaRequest(req)) {
+    try {
+      return await handleDesignMedia(req, res);
+    } catch (err) {
+      console.error('[api] design media failed:', err);
+      return sendJson(res, err.status || 502, { error: err.message });
     }
   }
 
