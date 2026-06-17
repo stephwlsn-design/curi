@@ -8,37 +8,14 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { connectDB } = require('./config/database');
 const { connectRedis } = require('./config/redis');
-const mongoose = require('mongoose');
 const logger = require('./utils/logger');
-const authRoutes = require('./routes/auth');
-const workspaceRoutes = require('./routes/workspace');
-const discoverRoutes = require('./routes/discover');
-const createRoutes = require('./routes/create');
-const designRoutes = require('./routes/design');
-const videoRoutes = require('./routes/video');
-const mailRoutes = require('./routes/mail');
-const launchRoutes = require('./routes/launch');
-const calendarRoutes = require('./routes/calendar');
-const repurposeRoutes = require('./routes/repurpose');
-const trendsRoutes = require('./routes/trends');
-const competitorRoutes = require('./routes/competitor');
-const publishRoutes = require('./routes/publish');
-const analyticsRoutes = require('./routes/analytics');
-const billingRoutes = require('./routes/billing');
-const autonomousRoutes = require('./routes/autonomous');
-const approvalRoutes = require('./routes/approvals');
-const { UPLOAD_DIR, USER_DESIGN_DIR } = require('./middleware/upload');
-const { errorHandler } = require('./middleware/errorHandler');
-const { authenticate } = require('./middleware/auth');
-const { seedTestUser } = require('./utils/seedTestUser');
-const discoverService = require('./services/discoverService');
-const AutonomousRun = require('./models/AutonomousRun');
 
 const failStaleAutonomousRuns = async () => {
+  const AutonomousRun = require('./models/AutonomousRun');
   const cutoff = new Date(Date.now() - 20 * 60 * 1000);
   const result = await AutonomousRun.updateMany(
     { status: { $in: ['running', 'queued'] }, updatedAt: { $lt: cutoff } },
-    { $set: { status: 'failed', error: 'Pipeline timed out — please start a new run' } }
+    { $set: { status: 'failed', error: 'Pipeline timed out — please start a new run' } },
   );
   if (result.modifiedCount > 0) {
     logger.info(`Marked ${result.modifiedCount} stale autonomous run(s) as failed`);
@@ -55,13 +32,49 @@ const buildAllowedOrigins = () => {
   return [...new Set(origins)];
 };
 
+const mountRoutes = (app) => {
+  const { authenticate } = require('./middleware/auth');
+  const { errorHandler } = require('./middleware/errorHandler');
+  const discoverService = require('./services/discoverService');
+
+  app.use('/api/auth', require('./routes/auth'));
+  app.post('/api/discover/roast', async (req, res) => {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+    const roast = await discoverService.roastWebsite(url);
+    res.json({ roast });
+  });
+
+  app.use('/api/workspace', authenticate, require('./routes/workspace'));
+  app.use('/api/discover', authenticate, require('./routes/discover'));
+  app.use('/api/create', authenticate, require('./routes/create'));
+  app.use('/api/design', authenticate, require('./routes/design'));
+  app.use('/api/video', authenticate, require('./routes/video'));
+  app.use('/api/mail', authenticate, require('./routes/mail'));
+  app.use('/api/launch', authenticate, require('./routes/launch'));
+  app.use('/api/calendar', authenticate, require('./routes/calendar'));
+  app.use('/api/repurpose', authenticate, require('./routes/repurpose'));
+  app.use('/api/trends', authenticate, require('./routes/trends'));
+  app.use('/api/competitor', authenticate, require('./routes/competitor'));
+  app.use('/api/publish', authenticate, require('./routes/publish'));
+  app.use('/api/analytics', authenticate, require('./routes/analytics'));
+  app.use('/api/billing', authenticate, require('./routes/billing'));
+  app.use('/api/autonomous', authenticate, require('./routes/autonomous'));
+  app.use('/api/approvals', authenticate, require('./routes/approvals'));
+  app.use('/api/drafts', authenticate, require('./routes/drafts'));
+  app.use('/api/scheduled', authenticate, require('./routes/scheduled'));
+
+  app.use(errorHandler);
+};
+
 const createApp = async () => {
-  await connectDB();
+  const conn = await connectDB();
   await connectRedis();
 
   const shouldSeedDemo = process.env.SEED_DEMO_USER === 'true'
     || (!process.env.VERCEL && process.env.NODE_ENV !== 'production');
   if (shouldSeedDemo) {
+    const { seedTestUser } = require('./utils/seedTestUser');
     await seedTestUser();
   }
   if (!process.env.VERCEL) {
@@ -71,6 +84,8 @@ const createApp = async () => {
       logger.warn('Could not check stale autonomous runs:', err.message);
     }
   }
+
+  const { UPLOAD_DIR, USER_DESIGN_DIR } = require('./middleware/upload');
 
   const app = express();
   const allowedOrigins = buildAllowedOrigins();
@@ -99,38 +114,11 @@ const createApp = async () => {
     status: 'ok',
     version: '1.0.0',
     platform: process.env.VERCEL ? 'vercel' : 'node',
-    db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    db: conn.connection.readyState === 1 ? 'connected' : 'disconnected',
     timestamp: new Date(),
   }));
 
-  app.use('/api/auth', authRoutes);
-  app.post('/api/discover/roast', async (req, res) => {
-    const { url } = req.body;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
-    const roast = await discoverService.roastWebsite(url);
-    res.json({ roast });
-  });
-
-  app.use('/api/workspace', authenticate, workspaceRoutes);
-  app.use('/api/discover', authenticate, discoverRoutes);
-  app.use('/api/create', authenticate, createRoutes);
-  app.use('/api/design', authenticate, designRoutes);
-  app.use('/api/video', authenticate, videoRoutes);
-  app.use('/api/mail', authenticate, mailRoutes);
-  app.use('/api/launch', authenticate, launchRoutes);
-  app.use('/api/calendar', authenticate, calendarRoutes);
-  app.use('/api/repurpose', authenticate, repurposeRoutes);
-  app.use('/api/trends', authenticate, trendsRoutes);
-  app.use('/api/competitor', authenticate, competitorRoutes);
-  app.use('/api/publish', authenticate, publishRoutes);
-  app.use('/api/analytics', authenticate, analyticsRoutes);
-  app.use('/api/billing', authenticate, billingRoutes);
-  app.use('/api/autonomous', authenticate, autonomousRoutes);
-  app.use('/api/approvals', authenticate, approvalRoutes);
-  app.use('/api/drafts', authenticate, require('./routes/drafts'));
-  app.use('/api/scheduled', authenticate, require('./routes/scheduled'));
-
-  app.use(errorHandler);
+  mountRoutes(app);
   return app;
 };
 
