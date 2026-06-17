@@ -769,15 +769,15 @@ export default function DesignStudio() {
           ) : (
             <div className="h-full flex flex-col items-center justify-center bg-theme-subtle/5 p-8 text-center">
               <LayoutTemplate size={48} className="text-theme-muted/30 mb-4" />
-              <h3 className="text-lg font-bold text-theme-text mb-2">Start your creative</h3>
-              <p className="text-sm text-theme-muted/60 max-w-sm mb-6">
+              <h3 className="text-base font-bold text-theme-text mb-2">Start your creative</h3>
+              <p className="text-xs text-theme-muted/60 max-w-sm mb-6">
                 Upload design inspiration in Step 1, pick your post format and dimensions, then extract to canvas.
               </p>
               <button
                 type="button"
                 onClick={ensureDesign}
                 disabled={templateLoading}
-                className="btn-secondary text-sm"
+                className="btn-secondary text-xs"
               >
                 {templateLoading ? 'Creating…' : 'Or start with a blank canvas'}
               </button>

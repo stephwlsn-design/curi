@@ -28,7 +28,7 @@
   body {
     background-color: rgb(var(--theme-bg));
     color: rgb(var(--theme-text));
-    @apply font-sans text-base antialiased transition-colors duration-300;
+    @apply font-sans text-sm antialiased transition-colors duration-300;
   }
 
   * {
@@ -50,7 +50,7 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-gradient-to-r from-curi-pink to-curi-blue text-white font-bold px-5 py-2.5 rounded-2xl
+    @apply bg-gradient-to-r from-curi-pink to-curi-blue text-white font-bold text-sm px-4 py-2 rounded-2xl
     shadow-clay-sm hover:scale-[1.02] active:scale-95 transition-all duration-200
     disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100;
   }
@@ -59,7 +59,7 @@
     background-color: rgb(var(--theme-card));
     border: 1px solid rgb(var(--theme-border));
     color: rgb(var(--theme-text));
-    @apply font-semibold px-5 py-2.5 rounded-2xl shadow-clay-sm hover:scale-[1.02] active:scale-95 transition-all duration-200;
+    @apply text-sm font-semibold px-4 py-2 rounded-2xl shadow-clay-sm hover:scale-[1.02] active:scale-95 transition-all duration-200;
   }
 
   .card {
@@ -72,7 +72,7 @@
     background-color: rgb(var(--theme-surface) / 0.8);
     border: 1px solid rgb(var(--theme-border));
     color: rgb(var(--theme-text));
-    @apply rounded-2xl px-4 py-3 text-base
+    @apply rounded-2xl px-4 py-2.5 text-sm
     focus:outline-none focus:border-curi-pink focus:ring-2 focus:ring-curi-pink/25
     transition-all w-full;
   }
@@ -83,7 +83,7 @@
 
   .label {
     color: rgb(var(--theme-muted) / 0.7);
-    @apply text-base font-semibold mb-1.5 block;
+    @apply text-sm font-semibold mb-1.5 block;
   }
 
   .badge {
@@ -96,7 +96,7 @@
 
   .sidebar-link {
     color: rgb(var(--theme-muted) / 0.6);
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-2xl text-base font-semibold
+    @apply flex items-center gap-3 px-3 py-2 rounded-2xl text-sm font-semibold
     transition-all duration-200 cursor-pointer;
   }
 
@@ -113,7 +113,7 @@
 
   .sidebar-sublink {
     color: rgb(var(--theme-muted) / 0.75);
-    @apply flex items-center gap-2 pl-3 pr-3 py-2 rounded-xl text-sm font-semibold
+    @apply flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-xl text-xs font-semibold
     transition-all duration-200 cursor-pointer w-full no-underline;
   }
 
@@ -133,7 +133,7 @@
 
   .section-label {
     color: rgb(var(--theme-muted) / 0.5);
-    @apply text-sm font-semibold uppercase tracking-wider;
+    @apply text-xs font-semibold uppercase tracking-wider;
   }
 
   .page-card {
