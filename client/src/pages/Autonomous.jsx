@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { API, useAuth } from '../context/AuthContext'
 import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
@@ -82,6 +82,7 @@ export default function Autonomous() {
     valueProposition: '', marketingSummary: '',
   })
   const [discovering, setDiscovering] = useState(false)
+  const pollRef = useRef(null)
 
   useDraftModule('autonomous', () => ({
     days, channels, designIdea, onboarding,
@@ -147,32 +148,58 @@ export default function Autonomous() {
     }
   }, [workspaceId])
 
-  const pollRun = useCallback(async (runId) => {
-    try {
-      const { data } = await API.get(`/autonomous/run/${runId}`)
-      setRun(data.run)
-      setPosts(data.posts || [])
-      setDesigns((data.designs || []).map(toDesignPreview))
-      setVideos((data.videos || []).map(toVideoPreview))
-      if (data.run.status === 'completed') {
-        const cal = await API.get(`/autonomous/calendar?workspaceId=${workspaceId}&runId=${runId}`)
-        setEntries(cal.data.entries || [])
-        await fetchHistory()
-        toast.success(`${data.run.days}-day campaign saved to history`)
-        setLoading(false)
-      } else if (data.run.status === 'failed') {
-        await fetchHistory()
-        toast.error(data.run.error || 'Pipeline failed')
-        setLoading(false)
-      } else {
+  const pollRun = useCallback((runId) => {
+    if (pollRef.current) clearTimeout(pollRef.current)
+
+    const tick = async () => {
+      try {
+        const { data } = await API.post(`/autonomous/run/${runId}/advance`, {}, { timeout: 120000 })
+        setRun(data.run)
+        setPosts(data.posts || [])
+        setDesigns((data.designs || []).map(toDesignPreview))
+        setVideos((data.videos || []).map(toVideoPreview))
+
+        if (data.run?.status === 'completed') {
+          const cal = await API.get(`/autonomous/calendar?workspaceId=${workspaceId}&runId=${runId}`)
+          setEntries(cal.data.entries || [])
+          await fetchHistory()
+          toast.success(`${data.run.days}-day campaign saved to history`)
+          setLoading(false)
+          return
+        }
+        if (data.run?.status === 'failed') {
+          await fetchHistory()
+          toast.error(data.run.error || data.error || 'Pipeline failed')
+          setLoading(false)
+          return
+        }
+
         const cal = await API.get(`/autonomous/calendar?workspaceId=${workspaceId}&runId=${runId}`).catch(() => ({ data: { entries: [] } }))
         if (cal.data.entries?.length) setEntries(cal.data.entries)
-        setTimeout(() => pollRun(runId), 2000)
+
+        pollRef.current = setTimeout(tick, 2000)
+      } catch (err) {
+        if (err.response?.data?.run) {
+          setRun(err.response.data.run)
+          setPosts(err.response.data.posts || [])
+          setDesigns((err.response.data.designs || []).map(toDesignPreview))
+          setVideos((err.response.data.videos || []).map(toDesignPreview))
+          if (err.response.data.run.status === 'failed') {
+            toast.error(err.response.data.run.error || err.response?.data?.error || 'Pipeline failed')
+            setLoading(false)
+            return
+          }
+        }
+        pollRef.current = setTimeout(tick, 3500)
       }
-    } catch {
-      setLoading(false)
     }
+
+    tick()
   }, [workspaceId, fetchHistory])
+
+  useEffect(() => () => {
+    if (pollRef.current) clearTimeout(pollRef.current)
+  }, [])
 
   useEffect(() => {
     if (!workspaceId) return

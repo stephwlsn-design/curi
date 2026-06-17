@@ -15,6 +15,23 @@ const { getTopPreferences } = require('../services/learningService');
 const { uploadUserDesigns } = require('../middleware/upload');
 const { createUploadedDesign } = require('../services/designUploadService');
 
+const fetchRunPayload = async (run) => {
+  const runId = String(run._id);
+  const runFilter = {
+    workspace: run.workspace,
+    'metadata.module': 'autonomous',
+    $or: [{ 'metadata.runId': runId }, { 'metadata.runId': run._id }],
+  };
+  const creatives = await Content.find({ ...runFilter, type: { $in: ['image', 'video'] } }).sort({ createdAt: 1 });
+  const posts = await Content.find({ ...runFilter, type: 'post' }).sort({ createdAt: 1 });
+  return {
+    run,
+    posts,
+    designs: creatives.filter((c) => c.type === 'image'),
+    videos: creatives.filter((c) => c.type === 'video'),
+  };
+};
+
 router.post('/generate', checkCredits(100), async (req, res) => {
   const { workspaceId, days = 30, channels = [], designIdea } = req.body;
 
@@ -51,45 +68,30 @@ router.post('/run/:id/advance', async (req, res) => {
   });
   if (!run) return res.status(404).json({ error: 'Run not found' });
   if (!['queued', 'running'].includes(run.status)) {
-    return res.json({ run, message: 'Pipeline not active' });
+    const payload = await fetchRunPayload(await AutonomousRun.findById(run._id).populate('strategy'));
+    return res.json({ ...payload, message: 'Pipeline not active' });
   }
   try {
     const updated = await advanceAutonomousPipeline(run._id);
-    return res.json({ run: updated });
+    const fresh = await AutonomousRun.findById(updated?._id || run._id).populate('strategy');
+    const payload = await fetchRunPayload(fresh);
+    return res.json(payload);
   } catch (err) {
-    const failed = await AutonomousRun.findById(run._id);
-    return res.status(502).json({ error: err.message, run: failed });
+    const failed = await AutonomousRun.findById(run._id).populate('strategy');
+    const payload = await fetchRunPayload(failed);
+    return res.status(502).json({ error: err.message, ...payload });
   }
 });
 
 router.get('/run/:id', async (req, res) => {
-  let run = await AutonomousRun.findOne({
+  const run = await AutonomousRun.findOne({
     _id: req.params.id,
     createdBy: req.user._id,
   }).populate('strategy');
 
   if (!run) return res.status(404).json({ error: 'Run not found' });
 
-  if (['queued', 'running'].includes(run.status)) {
-    try {
-      run = await advanceAutonomousPipeline(run._id);
-      run = await AutonomousRun.findById(run._id).populate('strategy');
-    } catch (err) {
-      run = await AutonomousRun.findById(run._id).populate('strategy');
-    }
-  }
-
-  const runId = String(run._id);
-  const runFilter = { workspace: run.workspace, 'metadata.module': 'autonomous', $or: [{ 'metadata.runId': runId }, { 'metadata.runId': run._id }] };
-  const creatives = await Content.find({ ...runFilter, type: { $in: ['image', 'video'] } }).sort({ createdAt: 1 });
-  const posts = await Content.find({ ...runFilter, type: 'post' }).sort({ createdAt: 1 });
-
-  res.json({
-    run,
-    posts,
-    designs: creatives.filter(c => c.type === 'image'),
-    videos: creatives.filter(c => c.type === 'video'),
-  });
+  res.json(await fetchRunPayload(run));
 });
 
 router.get('/history', async (req, res) => {

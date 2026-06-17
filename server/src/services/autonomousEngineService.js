@@ -28,12 +28,12 @@ const PIPELINE_STEPS = [
   'Learning Update',
 ];
 
-const CONTENT_CONCURRENCY = 1;
 const DESIGN_CAP = 3;
 const VIDEO_CAP = 2;
 const BATCH_PAUSE_MS = process.env.VERCEL ? 600 : 3500;
 const ITEMS_PER_TICK = process.env.VERCEL ? 1 : 99;
-const LOCK_TTL_MS = 85_000;
+const LOCK_TTL_MS = process.env.VERCEL ? 30_000 : 85_000;
+const LLM_STEP_TIMEOUT_MS = process.env.VERCEL ? 22_000 : 60_000;
 const AUTONOMOUS_MAX_ENTRIES = 8;
 const MIN_TOPICS_TO_REUSE = 5;
 
@@ -285,7 +285,6 @@ const advanceAutonomousPipeline = async (runId) => {
   ensureSteps(run);
 
   if (run.status === 'completed' || run.status === 'failed') {
-    await releasePipelineLock(runId);
     return run;
   }
 
@@ -302,7 +301,6 @@ const advanceAutonomousPipeline = async (runId) => {
       run.completedAt = new Date();
       run.label = `${run.days}-Day Campaign — ${run.completedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
       await run.save();
-      await releasePipelineLock(runId);
       return run;
     }
 
@@ -631,12 +629,25 @@ const advanceAutonomousPipeline = async (runId) => {
       await run.save();
     }
 
-    await releasePipelineLock(runId);
     return AutonomousRun.findById(runId);
   } catch (err) {
+    logger.error(`Autonomous advance failed: ${err.message}`);
     run = await AutonomousRun.findById(runId);
-    if (run) await failRun(run, err);
+    if (run && run.status !== 'failed' && run.status !== 'completed') {
+      run.status = 'failed';
+      run.error = err.message;
+      const activeStep = run.steps?.find((s) => s.status === 'running');
+      if (activeStep) {
+        activeStep.status = 'failed';
+        activeStep.error = err.message;
+        activeStep.completedAt = new Date();
+        run.markModified('steps');
+      }
+      await run.save();
+    }
     throw err;
+  } finally {
+    await releasePipelineLock(runId);
   }
 };
 
