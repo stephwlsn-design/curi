@@ -1,7 +1,7 @@
 export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, onSelect, interactive = false }) {
   if (!canvas) return null
 
-  const { width, height, background, elements } = canvas
+  const { width, height, background, elements, audio } = canvas
   const bgStyle = background?.type === 'gradient'
     ? { background: `linear-gradient(${background.angle || 135}deg, ${background.colors?.[0]} 0%, ${background.colors?.[1] || background.colors?.[0]} 100%)` }
     : (background?.type === 'image' || background?.type === 'video')
@@ -75,20 +75,76 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
           zIndex: el.zIndex ?? 2,
         }
 
-        if (el.type === 'image') {
+        if (el.type === 'image' || el.type === 'character') {
           return (
             <img
               key={el.id}
               src={el.url}
-              alt=""
+              alt={el.name || ''}
               draggable={false}
               style={{
                 ...base,
                 height: (el.height || el.width) * scale,
-                objectFit: 'cover',
+                objectFit: el.type === 'character' ? 'contain' : 'cover',
                 borderRadius: (el.borderRadius || 0) * scale,
               }}
             />
+          )
+        }
+
+        if (el.type === 'talking-character') {
+          if (el.videoUrl) {
+            return (
+              <video
+                key={el.id}
+                src={el.videoUrl}
+                poster={el.posterUrl || el.url}
+                controls={interactive}
+                playsInline
+                loop
+                muted={false}
+                draggable={false}
+                style={{
+                  ...base,
+                  height: (el.height || el.width) * scale,
+                  objectFit: 'contain',
+                  borderRadius: 8 * scale,
+                }}
+                onClick={interactive ? (e) => { e.stopPropagation(); onSelect?.(el.id) } : undefined}
+              />
+            )
+          }
+          return (
+            <div
+              key={el.id}
+              style={{
+                ...base,
+                height: (el.height || el.width) * scale,
+              }}
+              onClick={interactive ? (e) => {
+                e.stopPropagation()
+                onSelect?.(el.id)
+                if (el.audioDataUrl) {
+                  const audio = new Audio(el.audioDataUrl)
+                  audio.play().catch(() => {})
+                }
+              } : undefined}
+            >
+              <img
+                src={el.url}
+                alt={el.name || ''}
+                draggable={false}
+                className="w-full h-full object-contain"
+              />
+              {el.audioDataUrl && (
+                <div
+                  className="absolute bottom-1 right-1 rounded-full bg-curi-green/90 text-white p-1 pointer-events-none"
+                  style={{ width: 20 * scale, height: 20 * scale }}
+                >
+                  <span style={{ fontSize: 10 * scale }}>▶</span>
+                </div>
+              )}
+            </div>
           )
         }
 
@@ -166,6 +222,14 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
           </div>
         )
       })}
+      {audio && (audio.url || audio.dataUrl) && (
+        <div
+          className="absolute bottom-2 right-2 z-20 flex items-center gap-1 px-2 py-1 rounded-full bg-black/65 text-white pointer-events-none"
+          style={{ fontSize: Math.max(9, 10 * scale) }}
+        >
+          ♪ {audio.name}
+        </div>
+      )}
     </div>
   )
 }

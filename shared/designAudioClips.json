@@ -1,0 +1,82 @@
+[
+  {
+    "id": "music-upbeat-tech",
+    "name": "Tech House Vibes",
+    "category": "upbeat",
+    "tags": ["tech", "corporate", "modern", "energetic"],
+    "previewUrl": "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3",
+    "durationSec": 120
+  },
+  {
+    "id": "music-corporate-soft",
+    "name": "Corporate Soft",
+    "category": "corporate",
+    "tags": ["business", "professional", "calm"],
+    "previewUrl": "https://assets.mixkit.co/music/preview/mixkit-a-very-happy-christmas-897.mp3",
+    "durationSec": 90
+  },
+  {
+    "id": "music-ambient-calm",
+    "name": "Ambient Calm",
+    "category": "calm",
+    "tags": ["ambient", "relax", "soft", "background"],
+    "previewUrl": "https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3",
+    "durationSec": 140
+  },
+  {
+    "id": "music-happy-pop",
+    "name": "Happy Pop",
+    "category": "upbeat",
+    "tags": ["happy", "pop", "social", "fun"],
+    "previewUrl": "https://assets.mixkit.co/music/preview/mixkit-fun-in-the-sun-12.mp3",
+    "durationSec": 100
+  },
+  {
+    "id": "music-inspiring",
+    "name": "Inspiring Journey",
+    "category": "corporate",
+    "tags": ["inspiring", "motivation", "brand", "launch"],
+    "previewUrl": "https://assets.mixkit.co/music/preview/mixkit-driving-ambition-32.mp3",
+    "durationSec": 110
+  },
+  {
+    "id": "music-lofi",
+    "name": "Lo-Fi Chill",
+    "category": "calm",
+    "tags": ["lofi", "chill", "study", "soft"],
+    "previewUrl": "https://assets.mixkit.co/music/preview/mixkit-lullaby-1008.mp3",
+    "durationSec": 95
+  },
+  {
+    "id": "sfx-success",
+    "name": "Success Chime",
+    "category": "sfx",
+    "tags": ["success", "notification", "win", "short"],
+    "previewUrl": "https://assets.mixkit.co/sfx/preview/mixkit-achievement-bell-600.mp3",
+    "durationSec": 3
+  },
+  {
+    "id": "sfx-whoosh",
+    "name": "Whoosh Transition",
+    "category": "sfx",
+    "tags": ["whoosh", "transition", "motion", "short"],
+    "previewUrl": "https://assets.mixkit.co/sfx/preview/mixkit-fast-whoosh-transition-1490.mp3",
+    "durationSec": 2
+  },
+  {
+    "id": "sfx-applause",
+    "name": "Applause",
+    "category": "sfx",
+    "tags": ["applause", "celebration", "crowd"],
+    "previewUrl": "https://assets.mixkit.co/sfx/preview/mixkit-small-group-applause-3046.mp3",
+    "durationSec": 5
+  },
+  {
+    "id": "music-celebration",
+    "name": "Celebration Beat",
+    "category": "upbeat",
+    "tags": ["party", "celebrate", "event", "dance"],
+    "previewUrl": "https://assets.mixkit.co/music/preview/mixkit-discover-979.mp3",
+    "durationSec": 105
+  }
+]

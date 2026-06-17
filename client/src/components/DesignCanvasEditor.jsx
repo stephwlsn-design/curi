@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
-import { X, Save, LayoutTemplate, Plus, Trash2 } from 'lucide-react'
+import { X, Save, LayoutTemplate, Plus, Trash2, Volume2, Play } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { API } from '../context/AuthContext'
 import DesignCanvasRenderer from './DesignCanvasRenderer'
 import { BUILTIN_TEMPLATES } from '../constants/designTemplates'
 import PexelsMediaPanel from './PexelsMediaPanel'
 import { applyPexelsPhotoToCanvas } from '../utils/pexelsCanvas'
+import { applyCharacterToCanvas, applyTalkingCharacterToCanvas } from '../utils/characterCanvas'
+import { applyAudioToCanvas, removeAudioFromCanvas, getCanvasAudioUrl } from '../utils/audioCanvas'
 import {
   designToCanvas, applyTemplateToCanvas, canvasToDesignFields, syncCanvasTextFromDesign,
 } from '../utils/designCanvas'
@@ -237,10 +239,33 @@ export default forwardRef(function DesignCanvasEditor({
     toast.success('Video background applied')
   }
 
+  const applyCharacter = (character) => {
+    setCanvas((prev) => applyCharacterToCanvas(prev, character))
+    toast.success(`Added ${character.name}`)
+  }
+
+  const applyTalkingCharacter = (payload) => {
+    setCanvas((prev) => applyTalkingCharacterToCanvas(prev, payload))
+    toast.success(`Added talking character: ${payload.name}`)
+  }
+
+  const applyAudio = (audio) => {
+    setCanvas((prev) => applyAudioToCanvas(prev, audio))
+    toast.success(`Audio added: ${audio.name}`)
+  }
+
+  const removeAudio = () => {
+    setCanvas((prev) => removeAudioFromCanvas(prev))
+    toast.success('Audio removed')
+  }
+
   useImperativeHandle(ref, () => ({
     applyTemplate,
     applyPexelsPhoto,
     applyPexelsVideo,
+    applyCharacter,
+    applyTalkingCharacter,
+    applyAudio,
     addTextLayer,
     saveDesign,
     getCanvas: () => canvas,
@@ -387,7 +412,7 @@ export default forwardRef(function DesignCanvasEditor({
                     left: el.x * scale,
                     top: el.y * scale,
                     width: Math.max(el.width * scale, 60),
-                    height: Math.max((el.fontSize || 24) * scale * 2, 36),
+                    height: Math.max((el.height || (el.fontSize || 24) * 2) * scale, 36),
                     cursor: 'move',
                     zIndex: 10,
                   }}
@@ -415,6 +440,40 @@ export default forwardRef(function DesignCanvasEditor({
               </button>
             ))}
           </div>
+
+          {canvas.audio && (
+            <div className="pt-2 border-t border-theme-border space-y-2">
+              <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">Audio</div>
+              <div className="card p-2 space-y-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <Volume2 size={14} className="text-curi-green flex-shrink-0" />
+                  <span className="font-medium text-theme-text truncate flex-1">{canvas.audio.name}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const src = getCanvasAudioUrl(canvas.audio)
+                      if (src) new Audio(src).play()
+                    }}
+                    className="btn-secondary flex-1 text-[10px] py-1 flex items-center justify-center gap-1"
+                  >
+                    <Play size={12} /> Play
+                  </button>
+                  <button
+                    type="button"
+                    onClick={removeAudio}
+                    className="btn-secondary text-[10px] py-1 px-2 text-red-500"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+                {canvas.audio.script && (
+                  <p className="text-[10px] text-theme-muted/50 line-clamp-2">{canvas.audio.script}</p>
+                )}
+              </div>
+            </div>
+          )}
 
           <button type="button" onClick={addTextLayer} className="btn-secondary w-full text-xs flex items-center justify-center gap-1">
             <Plus size={14} /> Add Text

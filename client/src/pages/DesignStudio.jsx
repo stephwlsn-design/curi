@@ -2,25 +2,43 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   LayoutTemplate, Image, Film, Type, Layers, Sparkles, Search, Loader2, CheckCircle2,
+  ChevronLeft, ChevronRight, GripVertical, Smile, Volume2,
 } from 'lucide-react'
 import { API, useAuth } from '../context/AuthContext'
 import DesignStepGuide, { DESIGN_STEPS } from '../components/DesignStepGuide'
 import DesignTemplateGallery from '../components/DesignTemplateGallery'
 import PexelsMediaPanel from '../components/PexelsMediaPanel'
+import AnimatedCharactersPanel from '../components/AnimatedCharactersPanel'
+import DesignAudioPanel from '../components/DesignAudioPanel'
 import DesignCanvasEditor from '../components/DesignCanvasEditor'
 import { useDesignCreation } from '../hooks/useDesignCreation'
 import { isDraftDesign } from '../utils/localDesign'
+import { applyCharacterToCanvas, applyTalkingCharacterToCanvas } from '../utils/characterCanvas'
+import { applyAudioToCanvas } from '../utils/audioCanvas'
 import toast from 'react-hot-toast'
 
 const PANELS = [
   { id: 'templates', label: 'Templates', icon: LayoutTemplate, step: 1 },
   { id: 'photos', label: 'Photos', icon: Image, step: 2 },
   { id: 'videos', label: 'Videos', icon: Film, step: 2 },
+  { id: 'characters', label: 'Characters', icon: Smile, step: 2 },
+  { id: 'audio', label: 'Audio', icon: Volume2, step: 2 },
   { id: 'text', label: 'Text', icon: Type, step: 3 },
   { id: 'elements', label: 'Elements', icon: Layers, step: 3 },
 ]
 
 const STEP_PANEL = { 1: 'templates', 2: 'photos', 3: 'text', 4: 'finalize' }
+
+const ASSET_PANEL_MIN = 220
+const ASSET_PANEL_MAX = 560
+const ASSET_PANEL_DEFAULT = 320
+const ASSET_PANEL_WIDTH_KEY = 'curi_design_asset_panel_width'
+
+const readStoredPanelWidth = () => {
+  const w = Number(localStorage.getItem(ASSET_PANEL_WIDTH_KEY))
+  if (!Number.isFinite(w)) return ASSET_PANEL_DEFAULT
+  return Math.min(ASSET_PANEL_MAX, Math.max(ASSET_PANEL_MIN, w))
+}
 
 export default function DesignStudio() {
   const navigate = useNavigate()
@@ -28,6 +46,15 @@ export default function DesignStudio() {
   const [searchParams] = useSearchParams()
   const { workspace, fetchMe, loading: authLoading } = useAuth()
   const editorRef = useRef(null)
+  const splitRef = useRef(null)
+  const resizeDragRef = useRef(null)
+  const panelWidthRef = useRef(ASSET_PANEL_DEFAULT)
+
+  const [assetPanelWidth, setAssetPanelWidth] = useState(readStoredPanelWidth)
+  const [panelCollapsed, setPanelCollapsed] = useState(false)
+  const [isResizing, setIsResizing] = useState(false)
+
+  panelWidthRef.current = assetPanelWidth
 
   const initialStep = Number(searchParams.get('step')) || 1
   const initialPanel = searchParams.get('panel') || STEP_PANEL[initialStep] || 'templates'
@@ -59,7 +86,7 @@ export default function DesignStudio() {
     const done = []
     if (design?.canvasLayout?.templateId || selectedTemplateId) done.push(1)
     const bg = design?.canvasLayout?.background
-    if (bg?.type === 'image' || bg?.type === 'video' || design?.canvasLayout?.elements?.some(e => e.type === 'image')) {
+    if (bg?.type === 'image' || bg?.type === 'video' || design?.canvasLayout?.audio || design?.canvasLayout?.elements?.some(e => e.type === 'image' || e.type === 'character' || e.type === 'talking-character')) {
       done.push(2)
     }
     if (design?.headline || design?.canvasLayout?.elements?.some(e => e.text && e.text !== 'Your Headline')) {
@@ -109,6 +136,52 @@ export default function DesignStudio() {
     })
     return () => { cancelled = true }
   }, [workspaceId, designId, loadDesign])
+
+  useEffect(() => {
+    const onPointerMove = (e) => {
+      if (!resizeDragRef.current) return
+      const delta = e.clientX - resizeDragRef.current.startX
+      const next = Math.min(
+        ASSET_PANEL_MAX,
+        Math.max(ASSET_PANEL_MIN, resizeDragRef.current.startW + delta),
+      )
+      setAssetPanelWidth(next)
+    }
+    const onPointerUp = () => {
+      if (!resizeDragRef.current) return
+      resizeDragRef.current = null
+      setIsResizing(false)
+      localStorage.setItem(ASSET_PANEL_WIDTH_KEY, String(panelWidthRef.current))
+    }
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', onPointerUp)
+    }
+  }, [])
+
+  const startPanelResize = (e) => {
+    if (panelCollapsed) return
+    resizeDragRef.current = { startX: e.clientX, startW: assetPanelWidth }
+    setIsResizing(true)
+    e.preventDefault()
+  }
+
+  const nudgePanelWidth = (delta) => {
+    setPanelCollapsed(false)
+    setAssetPanelWidth((w) => {
+      const next = Math.min(ASSET_PANEL_MAX, Math.max(ASSET_PANEL_MIN, w + delta))
+      localStorage.setItem(ASSET_PANEL_WIDTH_KEY, String(next))
+      return next
+    })
+  }
+
+  const togglePanelCollapsed = () => {
+    setPanelCollapsed((c) => !c)
+  }
+
+  const effectivePanelWidth = panelCollapsed ? 0 : assetPanelWidth
 
   const ensureDesign = async () => {
     if (design) return design
@@ -174,6 +247,58 @@ export default function DesignStudio() {
       setDesign(created)
       setStep(3)
     }
+  }
+
+  const handleCharacter = async (character) => {
+    if (editorRef.current && design) {
+      editorRef.current.applyCharacter(character)
+      setStep(3)
+      return
+    }
+    let d = design
+    if (!d) {
+      d = await startBlankCanvas()
+      if (!d) return
+      applyDesign(d)
+    }
+    const canvasLayout = applyCharacterToCanvas(d.canvasLayout, character)
+    setDesign({ ...d, canvasLayout })
+    setStep(3)
+    toast.success(`Added ${character.name}`)
+  }
+
+  const handleTalkingCharacter = async (payload) => {
+    if (editorRef.current && design) {
+      editorRef.current.applyTalkingCharacter(payload)
+      setStep(3)
+      return
+    }
+    let d = design
+    if (!d) {
+      d = await startBlankCanvas()
+      if (!d) return
+      applyDesign(d)
+    }
+    const canvasLayout = applyTalkingCharacterToCanvas(d.canvasLayout, payload)
+    setDesign({ ...d, canvasLayout })
+    setStep(3)
+  }
+
+  const handleAudio = async (audio) => {
+    if (editorRef.current && design) {
+      editorRef.current.applyAudio(audio)
+      setStep(3)
+      return
+    }
+    let d = design
+    if (!d) {
+      d = await startBlankCanvas()
+      if (!d) return
+      applyDesign(d)
+    }
+    const canvasLayout = applyAudioToCanvas(d.canvasLayout, audio)
+    setDesign({ ...d, canvasLayout })
+    setStep(3)
   }
 
   const handleGenerate = async () => {
@@ -251,7 +376,7 @@ export default function DesignStudio() {
         completedSteps={completedSteps}
       />
 
-      <div className="flex flex-1 min-h-0">
+      <div ref={splitRef} className={`flex flex-1 min-h-0 ${isResizing ? 'select-none cursor-col-resize' : ''}`}>
         {/* Icon rail */}
         <div className="w-16 flex-shrink-0 border-r border-theme-border bg-theme-surface flex flex-col items-center py-3 gap-1">
           {PANELS.map(({ id, label, icon: Icon }) => (
@@ -272,9 +397,37 @@ export default function DesignStudio() {
           ))}
         </div>
 
-        {/* Asset panel */}
-        <div className="w-80 flex-shrink-0 border-r border-theme-border bg-theme-surface flex flex-col min-h-0">
+        {/* Asset panel — resizable width */}
+        <div
+          className="flex-shrink-0 bg-theme-surface flex flex-col min-h-0 overflow-hidden border-r border-theme-border"
+          style={{ width: effectivePanelWidth, transition: isResizing ? 'none' : 'width 0.15s ease' }}
+        >
+          {!panelCollapsed && (
+          <>
           <div className="p-3 border-b border-theme-border flex-shrink-0 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-theme-muted/50 uppercase tracking-wider">Assets</span>
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => nudgePanelWidth(-48)}
+                  disabled={assetPanelWidth <= ASSET_PANEL_MIN}
+                  className="p-1 rounded-md text-theme-muted/50 hover:text-theme-text hover:bg-theme-subtle/10 disabled:opacity-30"
+                  title="Narrow panel"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => nudgePanelWidth(48)}
+                  disabled={assetPanelWidth >= ASSET_PANEL_MAX}
+                  className="p-1 rounded-md text-theme-muted/50 hover:text-theme-text hover:bg-theme-subtle/10 disabled:opacity-30"
+                  title="Widen panel"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
             <textarea
               className="input w-full text-sm resize-none h-20"
               placeholder="Describe your ideal design…"
@@ -342,6 +495,27 @@ export default function DesignStudio() {
               />
             )}
 
+            {panel === 'characters' && (
+              <AnimatedCharactersPanel
+                embedded
+                workspaceId={workspaceId}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                onSelect={handleCharacter}
+                onTalkingCharacter={handleTalkingCharacter}
+              />
+            )}
+
+            {panel === 'audio' && (
+              <DesignAudioPanel
+                embedded
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                onAddAudio={handleAudio}
+                currentAudio={design?.canvasLayout?.audio}
+              />
+            )}
+
             {panel === 'text' && (
               <div className="space-y-3">
                 <p className="text-xs text-theme-muted/60">
@@ -403,6 +577,36 @@ export default function DesignStudio() {
               </p>
             )}
           </div>
+          </>
+          )}
+        </div>
+
+        {/* Split resize handle */}
+        <div className="relative flex-shrink-0 w-0 z-10">
+          <button
+            type="button"
+            onClick={togglePanelCollapsed}
+            className="absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-6 h-10 rounded-full border border-theme-border bg-theme-surface shadow-clay-sm text-theme-muted/60 hover:text-curi-pink hover:border-curi-pink/40 transition-colors"
+            title={panelCollapsed ? 'Expand assets panel' : 'Collapse assets panel'}
+          >
+            {panelCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+          </button>
+          {!panelCollapsed && (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize assets panel"
+              onPointerDown={startPanelResize}
+              className={`absolute inset-y-0 left-0 -translate-x-1/2 w-3 cursor-col-resize group flex items-center justify-center ${
+                isResizing ? 'bg-curi-pink/20' : 'hover:bg-curi-pink/10'
+              }`}
+            >
+              <GripVertical
+                size={14}
+                className={`text-theme-muted/30 group-hover:text-curi-pink/70 ${isResizing ? 'text-curi-pink' : ''}`}
+              />
+            </div>
+          )}
         </div>
 
         {/* Canvas */}

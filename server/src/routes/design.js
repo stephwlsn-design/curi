@@ -182,6 +182,25 @@ router.delete('/templates/:id', async (req, res) => {
   res.json({ message: 'Template deleted' });
 });
 
+router.post('/character/speak', checkCredits(1), async (req, res) => {
+  const { text, language = 'en', tonality = 'friendly' } = req.body;
+  if (!text?.trim()) return res.status(400).json({ error: 'Script text is required' });
+
+  try {
+    const talkingCharacterService = require('../services/talkingCharacterService');
+    const result = await talkingCharacterService.synthesizeSpeech({ text, language, tonality });
+    await req.user.deductCredits(req.creditCost);
+    res.json(result);
+  } catch (err) {
+    const status = err.status || (err.code === 'TTS_UNAVAILABLE' ? 503 : 502);
+    res.status(status).json({
+      error: err.message,
+      hint: err.hint,
+      code: err.code,
+    });
+  }
+});
+
 router.get('/media/photos', async (req, res) => {
   try {
     const { query, page = 1, perPage = 24 } = req.query;

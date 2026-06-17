@@ -25,6 +25,8 @@ In Vercel → Project → **Settings → Environment Variables**, add:
 | `CLIENT_URL` | Yes | `https://curi.corpcrunch.io` |
 | `REDIS_URL` | Optional | Upstash Redis URL (for queues) |
 | `PEXELS_API_KEY` | Optional | [Pexels API key](https://www.pexels.com/api/) for stock photos & videos in Design |
+| `ELEVENLABS_API_KEY` | Optional | Talking Character voices in Design Studio (Starter plan + API permissions) |
+| `OPENAI_API_KEY` | Optional | Fallback TTS if ElevenLabs unavailable |
 | `GEMINI_MODEL` | Optional | `gemini-2.5-flash` |
 | `SEED_DEMO_USER` | Optional | `false` |
 

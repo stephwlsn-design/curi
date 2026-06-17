@@ -73,6 +73,7 @@ const isDesignFastRequest = (req) => {
   if (pathOnly === '/api/design/save' && req.method === 'POST') return true;
   if (pathOnly === '/api/design/library' && req.method === 'GET') return true;
   if (pathOnly === '/api/design/templates' && req.method === 'GET') return true;
+  if (pathOnly === '/api/design/character/speak' && req.method === 'POST') return true;
   if (req.method === 'PATCH' && /^\/api\/design\/[^/]+$/.test(pathOnly)) return true;
   return false;
 };
@@ -109,6 +110,29 @@ const handleDesignFast = async (req, res) => {
   if (pathOnly === '/api/design/save' && req.method === 'POST') {
     const design = await saveDesignDraft({ user, workspaceId: body.workspaceId, body });
     return sendJson(res, 201, { design });
+  }
+
+  if (pathOnly === '/api/design/character/speak' && req.method === 'POST') {
+    try {
+      const talkingCharacterService = require('../server/src/services/talkingCharacterService');
+      const User = require('../server/src/models/User');
+      const userWithCredits = await User.findById(user._id);
+      const result = await talkingCharacterService.synthesizeSpeech({
+        text: body.text,
+        language: body.language || 'en',
+        tonality: body.tonality || 'friendly',
+      });
+      if (userWithCredits?.credits > 0) {
+        await userWithCredits.deductCredits(1);
+      }
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, err.status || 503, {
+        error: err.message,
+        hint: err.hint,
+        code: err.code,
+      });
+    }
   }
 
   if (req.method === 'PATCH') {

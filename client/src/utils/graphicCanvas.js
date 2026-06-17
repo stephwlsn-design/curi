@@ -20,6 +20,9 @@ export const GRAPHIC_TEMPLATE_CATEGORIES = [
   { id: 'real-estate', label: 'Real Estate' },
   { id: 'education', label: 'Education' },
   { id: 'events', label: 'Events' },
+  { id: 'food', label: 'Food & Drink' },
+  { id: 'fitness', label: 'Fitness' },
+  { id: 'seasonal', label: 'Seasonal' },
 ]
 
 export const getGraphicTemplate = (id) => GRAPHIC_DESIGN_TEMPLATES.find(t => t.id === id)
