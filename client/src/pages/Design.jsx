@@ -9,7 +9,9 @@ import DesignPreview from '../components/DesignPreview'
 import DesignCanvasEditor from '../components/DesignCanvasEditor'
 import DesignIdeaUpload from '../components/DesignIdeaUpload'
 import UserDesignUpload from '../components/UserDesignUpload'
+import PexelsMediaPanel from '../components/PexelsMediaPanel'
 import { BUILTIN_TEMPLATES } from '../constants/designTemplates'
+import { getGraphicTemplate } from '../utils/graphicCanvas'
 import { useDraftModule } from '../context/DraftContext'
 import {
   CREATIVE_TYPES, CHANNELS, DIMENSIONS, VARIANT_COUNTS, DESIGN_STYLES,
@@ -33,6 +35,8 @@ export default function Design() {
   const [userTemplates, setUserTemplates] = useState([])
   const [library, setLibrary] = useState([])
   const [showLibrary, setShowLibrary] = useState(false)
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null)
+  const [templateLoading, setTemplateLoading] = useState(false)
 
   useDraftModule('design', () => ({
     prompt, creativeType, channels, dimensionId, variantCount, style,
@@ -75,23 +79,105 @@ export default function Design() {
     } catch { toast.error('Could not load library') }
   }
 
-  const startFromTemplate = async (templateId, customTemplate) => {
+  const startFromTemplate = async (templateId, customTemplate, graphicTemplate) => {
+    const graphic = graphicTemplate || getGraphicTemplate(templateId)
+    const builtin = !graphic ? BUILTIN_TEMPLATES.find(t => t.id === templateId) : graphic
+    if (builtin?.recommendedDimension) setDimensionId(builtin.recommendedDimension)
+    const sample = builtin?.sampleCopy
+    const headline = prompt.split('\n')[0]?.slice(0, 80) || sample?.headline || 'Your Headline'
+    const subheadline = prompt.slice(0, 120) || sample?.subheadline || ''
+    const cta = sample?.cta || 'Learn More'
+    const badge = sample?.badge || ''
+
+    setTemplateLoading(true)
     try {
       const { data } = await API.post('/design/from-template', {
         workspaceId,
         templateId: customTemplate ? undefined : templateId,
         templatePlacements: customTemplate?.canvasLayout?.placements || customTemplate?.placements,
-        headline: prompt.split('\n')[0]?.slice(0, 80) || 'Your Headline',
-        subheadline: prompt.slice(0, 120) || '',
-        dimensionId,
+        headline,
+        subheadline,
+        cta,
+        badge,
+        dimensionId: builtin?.recommendedDimension || dimensionId,
       })
       setDesigns(prev => [data.design, ...prev])
       setEditingDesign(data.design)
+      setSelectedTemplateId(templateId || customTemplate?._id)
       toast.success('Template ready — edit on canvas')
       fetchMe?.()
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not create from template')
+    } finally {
+      setTemplateLoading(false)
     }
+  }
+
+  const handlePexelsPhoto = async (item, useAs = 'background') => {
+    const headline = prompt.split('\n')[0]?.slice(0, 80) || 'Your Headline'
+    const subheadline = prompt.slice(0, 120) || ''
+    setTemplateLoading(true)
+    try {
+      const { data } = await API.post('/design/from-media', {
+        workspaceId,
+        mediaType: 'photo',
+        pexelsId: item.id,
+        url: item.url,
+        thumbnailUrl: item.thumbnailUrl,
+        photographer: item.photographer,
+        photographerUrl: item.photographerUrl,
+        useAs,
+        dimensionId,
+        headline,
+        subheadline,
+        cta: 'Learn More',
+      })
+      setDesigns(prev => [data.design, ...prev])
+      setEditingDesign(data.design)
+      toast.success(useAs === 'background' ? 'Photo set as background' : 'Photo added to design')
+      fetchMe?.()
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not add photo')
+    } finally {
+      setTemplateLoading(false)
+    }
+  }
+
+  const handlePexelsVideo = async (item) => {
+    const headline = prompt.split('\n')[0]?.slice(0, 80) || 'Video Design'
+    setTemplateLoading(true)
+    try {
+      const { data } = await API.post('/design/from-media', {
+        workspaceId,
+        mediaType: 'video',
+        pexelsId: item.id,
+        url: item.url,
+        thumbnailUrl: item.thumbnailUrl,
+        photographer: item.photographer,
+        photographerUrl: item.photographerUrl,
+        dimensionId,
+        headline,
+        duration: item.duration,
+      })
+      setDesigns(prev => [data.design, ...prev])
+      setEditingDesign(data.design)
+      toast.success('Video added to designs')
+      fetchMe?.()
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not add video')
+    } finally {
+      setTemplateLoading(false)
+    }
+  }
+
+  const handleBuiltinTemplate = (template) => {
+    setSelectedTemplateId(template.id)
+    startFromTemplate(template.id, null, true)
+  }
+
+  const handleUserTemplate = (template) => {
+    setSelectedTemplateId(template._id)
+    startFromTemplate(null, template)
   }
 
   const handleDesignSaved = (updated) => {
@@ -139,11 +225,29 @@ export default function Design() {
 
       <PageHeader
         title="Curi Design"
-        description="Transform content into high-converting visual creatives. Generate multiple variations optimized for every channel."
+        description="Browse ready-made graphics or generate AI variations. Pick a template, customize on canvas, and publish."
       />
 
-      {/* Upload, idea, templates — three columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
+      <DesignTemplateGallery
+        brandColors={workspace?.brandProfile?.colors?.palette}
+        selectedId={selectedTemplateId}
+        onSelect={handleBuiltinTemplate}
+        userTemplates={userTemplates}
+        onSelectUserTemplate={handleUserTemplate}
+      />
+
+      {templateLoading && (
+        <p className="text-sm text-curi-pink font-medium mb-4 -mt-2">Applying template…</p>
+      )}
+
+      <PexelsMediaPanel
+        workspaceId={workspaceId}
+        onPhotoSelect={handlePexelsPhoto}
+        onVideoSelect={handlePexelsVideo}
+      />
+
+      {/* Upload & design idea */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6 mt-6">
         <div className="page-card">
           <UserDesignUpload
             workspaceId={workspaceId}
@@ -159,37 +263,6 @@ export default function Design() {
             onChange={setDesignIdea}
             compact
           />
-        </div>
-
-        <div className="card p-5 flex flex-col min-h-0">
-          <div className="flex items-center justify-between mb-3 flex-shrink-0">
-            <div className="text-sm font-semibold text-theme-muted/50 uppercase tracking-wider">Templates</div>
-            <button type="button" onClick={loadLibrary} className="text-xs text-curi-blue font-bold hover:underline">Library</button>
-          </div>
-          <div className="space-y-2 overflow-y-auto flex-1 max-h-64 lg:max-h-none">
-            {BUILTIN_TEMPLATES.map(t => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => startFromTemplate(t.id)}
-                className="w-full text-left p-3 rounded-lg border border-theme-border hover:border-curi-pink/30 text-sm transition-all"
-              >
-                <div className="font-bold text-theme-text">{t.name}</div>
-                <div className="text-theme-muted/50 text-sm">{t.description}</div>
-              </button>
-            ))}
-            {userTemplates.map(t => (
-              <button
-                key={t._id}
-                type="button"
-                onClick={() => startFromTemplate(null, t)}
-                className="w-full text-left p-3 rounded-lg border border-curi-blue/20 hover:border-curi-blue/40 text-sm"
-              >
-                <div className="font-bold text-theme-text">{t.name}</div>
-                <div className="text-theme-muted/50 text-sm">Your template</div>
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -264,7 +337,12 @@ export default function Design() {
           onChange={e => setPrompt(e.target.value)}
         />
         <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
-          <span className="text-sm text-theme-muted/50 font-medium">5 credits per generation</span>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-theme-muted/50 font-medium">5 credits per generation</span>
+            <button type="button" onClick={loadLibrary} className="text-sm text-curi-blue font-bold hover:underline">
+              Design Library
+            </button>
+          </div>
           <button onClick={generate} disabled={loading} className="btn-primary text-base px-6 py-3">
             {loading ? 'Generating...' : `Generate ${variantCount} Designs`}
           </button>

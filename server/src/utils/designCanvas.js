@@ -54,6 +54,88 @@ const BUILTIN_TEMPLATES = [
       cta: { x: 0.2, y: 0.78, width: 0.6 },
     },
   },
+  {
+    id: 'ad-bold',
+    name: 'Ad Bold',
+    placements: {
+      badge: { x: 0.04, y: 0.04, width: 0.24 },
+      headline: { x: 0.05, y: 0.2, width: 0.9, align: 'left', fontSize: 56 },
+      subheadline: { x: 0.05, y: 0.42, width: 0.75, align: 'left', fontSize: 22 },
+      cta: { x: 0.55, y: 0.75, width: 0.38 },
+    },
+  },
+  {
+    id: 'quote-card',
+    placements: {
+      badge: { x: 0.05, y: 0.05, width: 0.2 },
+      headline: { x: 0.08, y: 0.3, width: 0.84, align: 'center', fontSize: 38 },
+      subheadline: { x: 0.1, y: 0.62, width: 0.8, align: 'center', fontSize: 20 },
+      cta: { x: 0.35, y: 0.82, width: 0.3 },
+    },
+  },
+  {
+    id: 'flash-sale',
+    placements: {
+      badge: { x: 0.05, y: 0.05, width: 0.28 },
+      headline: { x: 0.06, y: 0.22, width: 0.88, align: 'left', fontSize: 72 },
+      subheadline: { x: 0.06, y: 0.52, width: 0.8, align: 'left', fontSize: 22 },
+      cta: { x: 0.06, y: 0.78, width: 0.42 },
+    },
+  },
+  {
+    id: 'event-promo',
+    placements: {
+      badge: { x: 0.04, y: 0.08, width: 0.22 },
+      headline: { x: 0.05, y: 0.24, width: 0.55, align: 'left', fontSize: 48 },
+      subheadline: { x: 0.05, y: 0.58, width: 0.5, align: 'left', fontSize: 20 },
+      cta: { x: 0.05, y: 0.72, width: 0.32 },
+    },
+  },
+  {
+    id: 'linkedin-post',
+    placements: {
+      badge: { x: 0.04, y: 0.1, width: 0.2 },
+      headline: { x: 0.05, y: 0.22, width: 0.9, align: 'left', fontSize: 42 },
+      subheadline: { x: 0.05, y: 0.55, width: 0.75, align: 'left', fontSize: 20 },
+      cta: { x: 0.05, y: 0.74, width: 0.26 },
+    },
+  },
+  {
+    id: 'carousel-slide',
+    placements: {
+      badge: { x: 0.05, y: 0.05, width: 0.22 },
+      headline: { x: 0.05, y: 0.18, width: 0.7, align: 'left', fontSize: 56 },
+      subheadline: { x: 0.05, y: 0.42, width: 0.85, align: 'left', fontSize: 24 },
+      cta: { x: 0.05, y: 0.82, width: 0.28 },
+    },
+  },
+  {
+    id: 'youtube-thumb',
+    placements: {
+      badge: { x: 0.03, y: 0.06, width: 0.18 },
+      headline: { x: 0.04, y: 0.76, width: 0.92, align: 'left', fontSize: 64 },
+      subheadline: { x: 0.04, y: 0.58, width: 0.6, align: 'left', fontSize: 28 },
+      cta: { x: 0.04, y: 0.88, width: 0.2 },
+    },
+  },
+  {
+    id: 'newsletter-header',
+    placements: {
+      badge: { x: 0.05, y: 0.12, width: 0.24 },
+      headline: { x: 0.05, y: 0.28, width: 0.9, align: 'left', fontSize: 46 },
+      subheadline: { x: 0.05, y: 0.52, width: 0.7, align: 'left', fontSize: 20 },
+      cta: { x: 0.05, y: 0.7, width: 0.28 },
+    },
+  },
+  {
+    id: 'product-spotlight',
+    placements: {
+      badge: { x: 0.05, y: 0.05, width: 0.22 },
+      headline: { x: 0.05, y: 0.6, width: 0.9, align: 'left', fontSize: 44 },
+      subheadline: { x: 0.05, y: 0.72, width: 0.85, align: 'left', fontSize: 20 },
+      cta: { x: 0.05, y: 0.86, width: 0.4 },
+    },
+  },
 ]
 
 const LAYOUT_TO_TEMPLATE = {
@@ -62,6 +144,16 @@ const LAYOUT_TO_TEMPLATE = {
   grid: 'bottom-stack',
   hero: 'centered-hero',
   minimal: 'minimal-top',
+  story: 'story-vertical',
+  ad: 'ad-bold',
+  quote: 'quote-card',
+  sale: 'flash-sale',
+  event: 'event-promo',
+  linkedin: 'linkedin-post',
+  carousel: 'carousel-slide',
+  thumbnail: 'youtube-thumb',
+  newsletter: 'newsletter-header',
+  product: 'product-spotlight',
 }
 
 const DIM_MAP = {

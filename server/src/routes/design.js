@@ -8,6 +8,8 @@ const { findAccessibleWorkspace } = require('../utils/workspaceAccess');
 const DesignTemplate = require('../models/DesignTemplate');
 const { toPublicImageUrl, normalizeDesignIdea } = require('../utils/designIdea');
 const { designToCanvas, BUILTIN_TEMPLATES, buildCanvasWithDesignIdea } = require('../utils/designCanvas');
+const { getGraphicTemplate, buildGraphicCanvas } = require('../utils/graphicCanvas');
+const pexelsService = require('../services/pexelsService');
 const { createUploadedDesign, scheduleContent } = require('../services/designUploadService');
 const PublishJob = require('../models/PublishJob');
 
@@ -189,6 +191,173 @@ router.delete('/templates/:id', async (req, res) => {
   res.json({ message: 'Template deleted' });
 });
 
+router.get('/media/photos', async (req, res) => {
+  try {
+    const { query, page = 1, perPage = 24 } = req.query;
+    const result = await pexelsService.searchPhotos({
+      query,
+      page: Number(page),
+      perPage: Number(perPage),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(err.message?.includes('PEXELS') ? 503 : 502).json({ error: err.message });
+  }
+});
+
+router.get('/media/videos', async (req, res) => {
+  try {
+    const { query, page = 1, perPage = 15 } = req.query;
+    const result = await pexelsService.searchVideos({
+      query,
+      page: Number(page),
+      perPage: Number(perPage),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(err.message?.includes('PEXELS') ? 503 : 502).json({ error: err.message });
+  }
+});
+
+router.post('/from-media', checkCredits(2), async (req, res) => {
+  const {
+    workspaceId,
+    mediaType,
+    url,
+    thumbnailUrl,
+    pexelsId,
+    photographer,
+    photographerUrl,
+    useAs = 'background',
+    dimensionId = '1080x1080',
+    headline,
+    subheadline,
+    cta,
+    duration,
+  } = req.body;
+
+  if (!url || !mediaType) {
+    return res.status(400).json({ error: 'mediaType and url are required' });
+  }
+
+  const workspace = await findAccessibleWorkspace(workspaceId, req.user._id);
+  if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+
+  const brandColors = workspace.brandProfile?.colors?.palette || ['#FF6B9D', '#4DA8EE', '#1A2B48'];
+  const pexelsMeta = {
+    id: pexelsId,
+    photographer,
+    photographerUrl,
+    source: 'pexels',
+    mediaType,
+    url,
+    thumbnailUrl,
+    duration,
+  };
+
+  let canvasLayout;
+  let design;
+  let contentType = 'image';
+
+  if (mediaType === 'video') {
+    contentType = 'video';
+    const dims = {
+      '1080x1080': { width: 1080, height: 1080 },
+      '1080x1920': { width: 1080, height: 1920 },
+      '1920x1080': { width: 1920, height: 1080 },
+    }[dimensionId] || { width: 1080, height: 1080 };
+
+    canvasLayout = {
+      width: dims.width,
+      height: dims.height,
+      templateId: 'pexels-video',
+      background: {
+        type: 'video',
+        url,
+        poster: thumbnailUrl,
+        overlay: 'rgba(0,0,0,0.2)',
+      },
+      elements: headline ? [{
+        id: 'headline',
+        type: 'text',
+        text: headline,
+        x: 48,
+        y: 48,
+        width: dims.width - 96,
+        fontSize: 42,
+        fontWeight: 800,
+        color: '#ffffff',
+        align: 'left',
+        visible: true,
+        zIndex: 4,
+      }] : [],
+    };
+
+    design = {
+      name: headline || 'Stock Video',
+      headline: headline || 'Stock Video',
+      dimensions: { id: dimensionId },
+      colorPalette: brandColors,
+      mediaUrl: url,
+      thumbnailUrl,
+      videoUrl: url,
+    };
+  } else {
+    design = {
+      headline: headline || 'Your Headline',
+      subheadline: subheadline || '',
+      cta: cta || 'Learn More',
+      layout: 'pexels',
+      dimensions: { id: dimensionId },
+      colorPalette: brandColors,
+      name: headline || 'Stock Photo Design',
+    };
+
+    canvasLayout = designToCanvas(design, 'centered-hero');
+    if (useAs === 'layer') {
+      canvasLayout.elements.push({
+        id: `pexels-${pexelsId || Date.now()}`,
+        type: 'image',
+        url,
+        x: Math.round(canvasLayout.width * 0.08),
+        y: Math.round(canvasLayout.height * 0.12),
+        width: Math.round(canvasLayout.width * 0.84),
+        height: Math.round(canvasLayout.height * 0.45),
+        borderRadius: 12,
+        visible: true,
+        zIndex: 3,
+      });
+    } else {
+      canvasLayout.background = {
+        type: 'image',
+        url,
+        overlay: 'rgba(0,0,0,0.38)',
+      };
+    }
+  }
+
+  const saved = await Content.create({
+    workspace: workspaceId,
+    createdBy: req.user._id,
+    type: contentType,
+    platform: 'universal',
+    title: design.name,
+    content: design.headline,
+    metadata: {
+      ...design,
+      module: 'design',
+      canvasLayout,
+      pexels: pexelsMeta,
+    },
+    status: 'draft',
+  });
+
+  await req.user.deductCredits(req.creditCost);
+  res.status(201).json({
+    design: { ...(saved.metadata?.toObject?.() ?? saved.metadata), _id: saved._id },
+  });
+});
+
 router.patch('/:id', async (req, res) => {
   const { workspaceId, canvasLayout, headline, subheadline, cta, layout } = req.body;
   const item = await Content.findOne({
@@ -216,9 +385,51 @@ router.patch('/:id', async (req, res) => {
 });
 
 router.post('/from-template', checkCredits(3), async (req, res) => {
-  const { workspaceId, templateId, templatePlacements, headline, subheadline, cta, dimensionId = '1080x1080' } = req.body;
+  const {
+    workspaceId, templateId, templatePlacements, headline, subheadline, cta,
+    badge, dimensionId = '1080x1080',
+  } = req.body;
   const workspace = await findAccessibleWorkspace(workspaceId, req.user._id);
   if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+
+  const brandColors = workspace.brandProfile?.colors?.palette || ['#FF6B9D', '#4DA8EE', '#1A2B48'];
+  const graphic = getGraphicTemplate(templateId);
+
+  if (graphic) {
+    const canvasLayout = buildGraphicCanvas(graphic, {
+      headline: headline || graphic.sampleCopy?.headline || 'Your Headline',
+      subheadline: subheadline ?? graphic.sampleCopy?.subheadline ?? '',
+      cta: cta ?? graphic.sampleCopy?.cta ?? '',
+      badge: badge ?? graphic.sampleCopy?.badge ?? '',
+      colorPalette: brandColors,
+    }, dimensionId || graphic.recommendedDimension);
+
+    const design = {
+      headline: headline || graphic.sampleCopy?.headline || 'Your Headline',
+      subheadline: subheadline ?? graphic.sampleCopy?.subheadline ?? '',
+      cta: cta ?? graphic.sampleCopy?.cta ?? '',
+      layout: graphic.category,
+      dimensions: { id: dimensionId || graphic.recommendedDimension },
+      colorPalette: brandColors,
+      name: graphic.name,
+    };
+
+    const saved = await Content.create({
+      workspace: workspaceId,
+      createdBy: req.user._id,
+      type: 'image',
+      platform: 'universal',
+      title: graphic.name,
+      content: design.headline,
+      metadata: { ...design, module: 'design', canvasLayout, templateId: graphic.id, graphicTemplate: true },
+      status: 'draft',
+    });
+
+    await req.user.deductCredits(req.creditCost);
+    return res.status(201).json({
+      design: { ...(saved.metadata?.toObject?.() ?? saved.metadata), _id: saved._id },
+    });
+  }
 
   const design = {
     headline: headline || 'Your Headline',

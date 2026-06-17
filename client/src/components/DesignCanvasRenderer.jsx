@@ -4,9 +4,11 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
   const { width, height, background, elements } = canvas
   const bgStyle = background?.type === 'gradient'
     ? { background: `linear-gradient(${background.angle || 135}deg, ${background.colors?.[0]} 0%, ${background.colors?.[1] || background.colors?.[0]} 100%)` }
-    : background?.type === 'image'
+    : (background?.type === 'image' || background?.type === 'video')
       ? {}
       : { background: background?.color || '#FF6B9D' }
+
+  const sortedElements = [...elements].sort((a, b) => (a.zIndex ?? 2) - (b.zIndex ?? 2))
 
   const scaledW = width * scale
   const scaledH = height * scale
@@ -30,7 +32,37 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
           )}
         </>
       )}
-      {elements.filter(el => el.visible !== false).map(el => {
+      {background?.type === 'video' && (background.poster || background.url) && (
+        <>
+          <img
+            src={background.poster || background.url}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+            draggable={false}
+          />
+          {background.overlay && (
+            <div className="absolute inset-0 pointer-events-none" style={{ background: background.overlay }} />
+          )}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[1]">
+            <div
+              className="rounded-full bg-white/90 flex items-center justify-center shadow-lg"
+              style={{ width: 56 * scale, height: 56 * scale }}
+            >
+              <div
+                style={{
+                  width: 0,
+                  height: 0,
+                  borderTop: `${10 * scale}px solid transparent`,
+                  borderBottom: `${10 * scale}px solid transparent`,
+                  borderLeft: `${16 * scale}px solid #1A2B48`,
+                  marginLeft: 4 * scale,
+                }}
+              />
+            </div>
+          </div>
+        </>
+      )}
+      {sortedElements.filter(el => el.visible !== false).map(el => {
         const isSelected = selectedId === el.id
         const base = {
           position: 'absolute',
@@ -40,7 +72,39 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
           cursor: interactive ? 'move' : 'default',
           outline: isSelected ? '2px solid #FF6B9D' : 'none',
           outlineOffset: 2,
-          zIndex: 2,
+          zIndex: el.zIndex ?? 2,
+        }
+
+        if (el.type === 'image') {
+          return (
+            <img
+              key={el.id}
+              src={el.url}
+              alt=""
+              draggable={false}
+              style={{
+                ...base,
+                height: (el.height || el.width) * scale,
+                objectFit: 'cover',
+                borderRadius: (el.borderRadius || 0) * scale,
+              }}
+            />
+          )
+        }
+
+        if (el.type === 'shape') {
+          return (
+            <div
+              key={el.id}
+              style={{
+                ...base,
+                height: (el.height || el.width) * scale,
+                background: el.fill || 'rgba(255,255,255,0.15)',
+                borderRadius: (el.borderRadius || 0) * scale,
+                width: el.width * scale,
+              }}
+            />
+          )
         }
 
         if (el.type === 'badge') {

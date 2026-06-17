@@ -1,0 +1,396 @@
+[
+  {
+    "id": "hire-orange-team",
+    "name": "We Are Hiring",
+    "category": "hiring",
+    "tags": ["hiring", "recruitment", "jobs", "careers", "team"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1080&q=80&fit=crop",
+      "overlay": "rgba(0,0,0,0.25)"
+    },
+    "sampleCopy": { "headline": "WE ARE", "subheadline": "HIRING", "cta": "Apply Now", "badge": "Join Our Team" },
+    "elements": [
+      { "id": "top-bar", "type": "shape", "x": 0, "y": 0, "w": 1, "h": 0.44, "fill": "#E85D04", "zIndex": 1 },
+      { "id": "badge", "type": "badge", "bind": "badge", "x": 0.06, "y": 0.05, "w": 0.35, "fontSize": 11, "color": "#ffffff" },
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.12, "w": 0.88, "fontSize": 58, "fontWeight": 900, "color": "#ffffff", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.06, "y": 0.28, "w": 0.88, "fontSize": 58, "fontWeight": 900, "color": "#ffffff", "align": "left" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.06, "y": 0.82, "w": 0.34, "fontSize": 13, "bgColor": "#E85D04", "color": "#ffffff" }
+    ]
+  },
+  {
+    "id": "hire-minimal-beige",
+    "name": "Hiring — Minimal",
+    "category": "hiring",
+    "tags": ["hiring", "minimal", "elegant", "corporate"],
+    "recommendedDimension": "1080x1080",
+    "background": { "type": "color", "color": "#E8E0D5" },
+    "sampleCopy": { "headline": "We're Hiring", "subheadline": "Marketing Manager · Remote", "cta": "See Open Roles", "badge": "Careers" },
+    "elements": [
+      { "id": "photo", "type": "image", "url": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=600&q=80&fit=crop", "x": 0.08, "y": 0.1, "w": 0.84, "h": 0.45, "borderRadius": 8 },
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.08, "y": 0.6, "w": 0.84, "fontSize": 42, "fontWeight": 800, "color": "#1A1A1A", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.08, "y": 0.72, "w": 0.84, "fontSize": 18, "fontWeight": 500, "color": "#555555", "align": "left" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.08, "y": 0.84, "w": 0.38, "fontSize": 12, "bgColor": "#1A1A1A", "color": "#ffffff" }
+    ]
+  },
+  {
+    "id": "hire-bold-purple",
+    "name": "Join Our Team",
+    "category": "hiring",
+    "tags": ["hiring", "team", "startup", "bold"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=1080&q=80&fit=crop",
+      "overlay": "rgba(88,28,135,0.72)"
+    },
+    "sampleCopy": { "headline": "Join Our", "subheadline": "TEAM", "cta": "View Positions", "badge": "We're Growing" },
+    "elements": [
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.3, "w": 0.88, "fontSize": 48, "fontWeight": 700, "color": "#ffffff", "align": "center" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.06, "y": 0.42, "w": 0.88, "fontSize": 72, "fontWeight": 900, "color": "#FDE047", "align": "center" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.28, "y": 0.78, "w": 0.44, "fontSize": 14, "bgColor": "#ffffff", "color": "#581C87" }
+    ]
+  },
+  {
+    "id": "quote-serif-elegant",
+    "name": "Inspirational Quote",
+    "category": "quotes",
+    "tags": ["quote", "inspiration", "motivation", "elegant"],
+    "recommendedDimension": "1080x1080",
+    "background": { "type": "color", "color": "#F5F0EB" },
+    "sampleCopy": { "headline": "Creativity is intelligence having fun.", "subheadline": "— Albert Einstein", "cta": "", "badge": "" },
+    "elements": [
+      { "id": "line", "type": "shape", "x": 0.1, "y": 0.38, "w": 0.12, "h": 0.004, "fill": "#1A1A1A" },
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.1, "y": 0.42, "w": 0.8, "fontSize": 36, "fontWeight": 600, "color": "#1A1A1A", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.1, "y": 0.72, "w": 0.8, "fontSize": 16, "fontWeight": 500, "color": "#666666", "align": "left" }
+    ]
+  },
+  {
+    "id": "quote-dark-moody",
+    "name": "Quote — Dark",
+    "category": "quotes",
+    "tags": ["quote", "dark", "moody", "minimal"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1080&q=80&fit=crop",
+      "overlay": "rgba(0,0,0,0.55)"
+    },
+    "sampleCopy": { "headline": "Dream big.\nWork hard.\nStay focused.", "subheadline": "", "cta": "", "badge": "" },
+    "elements": [
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.08, "y": 0.35, "w": 0.84, "fontSize": 44, "fontWeight": 800, "color": "#ffffff", "align": "center" }
+    ]
+  },
+  {
+    "id": "quote-botanical",
+    "name": "Quote — Botanical",
+    "category": "quotes",
+    "tags": ["quote", "wellness", "nature", "soft"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1499002238440-d264edd596ec?w=1080&q=80&fit=crop",
+      "overlay": "rgba(255,255,255,0.15)"
+    },
+    "sampleCopy": { "headline": "Grow through what you go through.", "subheadline": "", "cta": "", "badge": "Daily Inspiration" },
+    "elements": [
+      { "id": "card", "type": "shape", "x": 0.08, "y": 0.55, "w": 0.84, "h": 0.32, "fill": "rgba(255,255,255,0.92)", "borderRadius": 16 },
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.12, "y": 0.62, "w": 0.76, "fontSize": 32, "fontWeight": 700, "color": "#2D5016", "align": "center" }
+    ]
+  },
+  {
+    "id": "webinar-live-session",
+    "name": "Live Webinar",
+    "category": "education",
+    "tags": ["webinar", "event", "learn", "education", "live"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1080&q=80&fit=crop",
+      "overlay": "rgba(15,23,42,0.7)"
+    },
+    "sampleCopy": { "headline": "FREE WEBINAR", "subheadline": "Marketing Trends 2026", "cta": "Register Free", "badge": "Live Session" },
+    "elements": [
+      { "id": "badge", "type": "badge", "bind": "badge", "x": 0.06, "y": 0.06, "w": 0.3, "fontSize": 11, "color": "#ffffff" },
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.28, "w": 0.88, "fontSize": 40, "fontWeight": 900, "color": "#38BDF8", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.06, "y": 0.42, "w": 0.88, "fontSize": 36, "fontWeight": 800, "color": "#ffffff", "align": "left" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.06, "y": 0.8, "w": 0.36, "fontSize": 13, "bgColor": "#38BDF8", "color": "#0F172A" }
+    ]
+  },
+  {
+    "id": "learn-grow-connect",
+    "name": "Learn. Grow. Connect.",
+    "category": "education",
+    "tags": ["education", "workshop", "community", "learning"],
+    "recommendedDimension": "1080x1080",
+    "background": { "type": "gradient", "colors": ["#0EA5E9", "#6366F1"], "angle": 135 },
+    "sampleCopy": { "headline": "Learn. Grow. Connect.", "subheadline": "Join our community workshop", "cta": "Sign Up", "badge": "Workshop" },
+    "elements": [
+      { "id": "circle", "type": "shape", "x": 0.55, "y": 0.15, "w": 0.38, "h": 0.38, "fill": "rgba(255,255,255,0.15)", "borderRadius": 999 },
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.32, "w": 0.88, "fontSize": 44, "fontWeight": 900, "color": "#ffffff", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.06, "y": 0.52, "w": 0.7, "fontSize": 20, "fontWeight": 500, "color": "rgba(255,255,255,0.9)", "align": "left" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.06, "y": 0.78, "w": 0.3, "fontSize": 13, "bgColor": "#ffffff", "color": "#4F46E5" }
+    ]
+  },
+  {
+    "id": "marketing-tips-list",
+    "name": "Marketing Tips",
+    "category": "marketing",
+    "tags": ["marketing", "tips", "social media", "business"],
+    "recommendedDimension": "1080x1080",
+    "background": { "type": "color", "color": "#1E293B" },
+    "sampleCopy": { "headline": "7 Marketing Trends", "subheadline": "You need to know in 2026", "cta": "Save This", "badge": "Tips" },
+    "elements": [
+      { "id": "accent", "type": "shape", "x": 0, "y": 0, "w": 0.08, "h": 1, "fill": "#FF6B9D" },
+      { "id": "badge", "type": "badge", "bind": "badge", "x": 0.12, "y": 0.08, "w": 0.2, "fontSize": 11, "color": "#FF6B9D" },
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.12, "y": 0.2, "w": 0.8, "fontSize": 48, "fontWeight": 900, "color": "#ffffff", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.12, "y": 0.38, "w": 0.8, "fontSize": 24, "fontWeight": 500, "color": "#94A3B8", "align": "left" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.12, "y": 0.82, "w": 0.28, "fontSize": 12, "bgColor": "#FF6B9D", "color": "#ffffff" }
+    ]
+  },
+  {
+    "id": "marketing-bold-sale",
+    "name": "Flash Sale",
+    "category": "marketing",
+    "tags": ["sale", "promo", "discount", "marketing", "shop"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1080&q=80&fit=crop",
+      "overlay": "rgba(220,38,38,0.75)"
+    },
+    "sampleCopy": { "headline": "40% OFF", "subheadline": "Limited time only", "cta": "Shop Now", "badge": "Sale" },
+    "elements": [
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.05, "y": 0.25, "w": 0.9, "fontSize": 80, "fontWeight": 900, "color": "#ffffff", "align": "center" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.05, "y": 0.48, "w": 0.9, "fontSize": 24, "fontWeight": 600, "color": "#FECACA", "align": "center" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.3, "y": 0.72, "w": 0.4, "fontSize": 16, "bgColor": "#ffffff", "color": "#DC2626" }
+    ]
+  },
+  {
+    "id": "real-estate-new-home",
+    "name": "New Home Listing",
+    "category": "real-estate",
+    "tags": ["real estate", "home", "property", "listing"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1080&q=80&fit=crop",
+      "overlay": "rgba(0,0,0,0.2)"
+    },
+    "sampleCopy": { "headline": "NEW HOME", "subheadline": "4 Bed · 3 Bath · $485,000", "cta": "Book a Tour", "badge": "Just Listed" },
+    "elements": [
+      { "id": "bottom-bar", "type": "shape", "x": 0, "y": 0.62, "w": 1, "h": 0.38, "fill": "rgba(255,255,255,0.95)" },
+      { "id": "badge", "type": "badge", "bind": "badge", "x": 0.06, "y": 0.66, "w": 0.28, "fontSize": 10, "color": "#1A2B48" },
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.72, "w": 0.88, "fontSize": 44, "fontWeight": 900, "color": "#1A2B48", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.06, "y": 0.84, "w": 0.6, "fontSize": 16, "fontWeight": 500, "color": "#64748B", "align": "left" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.62, "y": 0.82, "w": 0.32, "fontSize": 11, "bgColor": "#1A2B48", "color": "#ffffff" }
+    ]
+  },
+  {
+    "id": "real-estate-luxury",
+    "name": "Luxury Property",
+    "category": "real-estate",
+    "tags": ["real estate", "luxury", "interior", "property"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=1080&q=80&fit=crop",
+      "overlay": "rgba(0,0,0,0.35)"
+    },
+    "sampleCopy": { "headline": "Luxury Living", "subheadline": "Exclusive penthouse available", "cta": "Inquire", "badge": "Premium" },
+    "elements": [
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.62, "w": 0.88, "fontSize": 48, "fontWeight": 300, "color": "#ffffff", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.06, "y": 0.74, "w": 0.7, "fontSize": 18, "fontWeight": 400, "color": "rgba(255,255,255,0.85)", "align": "left" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.06, "y": 0.86, "w": 0.26, "fontSize": 11, "bgColor": "transparent", "color": "#ffffff" }
+    ]
+  },
+  {
+    "id": "speaker-profile",
+    "name": "Speaker Profile",
+    "category": "business",
+    "tags": ["speaker", "profile", "expert", "business", "linkedin"],
+    "recommendedDimension": "1080x1080",
+    "background": { "type": "color", "color": "#0F172A" },
+    "sampleCopy": { "headline": "Jane Smith", "subheadline": "Marketing Strategist & Author", "cta": "Follow", "badge": "Speaker" },
+    "elements": [
+      { "id": "photo", "type": "image", "url": "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=500&q=80&fit=crop", "x": 0.06, "y": 0.1, "w": 0.42, "h": 0.55, "borderRadius": 12 },
+      { "id": "accent-line", "type": "shape", "x": 0.54, "y": 0.18, "w": 0.06, "h": 0.06, "fill": "#FF6B9D", "borderRadius": 2 },
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.54, "y": 0.28, "w": 0.4, "fontSize": 32, "fontWeight": 800, "color": "#ffffff", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.54, "y": 0.42, "w": 0.4, "fontSize": 14, "fontWeight": 500, "color": "#94A3B8", "align": "left" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.54, "y": 0.58, "w": 0.28, "fontSize": 12, "bgColor": "#FF6B9D", "color": "#ffffff" },
+      { "id": "badge", "type": "badge", "bind": "badge", "x": 0.06, "y": 0.72, "w": 0.22, "fontSize": 10, "color": "#FF6B9D" }
+    ]
+  },
+  {
+    "id": "meet-the-team",
+    "name": "Meet the Team",
+    "category": "business",
+    "tags": ["team", "about us", "company", "culture"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1080&q=80&fit=crop",
+      "overlay": "rgba(255,255,255,0.92)"
+    },
+    "sampleCopy": { "headline": "Meet the Team", "subheadline": "The people behind the brand", "cta": "About Us", "badge": "Our Story" },
+    "elements": [
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.08, "w": 0.88, "fontSize": 40, "fontWeight": 900, "color": "#1A2B48", "align": "center" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.06, "y": 0.18, "w": 0.88, "fontSize": 16, "fontWeight": 500, "color": "#64748B", "align": "center" },
+      { "id": "photo1", "type": "image", "url": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=300&q=80&fit=crop", "x": 0.06, "y": 0.28, "w": 0.27, "h": 0.35, "borderRadius": 8 },
+      { "id": "photo2", "type": "image", "url": "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=300&q=80&fit=crop", "x": 0.365, "y": 0.28, "w": 0.27, "h": 0.35, "borderRadius": 8 },
+      { "id": "photo3", "type": "image", "url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&q=80&fit=crop", "x": 0.67, "y": 0.28, "w": 0.27, "h": 0.35, "borderRadius": 8 },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.32, "y": 0.72, "w": 0.36, "fontSize": 13, "bgColor": "#1A2B48", "color": "#ffffff" }
+    ]
+  },
+  {
+    "id": "event-save-date",
+    "name": "Save the Date",
+    "category": "events",
+    "tags": ["event", "conference", "save the date", "announcement"],
+    "recommendedDimension": "1080x1080",
+    "background": { "type": "gradient", "colors": ["#F97316", "#EF4444"], "angle": 160 },
+    "sampleCopy": { "headline": "SAVE THE DATE", "subheadline": "Annual Summit · March 15", "cta": "Add to Calendar", "badge": "2026" },
+    "elements": [
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.05, "y": 0.3, "w": 0.9, "fontSize": 52, "fontWeight": 900, "color": "#ffffff", "align": "center" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.05, "y": 0.48, "w": 0.9, "fontSize": 22, "fontWeight": 600, "color": "rgba(255,255,255,0.9)", "align": "center" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.25, "y": 0.68, "w": 0.5, "fontSize": 13, "bgColor": "#ffffff", "color": "#EF4444" }
+    ]
+  },
+  {
+    "id": "event-upcoming-talk",
+    "name": "Upcoming Talk",
+    "category": "events",
+    "tags": ["event", "talk", "conference", "speaker"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1475721027785-f74eccf877e2?w=1080&q=80&fit=crop",
+      "overlay": "rgba(0,0,0,0.6)"
+    },
+    "sampleCopy": { "headline": "UPCOMING TALK", "subheadline": "The Future of AI Marketing", "cta": "Get Tickets", "badge": "Live Event" },
+    "elements": [
+      { "id": "badge", "type": "badge", "bind": "badge", "x": 0.06, "y": 0.06, "w": 0.28, "fontSize": 10, "color": "#FBBF24" },
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.32, "w": 0.88, "fontSize": 36, "fontWeight": 900, "color": "#FBBF24", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.06, "y": 0.44, "w": 0.88, "fontSize": 40, "fontWeight": 800, "color": "#ffffff", "align": "left" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.06, "y": 0.8, "w": 0.34, "fontSize": 13, "bgColor": "#FBBF24", "color": "#1A1A1A" }
+    ]
+  },
+  {
+    "id": "social-announcement",
+    "name": "Big Announcement",
+    "category": "social",
+    "tags": ["announcement", "launch", "social", "news"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1080&q=80&fit=crop",
+      "overlay": "rgba(79,70,229,0.8)"
+    },
+    "sampleCopy": { "headline": "BIG NEWS", "subheadline": "We're launching something new", "cta": "Learn More", "badge": "Announcement" },
+    "elements": [
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.35, "w": 0.88, "fontSize": 64, "fontWeight": 900, "color": "#ffffff", "align": "center" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.08, "y": 0.52, "w": 0.84, "fontSize": 22, "fontWeight": 500, "color": "rgba(255,255,255,0.9)", "align": "center" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.32, "y": 0.72, "w": 0.36, "fontSize": 14, "bgColor": "#ffffff", "color": "#4F46E5" }
+    ]
+  },
+  {
+    "id": "social-carousel-tip",
+    "name": "Carousel Tip",
+    "category": "social",
+    "tags": ["carousel", "tips", "instagram", "linkedin", "social"],
+    "recommendedDimension": "1080x1080",
+    "background": { "type": "color", "color": "#FF6B9D" },
+    "sampleCopy": { "headline": "Tip #1", "subheadline": "Hook your audience in the first line", "cta": "Swipe →", "badge": "Carousel" },
+    "elements": [
+      { "id": "circle-num", "type": "shape", "x": 0.06, "y": 0.06, "w": 0.18, "h": 0.18, "fill": "rgba(255,255,255,0.25)", "borderRadius": 999 },
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.3, "w": 0.88, "fontSize": 64, "fontWeight": 900, "color": "#ffffff", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.06, "y": 0.48, "w": 0.85, "fontSize": 26, "fontWeight": 500, "color": "rgba(255,255,255,0.9)", "align": "left" },
+      { "id": "cta", "type": "text", "bind": "cta", "x": 0.06, "y": 0.85, "w": 0.4, "fontSize": 20, "fontWeight": 700, "color": "#ffffff", "align": "left" }
+    ]
+  },
+  {
+    "id": "social-product-launch",
+    "name": "Product Launch",
+    "category": "social",
+    "tags": ["product", "launch", "new", "brand"],
+    "recommendedDimension": "1080x1080",
+    "background": { "type": "color", "color": "#FAFAFA" },
+    "sampleCopy": { "headline": "Introducing", "subheadline": "The all-new product line", "cta": "Shop Now", "badge": "New" },
+    "elements": [
+      { "id": "product-img", "type": "image", "url": "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&q=80&fit=crop", "x": 0.15, "y": 0.12, "w": 0.7, "h": 0.45, "borderRadius": 0 },
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.62, "w": 0.88, "fontSize": 28, "fontWeight": 500, "color": "#64748B", "align": "center" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.06, "y": 0.7, "w": 0.88, "fontSize": 40, "fontWeight": 900, "color": "#1A2B48", "align": "center" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.32, "y": 0.84, "w": 0.36, "fontSize": 13, "bgColor": "#1A2B48", "color": "#ffffff" }
+    ]
+  },
+  {
+    "id": "business-thank-you",
+    "name": "Thank You",
+    "category": "business",
+    "tags": ["thank you", "gratitude", "customer", "business"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1080&q=80&fit=crop",
+      "overlay": "rgba(0,0,0,0.45)"
+    },
+    "sampleCopy": { "headline": "THANK YOU", "subheadline": "For being part of our journey", "cta": "", "badge": "" },
+    "elements": [
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.05, "y": 0.38, "w": 0.9, "fontSize": 56, "fontWeight": 900, "color": "#ffffff", "align": "center" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.08, "y": 0.54, "w": 0.84, "fontSize": 20, "fontWeight": 500, "color": "rgba(255,255,255,0.85)", "align": "center" }
+    ]
+  },
+  {
+    "id": "marketing-newsletter",
+    "name": "Newsletter Signup",
+    "category": "marketing",
+    "tags": ["newsletter", "email", "subscribe", "marketing"],
+    "recommendedDimension": "1200x628",
+    "background": { "type": "gradient", "colors": ["#1A2B48", "#4DA8EE"], "angle": 120 },
+    "sampleCopy": { "headline": "The Weekly Brief", "subheadline": "Insights & templates in your inbox", "cta": "Subscribe Free", "badge": "Newsletter" },
+    "elements": [
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.22, "w": 0.55, "fontSize": 40, "fontWeight": 900, "color": "#ffffff", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.06, "y": 0.48, "w": 0.5, "fontSize": 18, "fontWeight": 500, "color": "rgba(255,255,255,0.85)", "align": "left" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.06, "y": 0.68, "w": 0.28, "fontSize": 12, "bgColor": "#FF6B9D", "color": "#ffffff" },
+      { "id": "decor", "type": "shape", "x": 0.65, "y": 0.1, "w": 0.3, "h": 0.8, "fill": "rgba(255,255,255,0.08)", "borderRadius": 16 }
+    ]
+  },
+  {
+    "id": "education-online-course",
+    "name": "Online Course",
+    "category": "education",
+    "tags": ["course", "online", "education", "training"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1080&q=80&fit=crop",
+      "overlay": "rgba(30,41,59,0.75)"
+    },
+    "sampleCopy": { "headline": "Master Social Media", "subheadline": "6-week online course", "cta": "Enroll Now", "badge": "New Course" },
+    "elements": [
+      { "id": "badge", "type": "badge", "bind": "badge", "x": 0.06, "y": 0.06, "w": 0.28, "fontSize": 10, "color": "#4ADE80" },
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.3, "w": 0.88, "fontSize": 44, "fontWeight": 900, "color": "#ffffff", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.06, "y": 0.46, "w": 0.7, "fontSize": 22, "fontWeight": 500, "color": "#4ADE80", "align": "left" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.06, "y": 0.78, "w": 0.32, "fontSize": 13, "bgColor": "#4ADE80", "color": "#1E293B" }
+    ]
+  },
+  {
+    "id": "hiring-remote",
+    "name": "Remote Roles",
+    "category": "hiring",
+    "tags": ["hiring", "remote", "work from home", "jobs"],
+    "recommendedDimension": "1080x1080",
+    "background": {
+      "type": "image",
+      "url": "https://images.unsplash.com/photo-1588196749597-9ff07579db08?w=1080&q=80&fit=crop",
+      "overlay": "rgba(14,116,144,0.7)"
+    },
+    "sampleCopy": { "headline": "Now Hiring", "subheadline": "Remote positions open worldwide", "cta": "Apply Today", "badge": "Remote" },
+    "elements": [
+      { "id": "headline", "type": "text", "bind": "headline", "x": 0.06, "y": 0.32, "w": 0.88, "fontSize": 52, "fontWeight": 900, "color": "#ffffff", "align": "left" },
+      { "id": "subheadline", "type": "text", "bind": "subheadline", "x": 0.06, "y": 0.48, "w": 0.8, "fontSize": 22, "fontWeight": 500, "color": "rgba(255,255,255,0.9)", "align": "left" },
+      { "id": "cta", "type": "button", "bind": "cta", "x": 0.06, "y": 0.78, "w": 0.34, "fontSize": 13, "bgColor": "#ffffff", "color": "#0E7490" }
+    ]
+  }
+]

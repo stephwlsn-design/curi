@@ -6,6 +6,7 @@ export default function DesignPreview({ design, onFavorite, onEdit, compact = fa
   const colors = design.colorPalette || ['#FF6B9D', '#4DA8EE', '#1A2B48']
   const bg = `linear-gradient(135deg, ${colors[0]} 0%, ${colors[1] || colors[0]} 100%)`
   const isUploaded = design.mediaUrl || design.metadata?.source === 'user-upload' || design.source === 'user-upload'
+  const isPexelsVideo = design.pexels?.mediaType === 'video' || design.metadata?.pexels?.mediaType === 'video'
   const isReferenceBased = design.canvasLayout?.designIdeaBased || design.canvasLayout?.background?.type === 'image' || design.referenceImageUrl
   const canvas = !isUploaded ? (design.canvasLayout || designToCanvas(design)) : null
   const previewScale = canvas ? (compact ? 0.26 : Math.min(300 / canvas.width, 300 / canvas.height)) : 1
@@ -28,7 +29,12 @@ export default function DesignPreview({ design, onFavorite, onEdit, compact = fa
           </>
         )}
 
-        {isReferenceBased && !isUploaded && (
+        {isPexelsVideo && (
+          <span className="absolute top-2 left-2 badge bg-curi-blue/80 text-white text-[10px] z-10 flex items-center gap-1">
+            ▶ Video
+          </span>
+        )}
+        {isReferenceBased && !isUploaded && !isPexelsVideo && (
           <span className="absolute top-2 left-2 badge bg-curi-pink/80 text-white text-[10px] z-10">From Reference</span>
         )}
         {isUploaded && (

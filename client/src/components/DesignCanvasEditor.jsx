@@ -4,6 +4,8 @@ import toast from 'react-hot-toast'
 import { API } from '../context/AuthContext'
 import DesignCanvasRenderer from './DesignCanvasRenderer'
 import { BUILTIN_TEMPLATES } from '../constants/designTemplates'
+import PexelsMediaPanel from './PexelsMediaPanel'
+import { applyPexelsPhotoToCanvas } from '../utils/pexelsCanvas'
 import {
   designToCanvas, applyTemplateToCanvas, canvasToDesignFields, syncCanvasTextFromDesign,
 } from '../utils/designCanvas'
@@ -19,6 +21,7 @@ export default function DesignCanvasEditor({ design, workspaceId, onClose, onSav
   const [saving, setSaving] = useState(false)
   const [templateName, setTemplateName] = useState('')
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
+  const [sidebarTab, setSidebarTab] = useState('templates')
   const dragRef = useRef(null)
 
   const selected = canvas.elements.find(e => e.id === selectedId)
@@ -211,8 +214,47 @@ export default function DesignCanvasEditor({ design, workspaceId, onClose, onSav
       )}
 
       <div className="flex flex-1 min-h-0">
-        {/* Templates sidebar */}
-        <div className="w-56 border-r border-theme-border p-4 overflow-y-auto space-y-4 flex-shrink-0">
+        {/* Sidebar */}
+        <div className="w-72 border-r border-theme-border flex flex-col flex-shrink-0 min-h-0">
+          <div className="flex border-b border-theme-border p-1 gap-1 flex-shrink-0">
+            {['templates', 'pexels'].map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setSidebarTab(tab)}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold capitalize ${
+                  sidebarTab === tab ? 'bg-curi-pink/15 text-curi-pink' : 'text-theme-muted/50 hover:bg-theme-subtle/5'
+                }`}
+              >
+                {tab === 'pexels' ? 'Stock Media' : 'Templates'}
+              </button>
+            ))}
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          {sidebarTab === 'pexels' ? (
+            <PexelsMediaPanel
+              workspaceId={workspaceId}
+              compact
+              embedded
+              onPhotoSelect={(item, useAs) => {
+                setCanvas((prev) => applyPexelsPhotoToCanvas(prev, item.url, useAs))
+                toast.success(useAs === 'background' ? 'Background updated' : 'Photo layer added')
+              }}
+              onVideoSelect={(item) => {
+                setCanvas((prev) => ({
+                  ...prev,
+                  background: {
+                    type: 'video',
+                    url: item.url,
+                    poster: item.thumbnailUrl,
+                    overlay: 'rgba(0,0,0,0.25)',
+                  },
+                }))
+                toast.success('Video background applied')
+              }}
+            />
+          ) : (
+          <div className="space-y-4">
           <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">Templates</div>
           <div className="space-y-2">
             {BUILTIN_TEMPLATES.map(t => (
@@ -249,6 +291,9 @@ export default function DesignCanvasEditor({ design, workspaceId, onClose, onSav
               </div>
             </>
           )}
+          </div>
+          )}
+          </div>
         </div>
 
         {/* Canvas area */}
@@ -369,6 +414,12 @@ export default function DesignCanvasEditor({ design, workspaceId, onClose, onSav
 
           <div className="pt-2 border-t border-theme-border space-y-2">
             <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">Background</div>
+            {canvas.background?.type === 'image' || canvas.background?.type === 'video' ? (
+              <p className="text-[10px] text-theme-muted/50">
+                {canvas.background.type === 'video' ? 'Stock video' : 'Stock photo'} background — adjust overlay below
+              </p>
+            ) : null}
+            {canvas.background?.type !== 'image' && canvas.background?.type !== 'video' && (
             <div className="flex gap-2">
               <input type="color" className="w-full h-9 rounded-lg cursor-pointer"
                 value={canvas.background?.colors?.[0] || '#FF6B9D'}
@@ -383,6 +434,26 @@ export default function DesignCanvasEditor({ design, workspaceId, onClose, onSav
                   background: { ...prev.background, colors: [prev.background?.colors?.[0] || '#FF6B9D', e.target.value] },
                 }))} />
             </div>
+            )}
+            {(canvas.background?.type === 'image' || canvas.background?.type === 'video') && (
+              <div>
+                <label className="text-[10px] text-theme-muted/40 font-bold uppercase">Overlay darkness</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="80"
+                  className="w-full mt-1"
+                  value={Math.round(parseFloat(String(canvas.background?.overlay || 'rgba(0,0,0,0.38)').match(/[\d.]+$/)?.[0] || 0.38) * 100)}
+                  onChange={(e) => {
+                    const opacity = Number(e.target.value) / 100
+                    setCanvas((prev) => ({
+                      ...prev,
+                      background: { ...prev.background, overlay: `rgba(0,0,0,${opacity})` },
+                    }))
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

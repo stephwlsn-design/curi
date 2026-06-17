@@ -15,6 +15,18 @@ export const parseDimensions = (design) => {
 
 const defaultColors = (design) => design?.colorPalette || ['#FF6B9D', '#4DA8EE', '#1A2B48']
 
+const buildDecorElements = (template, dims) => {
+  if (!template?.decorElements?.length) return []
+  return template.decorElements.map((el) => ({
+    ...el,
+    x: Math.round((el.x ?? 0) * dims.width),
+    y: Math.round((el.y ?? 0) * dims.height),
+    width: Math.round((el.width ?? 0.1) * dims.width),
+    height: Math.round((el.height ?? 0.1) * dims.height),
+    visible: true,
+  }))
+}
+
 export const buildCanvasElements = (design, templateId) => {
   const dims = parseDimensions(design)
   const tid = templateId || LAYOUT_TO_TEMPLATE[design?.layout] || 'centered-hero'
@@ -28,7 +40,7 @@ export const buildCanvasElements = (design, templateId) => {
     return v
   }
 
-  return [
+  const elements = [
     {
       id: 'badge',
       type: 'badge',
@@ -80,6 +92,8 @@ export const buildCanvasElements = (design, templateId) => {
       visible: Boolean(design?.cta),
     },
   ]
+  const decor = buildDecorElements(template, dims)
+  return decor.length ? [...decor, ...elements] : elements
 }
 
 export const designToCanvas = (design, templateId) => {
@@ -96,6 +110,36 @@ export const designToCanvas = (design, templateId) => {
     },
     elements: buildCanvasElements(design, templateId),
   }
+}
+
+export const buildTemplatePreviewCanvas = (template, brandColors) => {
+  const sample = template.sampleCopy || {}
+  const colors = brandColors?.length ? brandColors : (template.previewColors || defaultColors({}))
+  const design = {
+    headline: sample.headline || 'Your Headline',
+    subheadline: sample.subheadline || '',
+    cta: sample.cta || 'Learn More',
+    layout: sample.layout || 'centered',
+    colorPalette: colors,
+    dimensions: { id: template.recommendedDimension || '1080x1080' },
+  }
+  return buildPreviewCanvasFromDesign(design, template)
+}
+
+const buildPreviewCanvasFromDesign = (design, template) => {
+  const canvas = designToCanvas(design, template.id)
+  if (template.textOnLight) {
+    canvas.elements = canvas.elements.map((el) => {
+      if (el.type === 'text' || el.type === 'badge') {
+        return { ...el, color: el.id === 'subheadline' ? 'rgba(26,43,72,0.7)' : '#1A2B48' }
+      }
+      if (el.type === 'button') return { ...el, bgColor: '#1A2B48', color: '#ffffff' }
+      return el
+    })
+  }
+  const decor = buildDecorElements(template, { width: canvas.width, height: canvas.height })
+  if (decor.length) canvas.elements = [...decor, ...canvas.elements]
+  return canvas
 }
 
 export const applyTemplateToCanvas = (canvas, templateId, customPlacements) => {

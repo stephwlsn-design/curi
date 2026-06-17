@@ -24,6 +24,7 @@ In Vercel → Project → **Settings → Environment Variables**, add:
 | `GEMINI_API_KEY` | Yes* | Your Google AI key |
 | `CLIENT_URL` | Yes | `https://curi.corpcrunch.io` |
 | `REDIS_URL` | Optional | Upstash Redis URL (for queues) |
+| `PEXELS_API_KEY` | Optional | [Pexels API key](https://www.pexels.com/api/) for stock photos & videos in Design |
 | `GEMINI_MODEL` | Optional | `gemini-2.5-flash` |
 | `SEED_DEMO_USER` | Optional | `false` |
 
