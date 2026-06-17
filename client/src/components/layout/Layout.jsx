@@ -139,7 +139,7 @@ export default function Layout() {
                 >
                   <span className="flex-1 text-left">{item.label}</span>
                   {item.badge && (
-                    <span className="badge bg-curi-blue/15 text-curi-blue text-[10px]">{item.badge}</span>
+                    <span className="badge bg-curi-blue/15 text-curi-blue text-xs">{item.badge}</span>
                   )}
                 </button>
               </div>

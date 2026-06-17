@@ -29,7 +29,7 @@ export default function DesignStepGuide({ currentStep, onStepChange, completedSt
                 }`}
               >
                 <span
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
                     isActive
                       ? 'bg-curi-pink text-white'
                       : isComplete
@@ -37,13 +37,13 @@ export default function DesignStepGuide({ currentStep, onStepChange, completedSt
                         : 'bg-theme-subtle/10 text-theme-muted/50'
                   }`}
                 >
-                  {isComplete && !isActive ? <Check size={16} /> : step.id}
+                  {isComplete && !isActive ? <Check size={14} /> : step.id}
                 </span>
                 <span className="hidden sm:block min-w-0">
-                  <span className={`block text-base font-bold leading-tight ${isActive ? 'text-theme-text' : 'text-theme-muted/70'}`}>
+                  <span className={`block text-sm font-bold leading-tight ${isActive ? 'text-theme-text' : 'text-theme-muted/70'}`}>
                     Step {step.id}: {step.label}
                   </span>
-                  <span className="block text-sm text-theme-muted/50 leading-tight">{step.description}</span>
+                  <span className="block text-xs text-theme-muted/50 leading-tight">{step.description}</span>
                 </span>
               </button>
               {!isLast && (

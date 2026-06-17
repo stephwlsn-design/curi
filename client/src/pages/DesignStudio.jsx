@@ -498,7 +498,7 @@ export default function DesignStudio() {
               }`}
             >
               <Icon size={18} />
-              <span className="text-[9px] font-bold leading-none">{label}</span>
+              <span className="text-xs font-bold leading-none">{label}</span>
             </button>
           ))}
         </div>

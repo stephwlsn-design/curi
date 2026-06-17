@@ -3,6 +3,21 @@ export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   darkMode: 'class',
   theme: {
+    fontSize: {
+      xs: ['1.125rem', { lineHeight: '1.625rem' }],
+      sm: ['1.25rem', { lineHeight: '1.75rem' }],
+      base: ['1.5rem', { lineHeight: '2rem' }],
+      lg: ['1.625rem', { lineHeight: '2.125rem' }],
+      xl: ['1.75rem', { lineHeight: '2.25rem' }],
+      '2xl': ['2.25rem', { lineHeight: '2.5rem' }],
+      '3xl': ['2.75rem', { lineHeight: '3rem' }],
+      '4xl': ['3.25rem', { lineHeight: '3.5rem' }],
+      '5xl': ['4rem', { lineHeight: '1' }],
+      '6xl': ['4.75rem', { lineHeight: '1' }],
+      '7xl': ['5.5rem', { lineHeight: '1' }],
+      '8xl': ['7rem', { lineHeight: '1' }],
+      '9xl': ['9rem', { lineHeight: '1' }],
+    },
     extend: {
       colors: {
         curi: {

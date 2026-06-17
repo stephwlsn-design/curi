@@ -25,10 +25,6 @@
     --theme-subtle: 255 255 255;
   }
 
-  html {
-    font-size: 200%;
-  }
-
   body {
     background-color: rgb(var(--theme-bg));
     color: rgb(var(--theme-text));
@@ -54,7 +50,7 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-gradient-to-r from-curi-pink to-curi-blue text-white font-bold px-5 py-2.5 rounded-2xl
+    @apply bg-gradient-to-r from-curi-pink to-curi-blue text-white font-bold text-base px-5 py-2.5 rounded-2xl
     shadow-clay-sm hover:scale-[1.02] active:scale-95 transition-all duration-200
     disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100;
   }
@@ -63,7 +59,7 @@
     background-color: rgb(var(--theme-card));
     border: 1px solid rgb(var(--theme-border));
     color: rgb(var(--theme-text));
-    @apply font-semibold px-5 py-2.5 rounded-2xl shadow-clay-sm hover:scale-[1.02] active:scale-95 transition-all duration-200;
+    @apply text-base font-semibold px-5 py-2.5 rounded-2xl shadow-clay-sm hover:scale-[1.02] active:scale-95 transition-all duration-200;
   }
 
   .card {
