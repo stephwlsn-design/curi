@@ -26,7 +26,7 @@ In Vercel → Project → **Settings → Environment Variables**, add:
 | `REDIS_URL` | Optional | Upstash Redis URL (for queues) |
 | `PEXELS_API_KEY` | Optional | [Pexels API key](https://www.pexels.com/api/) for stock photos & videos in Design |
 | `ELEVENLABS_API_KEY` | Optional | Talking Character voices in Design Studio (Starter plan + API permissions) |
-| `FAL_KEY` | Optional | **Real lip-sync** for uploaded portraits (SadTalker via [fal.ai](https://fal.ai)) — required for mouth dubbing |
+| `FAL_KEY` or `FAL_API_KEY` | Optional | **Real lip-sync** for uploaded portraits (SadTalker via [fal.ai](https://fal.ai)) — required for mouth dubbing |
 | `OPENAI_API_KEY` | Optional | Fallback TTS if ElevenLabs unavailable |
 | `GEMINI_MODEL` | Optional | `gemini-2.5-flash` |
 | `SEED_DEMO_USER` | Optional | `false` |

@@ -9,6 +9,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const isValidKey = (key) => key && key.length >= 16 && !String(key).includes('...');
 
+const getFalApiKey = () => (
+  process.env.FAL_KEY?.trim()
+  || process.env.FAL_API_KEY?.trim()
+  || ''
+);
+
 const toDataUrl = (value, fallbackMime) => {
   if (!value) return null;
   if (value.startsWith('data:')) return value;
@@ -112,12 +118,12 @@ async function generateLipSyncVideo({
   audioDataUrl,
   portrait = true,
 }) {
-  const apiKey = process.env.FAL_KEY?.trim();
+  const apiKey = getFalApiKey();
   if (!isValidKey(apiKey)) {
     const err = new Error('Lip-sync is not configured on the server');
     err.status = 503;
     err.code = 'LIPSYNC_UNAVAILABLE';
-    err.hint = 'Add FAL_KEY to your environment (get one at fal.ai) to enable real lip dubbing.';
+    err.hint = 'Add FAL_KEY or FAL_API_KEY to your environment (get one at fal.ai) to enable real lip dubbing.';
     throw err;
   }
 
@@ -140,7 +146,7 @@ async function generateLipSyncVideo({
 }
 
 async function getLipSyncJob(requestId) {
-  const apiKey = process.env.FAL_KEY?.trim();
+  const apiKey = getFalApiKey();
   if (!isValidKey(apiKey)) {
     const err = new Error('Lip-sync is not configured');
     err.status = 503;
