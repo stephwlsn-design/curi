@@ -59,7 +59,7 @@ export default function UserDesignUpload({ workspaceId, platform: defaultPlatfor
       }
 
       const { data } = await API.post('/design/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 90000,
       })
 
       toast.success(data.message)

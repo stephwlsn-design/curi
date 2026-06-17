@@ -2,10 +2,12 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
   if (!canvas) return null
 
   const { width, height, background, elements, audio } = canvas
-  const bgStyle = background?.type === 'gradient' || background?.type === 'aesthetic'
+  const bgStyle = background?.type === 'solid'
+    ? { background: background.color || background.colors?.[0] || '#1A2B48' }
+    : background?.type === 'gradient' || background?.type === 'aesthetic'
     ? { background: `linear-gradient(${background.angle || 135}deg, ${background.colors?.[0]} 0%, ${background.colors?.[1] || background.colors?.[0]} 100%)` }
     : (background?.type === 'image' || background?.type === 'video')
-      ? {}
+      ? { background: background.underlayColor || '#1A2B48' }
       : { background: background?.color || '#FF6B9D' }
 
   const sortedElements = [...elements].sort((a, b) => (a.zIndex ?? 2) - (b.zIndex ?? 2))
@@ -177,6 +179,26 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
                 width: el.width * scale,
               }}
             />
+          )
+        }
+
+        if (el.type === 'icon') {
+          return (
+            <div
+              key={el.id}
+              style={{
+                ...base,
+                width: 'auto',
+                height: 'auto',
+                fontSize: (el.size || 32) * scale,
+                color: el.color || '#ffffff',
+                lineHeight: 1,
+                textShadow: '0 2px 8px rgba(0,0,0,0.35)',
+              }}
+              onClick={interactive ? (e) => { e.stopPropagation(); onSelect?.(el.id) } : undefined}
+            >
+              {el.symbol || el.emoji || '●'}
+            </div>
           )
         }
 

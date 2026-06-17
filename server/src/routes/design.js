@@ -42,7 +42,7 @@ router.post('/idea', uploadDesignIdea.single('image'), async (req, res) => {
       const ideaContext = await Promise.race([
         designService.resolveDesignIdeaContext(normalizeDesignIdea(designIdea)),
         new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Style analysis timed out')), 28000);
+          setTimeout(() => reject(new Error('Style analysis timed out')), 30000);
         }),
       ]);
       if (ideaContext) {
@@ -634,8 +634,8 @@ router.post('/upload', uploadUserDesigns.array('images', 20), async (req, res) =
     titleList = [];
   }
 
-  const designs = await Promise.all(req.files.map((file, i) =>
-    createUploadedDesign({
+  const designs = await Promise.all(req.files.map(async (file, i) => {
+    const design = await createUploadedDesign({
       workspaceId,
       userId: req.user._id,
       file,
@@ -643,8 +643,16 @@ router.post('/upload', uploadUserDesigns.array('images', 20), async (req, res) =
       title: titleList[i] || file.originalname,
       scheduledAt: scheduledAt || null,
       module: 'upload',
-    })
-  ));
+    });
+    try {
+      const fs = require('fs');
+      const buf = fs.readFileSync(file.path);
+      if (buf.length < 1200000) {
+        design.previewDataUrl = `data:${file.mimetype || 'image/jpeg'};base64,${buf.toString('base64')}`;
+      }
+    } catch { /* preview optional */ }
+    return design;
+  }));
 
   workspace.stats.imagesGenerated = (workspace.stats.imagesGenerated || 0) + designs.length;
   await workspace.save();

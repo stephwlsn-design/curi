@@ -83,6 +83,11 @@ const isDesignIdeaRequest = (req) => {
   return req.method === 'POST' && pathOnly === '/api/design/idea';
 };
 
+const isDesignUploadRequest = (req) => {
+  const pathOnly = requestPath(req);
+  return req.method === 'POST' && pathOnly === '/api/design/upload';
+};
+
 const isDiscoverRequest = (req) => {
   const pathOnly = requestPath(req);
   return req.method === 'POST' && (pathOnly === '/api/discover' || pathOnly === '/discover');
@@ -342,18 +347,27 @@ const readRequestBuffer = async (req) => {
   });
 };
 
-const parseMultipartForm = async (req) => {
+const parseMultipartForm = async (req, { multiFileField = null } = {}) => {
   const Busboy = require('busboy');
-  const buffer = await withTimeout(readRequestBuffer(req), 15000, 'Upload read timed out');
-  if (!buffer.length) return { fields: {}, file: null, fileMeta: null };
+  const buffer = await withTimeout(readRequestBuffer(req), 20000, 'Upload read timed out');
+  if (!buffer.length) return { fields: {}, file: null, fileMeta: null, files: [] };
 
   return new Promise((resolve, reject) => {
     const fields = {};
+    const files = [];
     let fileBuffer = null;
     let fileMeta = null;
     const busboy = Busboy({ headers: req.headers });
 
     busboy.on('file', (fieldname, file, info) => {
+      if (multiFileField && fieldname === multiFileField) {
+        const chunks = [];
+        file.on('data', (chunk) => chunks.push(chunk));
+        file.on('end', () => {
+          files.push({ buffer: Buffer.concat(chunks), info, fieldname });
+        });
+        return;
+      }
       if (fieldname !== 'image') {
         file.resume();
         return;
@@ -370,7 +384,7 @@ const parseMultipartForm = async (req) => {
       fields[name] = value;
     });
 
-    busboy.on('finish', () => resolve({ fields, file: fileBuffer, fileMeta }));
+    busboy.on('finish', () => resolve({ fields, file: fileBuffer, fileMeta, files }));
     busboy.on('error', reject);
     busboy.end(buffer);
   });
@@ -434,7 +448,7 @@ const handleDesignIdea = async (req, res) => {
     try {
       const ideaContext = await withTimeout(
         designService.resolveDesignIdeaContext(normalizeDesignIdea(designIdea)),
-        28000,
+        30000,
         'Style analysis timed out',
       );
       if (ideaContext) {
@@ -456,6 +470,72 @@ const handleDesignIdea = async (req, res) => {
   }
 
   return sendJson(res, 200, { designIdea: responseIdea });
+};
+
+const handleDesignUpload = async (req, res) => {
+  const fs = require('fs');
+  const pathMod = require('path');
+  const { connectDB } = require('../server/src/config/database');
+  const { createUploadedDesign } = require('../server/src/services/designUploadService');
+  const { findAccessibleWorkspace } = require('../server/src/utils/workspaceAccess');
+  const { USER_DESIGN_DIR } = require('../server/src/middleware/upload');
+
+  await connectDB();
+  const user = await authenticateRequest(req);
+  const { fields, files } = await parseMultipartForm(req, { multiFileField: 'images' });
+
+  const workspaceId = fields.workspaceId;
+  const platform = fields.platform || 'instagram';
+  const scheduledAt = fields.scheduledAt || null;
+  const workspace = await findAccessibleWorkspace(workspaceId, user._id);
+  if (!workspace) return sendJson(res, 404, { error: 'Workspace not found' });
+  if (!files?.length) return sendJson(res, 400, { error: 'Upload at least one design image' });
+
+  let titleList = [];
+  try {
+    titleList = fields.titles ? JSON.parse(fields.titles) : [];
+  } catch {
+    titleList = [];
+  }
+
+  if (!fs.existsSync(USER_DESIGN_DIR)) fs.mkdirSync(USER_DESIGN_DIR, { recursive: true });
+
+  const designs = await Promise.all(files.map(async (entry, i) => {
+    const mime = entry.info.mimeType || 'image/jpeg';
+    const ext = pathMod.extname(entry.info.filename || '').toLowerCase() || '.jpg';
+    const filename = `${user._id}-${Date.now()}-ud-${i}${ext}`;
+    fs.writeFileSync(pathMod.join(USER_DESIGN_DIR, filename), entry.buffer);
+    const file = {
+      filename,
+      originalname: entry.info.filename || `design-${i + 1}${ext}`,
+      mimetype: mime,
+      size: entry.buffer.length,
+    };
+    const design = await createUploadedDesign({
+      workspaceId,
+      userId: user._id,
+      file,
+      platform,
+      title: titleList[i] || file.originalname,
+      scheduledAt: scheduledAt || null,
+      module: 'upload',
+    });
+    if (entry.buffer.length < 1200000) {
+      design.previewDataUrl = `data:${mime};base64,${entry.buffer.toString('base64')}`;
+    }
+    return design;
+  }));
+
+  workspace.stats.imagesGenerated = (workspace.stats.imagesGenerated || 0) + designs.length;
+  await workspace.save();
+
+  return sendJson(res, 201, {
+    designs,
+    scheduled: Boolean(scheduledAt),
+    message: scheduledAt
+      ? `${designs.length} design(s) uploaded and scheduled`
+      : `${designs.length} design(s) uploaded`,
+  });
 };
 
 const authenticateRequest = async (req) => {
@@ -815,6 +895,16 @@ module.exports = async (req, res) => {
     } catch (err) {
       console.error('[api] design fast failed:', err);
       return sendJson(res, err.status || 502, { error: err.message });
+    }
+  }
+
+  if (isDesignUploadRequest(req)) {
+    try {
+      normalizeRequestUrl(req);
+      return await handleDesignUpload(req, res);
+    } catch (err) {
+      console.error('[api] design upload failed:', err);
+      return sendJson(res, err.status || 502, { error: err.message || 'Upload failed' });
     }
   }
 

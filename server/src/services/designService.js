@@ -30,6 +30,7 @@ const resolveDesignIdeaContext = async (designIdea) => {
   if (
     designIdea?.analyzedSpec?.aestheticOnly
     && designIdea.analyzedSpec.backgroundMode
+    && Array.isArray(designIdea.analyzedSpec.decorElements)
     && (designIdea?.analyzedDirection || !idea.hasImage)
   ) {
     return {
@@ -49,50 +50,57 @@ const resolveDesignIdeaContext = async (designIdea) => {
 Study the attached reference image pixel-by-pixel. Return ONLY valid JSON.
 
 CRITICAL RULES:
-- IGNORE all text, headlines, body copy, logos with words, and CTAs visible in the reference.
-- Do NOT transcribe, quote, or reproduce any words from the image.
-- Sample DOMINANT colors directly from the image — use exact hex values from backgrounds, accents, and typography areas.
-- Match layout composition: where visual weight sits, whitespace, and hierarchy — not the reference text positions verbatim.
-- Pick Google Font names that match the visual typography style (e.g. "Playfair Display", "Montserrat", "Bebas Neue", "Poppins", "Oswald", "Caveat").
-- backgroundMode "reference-photo" when the reference is photo/graphic-heavy; "reference-blur" for abstract/texture refs; "gradient" for flat colour-only refs.`,
-    user: `Analyze this reference design for aesthetic reproduction WITHOUT any of its text content.
-User notes: ${idea.notes || 'None'}
+- IGNORE all text content in the reference — do NOT transcribe words.
+- Extract the EXACT dominant background color as backgroundColor (sample the largest flat area).
+- List ALL accent colors, shapes, lines, blobs, badges, and graphic elements in decorElements.
+- List decorative icons/symbols (arrows, stars, checkmarks, social icons) in iconElements using emoji in the "emoji" field.
+- Use normalized 0-1 coordinates for x, y, width, height relative to image dimensions.
+- backgroundMode: "reference-photo" for photo/graphic designs, "solid" for flat-color backgrounds, "reference-blur" for textured refs.
+- overlayOpacity should be LOW (0.05-0.15) for reference-photo so the design stays visible.`,
+    user: `Analyze this reference design. Extract every visual aesthetic element WITHOUT copying text.
 
-Extract precise visual specs so a new design shares the same LOOK (colors, photo mood, layout rhythm, typography style) with completely different copy.
+User notes: ${idea.notes || 'None'}
 
 Return JSON:
 {
-  "direction": "2-3 sentences describing aesthetic style only — no text from the image",
+  "direction": "2-3 sentences on visual style only",
   "mood": "minimal|bold|playful|luxury|corporate|editorial|warm|cool",
-  "colorPalette": ["#dominant1", "#dominant2", "#accent", "#optional4"],
+  "backgroundColor": "#exact dominant background hex",
+  "secondaryBackgroundColor": "#secondary area hex",
+  "colorPalette": ["#bg", "#accent1", "#accent2", "#accent3"],
   "layout": "centered|split|grid|hero|minimal",
-  "backgroundMode": "reference-photo|reference-blur|gradient",
-  "textColor": "#hex for headline on this background",
+  "backgroundMode": "reference-photo|solid|reference-blur",
+  "textColor": "#hex",
   "subtextColor": "#hex or rgba",
   "ctaBackground": "#hex",
   "ctaTextColor": "#hex",
-  "overlayOpacity": 0.25,
-  "textureOpacity": 0.45,
-  "textureBlur": 14,
+  "overlayOpacity": 0.08,
+  "textureOpacity": 0.5,
+  "textureBlur": 12,
   "gradientAngle": 135,
-  "typography": "overall font style description",
-  "fontHeadline": "Google Font name for headlines",
-  "fontSubheadline": "Google Font name for subheadlines",
-  "fontCta": "Google Font name for buttons",
+  "typography": "font style description",
+  "fontHeadline": "Google Font name",
+  "fontSubheadline": "Google Font name",
+  "fontCta": "Google Font name",
   "headlineWeight": 700,
   "subheadlineWeight": 400,
   "ctaWeight": 700,
-  "letterSpacing": 0,
+  "decorElements": [
+    { "shape": "rect|circle|line", "x": 0.0, "y": 0.0, "width": 0.2, "height": 0.03, "fill": "#hex", "borderRadius": 4 }
+  ],
+  "iconElements": [
+    { "emoji": "★", "x": 0.85, "y": 0.08, "size": 40, "color": "#hex" }
+  ],
   "placements": {
-    "headline": { "x": 0.08, "y": 0.32, "width": 0.84, "align": "center|left|right", "fontSize": 48 },
+    "headline": { "x": 0.08, "y": 0.32, "width": 0.84, "align": "center", "fontSize": 48 },
     "subheadline": { "x": 0.1, "y": 0.48, "width": 0.8, "align": "center", "fontSize": 22 },
     "cta": { "x": 0.32, "y": 0.72, "width": 0.36, "fontSize": 14 }
   }
 }`,
-    temperature: 0.15,
+    temperature: 0.1,
     label: 'Design Idea Analysis',
     imagePath: idea.imagePath,
-    timeoutMs: 28000,
+    timeoutMs: 30000,
   });
 
   const spec = normalizeSpec(parsed);

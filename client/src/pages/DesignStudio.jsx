@@ -16,6 +16,8 @@ import { CANVAS_FONTS } from '../constants/canvasFonts'
 import { useDesignCreation } from '../hooks/useDesignCreation'
 import { isDraftDesign } from '../utils/localDesign'
 import { buildDesignFromInspiration, buildCarouselFromInspiration } from '../utils/inspirationCanvas'
+import { buildOwnDesignCanvas } from '../utils/inspirationSpec'
+import DesignSchedulePanel from '../components/DesignSchedulePanel'
 import { getPostFormat } from '../constants/postFormats'
 import { applyCharacterToCanvas, applyTalkingCharacterToCanvas } from '../utils/characterCanvas'
 import { applyAudioToCanvas } from '../utils/audioCanvas'
@@ -335,6 +337,34 @@ export default function DesignStudio() {
     setStep(4)
   }
 
+  const handleOwnDesignUploaded = (designs) => {
+    const uploaded = designs?.[0]
+    if (!uploaded) return
+    const imageUrl = uploaded.previewDataUrl || uploaded.mediaUrl || uploaded.thumbnailUrl
+    const canvasLayout = buildOwnDesignCanvas({
+      imageUrl,
+      name: uploaded.title || uploaded.name || 'My Design',
+      dimensionId,
+    })
+    const created = {
+      _id: uploaded._id,
+      _local: false,
+      name: uploaded.title || uploaded.name || 'My Design',
+      headline: '',
+      subheadline: '',
+      cta: '',
+      canvasLayout,
+      dimensions: { id: dimensionId },
+      mediaUrl: imageUrl,
+      source: 'user-upload',
+    }
+    setDesign(created)
+    if (uploaded._id) navigate(`/design/studio/${uploaded._id}`, { replace: true })
+    setStep(5)
+    setPanel('finalize')
+    toast.success(uploaded.scheduledAt ? 'Design uploaded and scheduled' : 'Your design is ready — review and schedule below')
+  }
+
   const handleExtractInspiration = async (idea = designIdea) => {
     if (!idea?.imageUrl && !idea?.notes) {
       return toast.error('Upload an inspiration image or add notes first')
@@ -634,6 +664,7 @@ export default function DesignStudio() {
                 onChange={setDesignIdea}
                 onExtract={handleExtractInspiration}
                 onExtractCarousel={handleExtractCarousel}
+                onOwnDesignUploaded={handleOwnDesignUploaded}
                 extracting={extracting}
                 brief={brief}
                 postFormat={postFormat}
@@ -784,6 +815,10 @@ export default function DesignStudio() {
                 <button type="button" onClick={handleFinalize} className="btn-primary w-full text-sm">
                   Save final creative
                 </button>
+                <DesignSchedulePanel
+                  design={design}
+                  workspaceId={workspaceId}
+                />
               </div>
             )}
 

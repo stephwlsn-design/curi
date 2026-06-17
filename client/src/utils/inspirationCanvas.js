@@ -2,6 +2,7 @@ import { designToCanvas } from './designCanvas'
 import { LAYOUT_TO_TEMPLATE } from '../constants/designTemplates'
 import { buildAestheticBackground } from './aestheticBackground'
 import { applySpecTypography } from './inspirationTypography'
+import { applyInspirationSpec } from './inspirationSpec'
 import { getPostFormat } from '../constants/postFormats'
 
 const LAYOUT_TEMPLATE_MAP = {
@@ -55,8 +56,8 @@ export const buildCanvasWithDesignIdea = (design, ideaContext, dimensionId = '10
   canvas.aestheticOnly = true
 
   if (ideaContext.spec) {
-    const placed = applySpecPlacements(canvas, ideaContext.spec)
-    return applySpecTypography(placed, ideaContext.spec)
+    const styled = applyInspirationSpec(canvas, ideaContext.spec)
+    return applySpecTypography(styled, ideaContext.spec)
   }
   return canvas
 }

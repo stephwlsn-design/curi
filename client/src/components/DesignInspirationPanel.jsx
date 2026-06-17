@@ -1,8 +1,9 @@
 import { useRef, useState, useEffect } from 'react'
-import { Upload, Sparkles, X, Loader2, ImageIcon, Layers } from 'lucide-react'
+import { Upload, Sparkles, X, Loader2, ImageIcon, Layers, Palette, ImagePlus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { API } from '../context/AuthContext'
 import { POST_FORMATS, getPostFormat, getDimensionOptions } from '../constants/postFormats'
+import UserDesignUpload from './UserDesignUpload'
 
 export default function DesignInspirationPanel({
   workspaceId,
@@ -10,6 +11,7 @@ export default function DesignInspirationPanel({
   onChange,
   onExtract,
   onExtractCarousel,
+  onOwnDesignUploaded,
   extracting = false,
   brief = '',
   postFormat = 'social_post',
@@ -21,6 +23,7 @@ export default function DesignInspirationPanel({
   embedded = false,
 }) {
   const inputRef = useRef(null)
+  const [mode, setMode] = useState('inspire')
   const [uploading, setUploading] = useState(false)
   const [localPreview, setLocalPreview] = useState(null)
   const [notes, setNotes] = useState(value?.notes || '')
@@ -116,6 +119,36 @@ export default function DesignInspirationPanel({
 
   return (
     <div className={embedded ? 'space-y-4' : 'card p-5 space-y-4'}>
+      <div className="flex gap-1 p-1 rounded-xl bg-theme-subtle/5 border border-theme-border">
+        <button
+          type="button"
+          onClick={() => setMode('inspire')}
+          className={`flex-1 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+            mode === 'inspire' ? 'bg-curi-pink text-white' : 'text-theme-muted/60'
+          }`}
+        >
+          <Palette size={12} /> Extract style
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('own')}
+          className={`flex-1 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+            mode === 'own' ? 'bg-curi-blue text-white' : 'text-theme-muted/60'
+          }`}
+        >
+          <ImagePlus size={12} /> My finished design
+        </button>
+      </div>
+
+      {mode === 'own' ? (
+        <UserDesignUpload
+          workspaceId={workspaceId}
+          onUploaded={(designs) => {
+            onOwnDesignUploaded?.(designs)
+          }}
+        />
+      ) : (
+      <>
       <div>
         <div className="flex items-center gap-2 mb-1">
           <ImageIcon size={20} className="text-curi-pink" />
@@ -290,8 +323,23 @@ export default function DesignInspirationPanel({
           {value?.analyzedSpec?.fontHeadline && (
             <p><span className="font-bold text-theme-text">Fonts:</span> {value.analyzedSpec.fontHeadline}{value.analyzedSpec.fontSubheadline ? ` / ${value.analyzedSpec.fontSubheadline}` : ''}</p>
           )}
+          {value?.analyzedSpec?.backgroundColor && (
+            <p className="flex items-center gap-2">
+              <span className="font-bold text-theme-text">Background:</span>
+              <span className="inline-block w-4 h-4 rounded border border-theme-border" style={{ background: value.analyzedSpec.backgroundColor }} />
+              {value.analyzedSpec.backgroundColor}
+            </p>
+          )}
+          {(value?.analyzedSpec?.decorElements?.length > 0 || value?.analyzedSpec?.iconElements?.length > 0) && (
+            <p>
+              <span className="font-bold text-theme-text">Elements:</span>
+              {' '}{value.analyzedSpec.decorElements?.length || 0} shapes, {value.analyzedSpec.iconElements?.length || 0} icons detected
+            </p>
+          )}
           <p className="text-[10px] text-theme-muted/45">Re-upload the image to refresh style analysis with the latest engine.</p>
         </div>
+      )}
+      </>
       )}
     </div>
   )

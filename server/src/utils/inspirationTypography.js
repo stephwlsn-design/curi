@@ -46,19 +46,23 @@ const normalizeHex = (value) => {
 
 const normalizeSpec = (parsed) => {
   const palette = Array.isArray(parsed.colorPalette)
-    ? parsed.colorPalette.map(normalizeHex).filter(Boolean).slice(0, 6)
+    ? parsed.colorPalette.map(normalizeHex).filter(Boolean).slice(0, 8)
     : [];
+
+  const backgroundColor = normalizeHex(parsed.backgroundColor) || palette[0] || '#1A2B48';
 
   return {
     colorPalette: palette.length ? palette : ['#FF6B9D', '#4DA8EE', '#1A2B48'],
+    backgroundColor,
+    secondaryBackgroundColor: normalizeHex(parsed.secondaryBackgroundColor) || palette[1] || backgroundColor,
     layout: parsed.layout || 'centered',
     textColor: normalizeHex(parsed.textColor) || '#ffffff',
     subtextColor: parsed.subtextColor || 'rgba(255,255,255,0.85)',
     ctaBackground: normalizeHex(parsed.ctaBackground) || '#ffffff',
     ctaTextColor: normalizeHex(parsed.ctaTextColor) || '#1A2B48',
-    overlayOpacity: parsed.overlayOpacity ?? 0.35,
-    textureOpacity: parsed.textureOpacity ?? 0.4,
-    textureBlur: parsed.textureBlur ?? 16,
+    overlayOpacity: parsed.overlayOpacity ?? 0.1,
+    textureOpacity: parsed.textureOpacity ?? 0.45,
+    textureBlur: parsed.textureBlur ?? 14,
     gradientAngle: parsed.gradientAngle ?? 135,
     typography: parsed.typography || 'bold sans-serif',
     fontHeadline: parsed.fontHeadline || null,
@@ -69,10 +73,81 @@ const normalizeSpec = (parsed) => {
     ctaWeight: parsed.ctaWeight ?? 700,
     letterSpacing: parsed.letterSpacing ?? null,
     backgroundMode: parsed.backgroundMode || 'reference-photo',
+    decorElements: Array.isArray(parsed.decorElements) ? parsed.decorElements.slice(0, 14) : [],
+    iconElements: Array.isArray(parsed.iconElements) ? parsed.iconElements.slice(0, 10) : [],
     placements: parsed.placements || null,
     aestheticOnly: true,
     mood: parsed.mood || null,
   };
+};
+
+const applySpecDecor = (canvas, spec) => {
+  if (!spec) return canvas;
+  const { width, height } = canvas;
+  let z = 1;
+  const decor = (spec.decorElements || []).map((el, i) => ({
+    id: `inspo-decor-${i}`,
+    type: 'shape',
+    x: Math.round((el.x ?? 0) * width),
+    y: Math.round((el.y ?? 0) * height),
+    width: Math.round((el.width ?? 0.08) * width),
+    height: Math.round((el.height ?? 0.04) * height),
+    fill: el.fill || el.color || 'rgba(255,255,255,0.18)',
+    borderRadius: el.shape === 'circle' ? 9999 : (el.borderRadius ?? 4),
+    visible: el.visible !== false,
+    zIndex: z++,
+  }));
+
+  const icons = (spec.iconElements || []).map((el, i) => {
+    const size = el.size || 36;
+    return {
+      id: `inspo-icon-${i}`,
+      type: 'icon',
+      symbol: el.emoji || el.symbol || el.icon || '●',
+      x: Math.round((el.x ?? 0) * width),
+      y: Math.round((el.y ?? 0) * height),
+      size,
+      width: size,
+      height: size,
+      color: el.color || '#ffffff',
+      visible: el.visible !== false,
+      zIndex: z++,
+    };
+  });
+
+  if (!decor.length && !icons.length) return canvas;
+  return { ...canvas, elements: [...decor, ...icons, ...canvas.elements] };
+};
+
+const applyInspirationSpec = (canvas, spec) => {
+  if (!spec) return canvas;
+  let next = applySpecTypography(canvas, spec);
+  if (spec.placements) {
+    const { width, height } = next;
+    next = {
+      ...next,
+      elements: next.elements.map((el) => {
+        const p = spec.placements[el.id];
+        if (!p) return el;
+        const patch = {};
+        if (p.x != null) patch.x = Math.round(p.x * width);
+        if (p.y != null) patch.y = Math.round(p.y * height);
+        if (p.width != null) patch.width = Math.round(p.width * width);
+        if (p.fontSize != null) patch.fontSize = p.fontSize;
+        if (p.align) patch.align = p.align;
+        if (el.id === 'headline' || el.id === 'subheadline') {
+          patch.color = spec.textColor || el.color;
+          if (el.id === 'subheadline') patch.color = spec.subtextColor || patch.color;
+        }
+        if (el.id === 'cta') {
+          patch.bgColor = spec.ctaBackground || el.bgColor;
+          patch.color = spec.ctaTextColor || el.color;
+        }
+        return { ...el, ...patch };
+      }),
+    };
+  }
+  return applySpecDecor(next, spec);
 };
 
 const applySpecTypography = (canvas, spec) => {
@@ -118,4 +193,6 @@ module.exports = {
   resolveCanvasFont,
   normalizeSpec,
   applySpecTypography,
+  applySpecDecor,
+  applyInspirationSpec,
 };
