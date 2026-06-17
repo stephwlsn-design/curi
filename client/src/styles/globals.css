@@ -25,6 +25,10 @@
     --theme-subtle: 255 255 255;
   }
 
+  html {
+    font-size: 200%;
+  }
+
   body {
     background-color: rgb(var(--theme-bg));
     color: rgb(var(--theme-text));

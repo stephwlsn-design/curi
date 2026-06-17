@@ -1,5 +1,7 @@
 import { designToCanvas } from './designCanvas'
 import { LAYOUT_TO_TEMPLATE } from '../constants/designTemplates'
+import { buildAestheticBackground } from './aestheticBackground'
+import { getPostFormat } from '../constants/postFormats'
 
 const LAYOUT_TEMPLATE_MAP = {
   centered: 'centered-hero',
@@ -37,22 +39,19 @@ const applySpecPlacements = (canvas, spec) => {
   return { ...canvas, elements }
 }
 
-export const buildCanvasWithDesignIdea = (design, ideaContext, dimensionId = '1080x1080') => {
-  const templateId = ideaContext?.spec?.layout
-    ? (LAYOUT_TEMPLATE_MAP[ideaContext.spec.layout] || 'centered-hero')
-    : (LAYOUT_TO_TEMPLATE[design?.layout] || 'centered-hero')
+export const buildCanvasWithDesignIdea = (design, ideaContext, dimensionId = '1080x1080', templateId) => {
+  const resolvedTemplate = templateId
+    || (ideaContext?.spec?.layout
+      ? (LAYOUT_TEMPLATE_MAP[ideaContext.spec.layout] || 'centered-hero')
+      : (LAYOUT_TO_TEMPLATE[design?.layout] || 'centered-hero'))
 
-  const canvas = designToCanvas({ ...design, dimensions: { id: dimensionId } }, templateId)
-  if (!ideaContext?.imageUrl) return canvas
+  const canvas = designToCanvas({ ...design, dimensions: { id: dimensionId } }, resolvedTemplate)
+  if (!ideaContext?.imageUrl && !ideaContext?.spec?.colorPalette) return canvas
 
-  const opacity = ideaContext.spec?.overlayOpacity ?? 0.35
-  canvas.background = {
-    type: 'image',
-    url: ideaContext.imageUrl,
-    overlay: `rgba(0,0,0,${opacity})`,
-  }
+  canvas.background = buildAestheticBackground(ideaContext.spec, ideaContext.imageUrl)
   canvas.referenceImageUrl = ideaContext.imageUrl
   canvas.designIdeaBased = true
+  canvas.aestheticOnly = true
 
   if (ideaContext.spec) {
     return applySpecPlacements(canvas, ideaContext.spec)
@@ -66,23 +65,32 @@ export const buildDesignFromInspiration = ({
   brandColors,
   prompt = '',
   dimensionId = '1080x1080',
+  postFormat = 'social_post',
+  slideIndex = 1,
+  slideTotal = 1,
 }) => {
+  const format = getPostFormat(postFormat)
   const spec = ideaContext?.spec || designIdea?.analyzedSpec
   const imageUrl = ideaContext?.imageUrl || designIdea?.imageUrl
   const headline = prompt.split('\n')[0]?.slice(0, 80) || 'Your Headline'
   const subheadline = prompt.slice(0, 120) || ''
   const palette = spec?.colorPalette || brandColors || ['#FF6B9D', '#4DA8EE', '#1A2B48']
+  const templateId = format.templateId
 
   const design = {
-    headline,
+    headline: postFormat === 'carousel' && slideTotal > 1
+      ? `${headline} (${slideIndex}/${slideTotal})`
+      : headline,
     subheadline,
     cta: 'Learn More',
-    layout: spec?.layout || 'centered',
+    layout: spec?.layout || format.id,
     dimensions: { id: dimensionId },
     colorPalette: palette,
-    name: 'Inspired Design',
+    name: `${format.label}${slideTotal > 1 ? ` — Slide ${slideIndex}` : ''}`,
     referenceImageUrl: imageUrl,
     designIdeaApplied: true,
+    postFormat: format.id,
+    creativeType: format.creativeType,
     compositionNotes: ideaContext?.direction || designIdea?.analyzedDirection || '',
   }
 
@@ -92,20 +100,40 @@ export const buildDesignFromInspiration = ({
     direction: ideaContext?.direction || designIdea?.analyzedDirection,
   }
 
-  const canvasLayout = imageUrl
-    ? buildCanvasWithDesignIdea(design, context, dimensionId)
-    : designToCanvas(design)
+  const canvasLayout = (imageUrl || spec)
+    ? buildCanvasWithDesignIdea(design, context, dimensionId, templateId)
+    : designToCanvas(design, templateId)
+
+  if (postFormat === 'carousel' && slideTotal > 1) {
+    const badge = canvasLayout.elements.find((e) => e.id === 'badge')
+    if (badge) {
+      canvasLayout.elements = canvasLayout.elements.map((el) => (
+        el.id === 'badge' ? { ...el, text: `${slideIndex} / ${slideTotal}` } : el
+      ))
+    }
+  }
 
   return {
     _local: true,
     _id: nextDraftId(),
     ...design,
     canvasLayout,
-    templateId: canvasLayout.templateId,
+    templateId: canvasLayout.templateId || templateId,
     designIdea: {
       notes: designIdea?.notes,
       imageUrl,
       referenceImageUrl: imageUrl,
     },
   }
+}
+
+export const buildCarouselFromInspiration = (opts) => {
+  const format = getPostFormat(opts.postFormat || 'carousel')
+  const count = Math.min(Math.max(opts.slideCount || format.defaultSlideCount || 5, 2), 10)
+  return Array.from({ length: count }, (_, i) => buildDesignFromInspiration({
+    ...opts,
+    postFormat: 'carousel',
+    slideIndex: i + 1,
+    slideTotal: count,
+  }))
 }

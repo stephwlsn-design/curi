@@ -224,21 +224,32 @@ function applySpecPlacements(canvas, spec) {
   return { ...canvas, elements };
 }
 
-function buildCanvasWithDesignIdea(design, ideaContext, dimensionId) {
-  const templateId = ideaContext?.spec?.layout
-    ? ({ centered: 'centered-hero', split: 'split-left', grid: 'bottom-stack', hero: 'centered-hero', minimal: 'minimal-top' }[ideaContext.spec.layout] || 'centered-hero')
-    : undefined;
-  const canvas = designToCanvas(design, templateId);
-  if (!ideaContext?.imageUrl) return canvas;
-
-  const opacity = ideaContext.spec?.overlayOpacity ?? 0.35;
-  canvas.background = {
-    type: 'image',
-    url: ideaContext.imageUrl,
-    overlay: `rgba(0,0,0,${opacity})`,
+function buildAestheticBackground(spec, referenceImageUrl) {
+  const colors = spec?.colorPalette?.length
+    ? spec.colorPalette
+    : ['#FF6B9D', '#4DA8EE', '#1A2B48'];
+  return {
+    type: 'aesthetic',
+    colors,
+    angle: spec?.gradientAngle ?? 135,
+    textureUrl: referenceImageUrl || null,
+    textureOpacity: spec?.textureOpacity ?? 0.2,
+    textureBlur: spec?.textureBlur ?? 28,
+    overlay: `rgba(0,0,0,${spec?.overlayOpacity ?? 0.12})`,
   };
+}
+
+function buildCanvasWithDesignIdea(design, ideaContext, dimensionId, templateIdOverride) {
+  const templateId = templateIdOverride || (ideaContext?.spec?.layout
+    ? ({ centered: 'centered-hero', split: 'split-left', grid: 'bottom-stack', hero: 'centered-hero', minimal: 'minimal-top' }[ideaContext.spec.layout] || 'centered-hero')
+    : undefined);
+  const canvas = designToCanvas(design, templateId);
+  if (!ideaContext?.imageUrl && !ideaContext?.spec?.colorPalette) return canvas;
+
+  canvas.background = buildAestheticBackground(ideaContext.spec, ideaContext.imageUrl);
   canvas.referenceImageUrl = ideaContext.imageUrl;
   canvas.designIdeaBased = true;
+  canvas.aestheticOnly = true;
 
   if (ideaContext.spec) {
     return applySpecPlacements(canvas, ideaContext.spec);

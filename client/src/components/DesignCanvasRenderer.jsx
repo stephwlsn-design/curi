@@ -2,7 +2,7 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
   if (!canvas) return null
 
   const { width, height, background, elements, audio } = canvas
-  const bgStyle = background?.type === 'gradient'
+  const bgStyle = background?.type === 'gradient' || background?.type === 'aesthetic'
     ? { background: `linear-gradient(${background.angle || 135}deg, ${background.colors?.[0]} 0%, ${background.colors?.[1] || background.colors?.[0]} 100%)` }
     : (background?.type === 'image' || background?.type === 'video')
       ? {}
@@ -19,6 +19,23 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
       style={{ width: scaledW, height: scaledH, ...bgStyle }}
       onClick={interactive ? () => onSelect?.(null) : undefined}
     >
+      {background?.type === 'aesthetic' && background.textureUrl && (
+        <>
+          <img
+            src={background.textureUrl}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none scale-110"
+            style={{
+              opacity: background.textureOpacity ?? 0.2,
+              filter: `blur(${background.textureBlur ?? 28}px) saturate(1.1)`,
+            }}
+            draggable={false}
+          />
+          {background.overlay && (
+            <div className="absolute inset-0 pointer-events-none" style={{ background: background.overlay }} />
+          )}
+        </>
+      )}
       {background?.type === 'image' && background.url && (
         <>
           <img

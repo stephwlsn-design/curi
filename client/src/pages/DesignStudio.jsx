@@ -2,11 +2,11 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   LayoutTemplate, Image, Film, Type, Layers, Sparkles, Search, Loader2, CheckCircle2,
-  ChevronLeft, ChevronRight, GripVertical, Smile, Volume2,
+  ChevronLeft, ChevronRight, GripVertical, Smile, Volume2, Lightbulb,
 } from 'lucide-react'
 import { API, useAuth } from '../context/AuthContext'
 import DesignStepGuide, { DESIGN_STEPS } from '../components/DesignStepGuide'
-import DesignInspirationBar from '../components/DesignInspirationBar'
+import DesignInspirationPanel from '../components/DesignInspirationPanel'
 import DesignTemplateGallery from '../components/DesignTemplateGallery'
 import DesignMediaPanel from '../components/DesignMediaPanel'
 import AnimatedCharactersPanel from '../components/AnimatedCharactersPanel'
@@ -14,22 +14,24 @@ import DesignAudioPanel from '../components/DesignAudioPanel'
 import DesignCanvasEditor from '../components/DesignCanvasEditor'
 import { useDesignCreation } from '../hooks/useDesignCreation'
 import { isDraftDesign } from '../utils/localDesign'
-import { buildDesignFromInspiration } from '../utils/inspirationCanvas'
+import { buildDesignFromInspiration, buildCarouselFromInspiration } from '../utils/inspirationCanvas'
+import { getPostFormat } from '../constants/postFormats'
 import { applyCharacterToCanvas, applyTalkingCharacterToCanvas } from '../utils/characterCanvas'
 import { applyAudioToCanvas } from '../utils/audioCanvas'
 import toast from 'react-hot-toast'
 
 const PANELS = [
-  { id: 'templates', label: 'Templates', icon: LayoutTemplate, step: 1 },
-  { id: 'photos', label: 'Photos', icon: Image, step: 2 },
-  { id: 'videos', label: 'Videos', icon: Film, step: 2 },
-  { id: 'characters', label: 'Characters', icon: Smile, step: 2 },
-  { id: 'audio', label: 'Audio', icon: Volume2, step: 2 },
-  { id: 'text', label: 'Text', icon: Type, step: 3 },
-  { id: 'elements', label: 'Elements', icon: Layers, step: 3 },
+  { id: 'inspiration', label: 'Inspire', icon: Lightbulb, step: 1 },
+  { id: 'templates', label: 'Templates', icon: LayoutTemplate, step: 2 },
+  { id: 'photos', label: 'Photos', icon: Image, step: 3 },
+  { id: 'videos', label: 'Videos', icon: Film, step: 3 },
+  { id: 'characters', label: 'Characters', icon: Smile, step: 3 },
+  { id: 'audio', label: 'Audio', icon: Volume2, step: 3 },
+  { id: 'text', label: 'Text', icon: Type, step: 4 },
+  { id: 'elements', label: 'Elements', icon: Layers, step: 4 },
 ]
 
-const STEP_PANEL = { 1: 'templates', 2: 'photos', 3: 'text', 4: 'finalize' }
+const STEP_PANEL = { 1: 'inspiration', 2: 'templates', 3: 'photos', 4: 'text', 5: 'finalize' }
 
 const ASSET_PANEL_MIN = 220
 const ASSET_PANEL_MAX = 560
@@ -59,7 +61,7 @@ export default function DesignStudio() {
   panelWidthRef.current = assetPanelWidth
 
   const initialStep = Number(searchParams.get('step')) || 1
-  const initialPanel = searchParams.get('panel') || STEP_PANEL[initialStep] || 'templates'
+  const initialPanel = searchParams.get('panel') || STEP_PANEL[initialStep] || 'inspiration'
 
   const [step, setStep] = useState(initialStep)
   const [panel, setPanel] = useState(initialPanel)
@@ -69,6 +71,11 @@ export default function DesignStudio() {
   const [generating, setGenerating] = useState(false)
   const [extracting, setExtracting] = useState(false)
   const [designIdea, setDesignIdea] = useState(null)
+  const [postFormat, setPostFormat] = useState('social_post')
+  const [dimensionId, setDimensionId] = useState('1080x1080')
+  const [carouselSlideCount, setCarouselSlideCount] = useState(5)
+  const [carouselDesigns, setCarouselDesigns] = useState([])
+  const [carouselIndex, setCarouselIndex] = useState(0)
   const [loadingDesign, setLoadingDesign] = useState(false)
 
   const {
@@ -94,16 +101,17 @@ export default function DesignStudio() {
 
   const completedSteps = useMemo(() => {
     const done = []
-    if (design?.canvasLayout?.templateId || selectedTemplateId || design?.canvasLayout?.designIdeaBased) done.push(1)
+    if (designIdea?.imageUrl || design?.canvasLayout?.designIdeaBased || design?.canvasLayout?.aestheticOnly) done.push(1)
+    if (design?.canvasLayout?.templateId || selectedTemplateId) done.push(2)
     const bg = design?.canvasLayout?.background
-    if (bg?.type === 'image' || bg?.type === 'video' || design?.canvasLayout?.audio || design?.canvasLayout?.elements?.some(e => e.type === 'image' || e.type === 'character' || e.type === 'talking-character')) {
-      done.push(2)
-    }
-    if (design?.headline || design?.canvasLayout?.elements?.some(e => e.text && e.text !== 'Your Headline')) {
+    if (bg?.type === 'image' || bg?.type === 'video' || bg?.type === 'aesthetic' || design?.canvasLayout?.audio || design?.canvasLayout?.elements?.some(e => e.type === 'image' || e.type === 'character' || e.type === 'talking-character')) {
       done.push(3)
     }
+    if (design?.headline || design?.canvasLayout?.elements?.some(e => e.text && e.text !== 'Your Headline')) {
+      done.push(4)
+    }
     return done
-  }, [design, selectedTemplateId])
+  }, [design, selectedTemplateId, designIdea])
 
   const loadDesign = useCallback(async (id) => {
     if (!workspaceId || !id) return null
@@ -127,7 +135,7 @@ export default function DesignStudio() {
   useEffect(() => {
     const s = Number(searchParams.get('step'))
     const p = searchParams.get('panel')
-    if (s >= 1 && s <= 4) setStep(s)
+    if (s >= 1 && s <= 5) setStep(s)
     if (p) setPanel(p)
   }, [searchParams])
 
@@ -202,7 +210,7 @@ export default function DesignStudio() {
 
   const handleStepChange = (nextStep) => {
     setStep(nextStep)
-    if (nextStep === 4) setPanel('finalize')
+    if (nextStep === 5) setPanel('finalize')
     else setPanel(STEP_PANEL[nextStep])
   }
 
@@ -217,7 +225,7 @@ export default function DesignStudio() {
     const created = await startFromTemplate(template.id)
     if (created) {
       applyDesign(created)
-      setStep(2)
+      setStep(3)
       setPanel('photos')
       toast.success('Template applied — add photos or continue customizing')
     }
@@ -228,7 +236,7 @@ export default function DesignStudio() {
     const created = await startFromTemplate(null, template)
     if (created) {
       applyDesign(created)
-      setStep(2)
+      setStep(3)
       setPanel('photos')
     }
   }
@@ -236,33 +244,33 @@ export default function DesignStudio() {
   const handlePhoto = async (item, useAs) => {
     if (editorRef.current && design) {
       editorRef.current.applyPexelsPhoto(item, useAs)
-      setStep(3)
+      setStep(4)
       return
     }
     const created = await createFromPexelsPhoto(item, useAs, design)
     if (created) {
       setDesign(created)
-      setStep(3)
+      setStep(4)
     }
   }
 
   const handleVideo = async (item) => {
     if (editorRef.current && design) {
       editorRef.current.applyPexelsVideo(item)
-      setStep(3)
+      setStep(4)
       return
     }
     const created = await createFromPexelsVideo(item, design)
     if (created) {
       setDesign(created)
-      setStep(3)
+      setStep(4)
     }
   }
 
   const handleCharacter = async (character) => {
     if (editorRef.current && design) {
       editorRef.current.applyCharacter(character)
-      setStep(3)
+      setStep(4)
       return
     }
     let d = design
@@ -273,14 +281,14 @@ export default function DesignStudio() {
     }
     const canvasLayout = applyCharacterToCanvas(d.canvasLayout, character)
     setDesign({ ...d, canvasLayout })
-    setStep(3)
+    setStep(4)
     toast.success(`Added ${character.name}`)
   }
 
   const handleTalkingCharacter = async (payload) => {
     if (editorRef.current && design) {
       editorRef.current.applyTalkingCharacter(payload)
-      setStep(3)
+      setStep(4)
       return
     }
     let d = design
@@ -291,13 +299,13 @@ export default function DesignStudio() {
     }
     const canvasLayout = applyTalkingCharacterToCanvas(d.canvasLayout, payload)
     setDesign({ ...d, canvasLayout })
-    setStep(3)
+    setStep(4)
   }
 
   const handleAudio = async (audio) => {
     if (editorRef.current && design) {
       editorRef.current.applyAudio(audio)
-      setStep(3)
+      setStep(4)
       return
     }
     let d = design
@@ -308,7 +316,7 @@ export default function DesignStudio() {
     }
     const canvasLayout = applyAudioToCanvas(d.canvasLayout, audio)
     setDesign({ ...d, canvasLayout })
-    setStep(3)
+    setStep(4)
   }
 
   const handleExtractInspiration = async (idea = designIdea) => {
@@ -316,18 +324,24 @@ export default function DesignStudio() {
       return toast.error('Upload an inspiration image or add notes first')
     }
     setExtracting(true)
+    setCarouselDesigns([])
     try {
-      if (idea.analyzedSpec && idea.imageUrl) {
+      const format = getPostFormat(postFormat)
+      const useLocal = idea.analyzedSpec?.aestheticOnly && idea.imageUrl
+
+      if (useLocal) {
         const created = buildDesignFromInspiration({
           designIdea: idea,
           brandColors: workspace?.brandProfile?.colors?.palette,
           prompt: brief,
+          dimensionId,
+          postFormat,
         })
         applyDesign(created)
         setSelectedTemplateId(created.templateId)
-        setStep(3)
+        setStep(4)
         setPanel('text')
-        toast.success('Design elements extracted to canvas')
+        toast.success(`${format.label} created — aesthetics only, your copy on canvas`)
         return
       }
 
@@ -335,15 +349,18 @@ export default function DesignStudio() {
         workspaceId,
         designIdea: idea,
         prompt: brief,
-        dimensionId: '1080x1080',
+        dimensionId,
+        postFormat,
+        creativeType: format.creativeType,
+        templateId: format.templateId,
       })
       if (data.design) {
         applyDesign(data.design)
         if (data.designIdea) setDesignIdea(data.designIdea)
         setSelectedTemplateId(data.design.templateId || data.design.canvasLayout?.templateId)
-        setStep(3)
+        setStep(4)
         setPanel('text')
-        toast.success('Design elements extracted to canvas')
+        toast.success(`${format.label} created from inspiration`)
         fetchMe?.()
       }
     } catch (err) {
@@ -351,6 +368,40 @@ export default function DesignStudio() {
     } finally {
       setExtracting(false)
     }
+  }
+
+  const handleExtractCarousel = async (idea = designIdea) => {
+    if (!idea?.imageUrl && !idea?.notes) {
+      return toast.error('Upload an inspiration image first')
+    }
+    setExtracting(true)
+    try {
+      const slides = buildCarouselFromInspiration({
+        designIdea: idea,
+        brandColors: workspace?.brandProfile?.colors?.palette,
+        prompt: brief,
+        dimensionId,
+        postFormat: 'carousel',
+        slideCount: carouselSlideCount,
+      })
+      setCarouselDesigns(slides)
+      setCarouselIndex(0)
+      applyDesign(slides[0])
+      setSelectedTemplateId(slides[0].templateId)
+      setStep(4)
+      setPanel('text')
+      toast.success(`Created ${slides.length} carousel slides — editing slide 1`)
+    } catch (err) {
+      toast.error(err.message || 'Could not create carousel')
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  const switchCarouselSlide = (index) => {
+    if (!carouselDesigns[index]) return
+    setCarouselIndex(index)
+    applyDesign(carouselDesigns[index])
   }
 
   const handleGenerate = async () => {
@@ -362,9 +413,9 @@ export default function DesignStudio() {
       const { data } = await API.post('/design/generate', {
         workspaceId,
         prompt: brief || 'Design based on uploaded inspiration',
-        creativeType: 'social_post',
+        creativeType: getPostFormat(postFormat).creativeType,
         channels: ['instagram'],
-        dimensionId: '1080x1080',
+        dimensionId,
         variantCount: 1,
         style: 'modern',
         designIdea,
@@ -372,7 +423,7 @@ export default function DesignStudio() {
       const first = data.designs?.[0]
       if (first) {
         applyDesign(first)
-        setStep(3)
+        setStep(4)
         setPanel('text')
         toast.success('Design generated — customize on canvas')
         fetchMe?.()
@@ -429,15 +480,6 @@ export default function DesignStudio() {
         currentStep={step}
         onStepChange={handleStepChange}
         completedSteps={completedSteps}
-      />
-
-      <DesignInspirationBar
-        workspaceId={workspaceId}
-        value={designIdea}
-        onChange={setDesignIdea}
-        onExtract={handleExtractInspiration}
-        extracting={extracting}
-        brief={brief}
       />
 
       <div ref={splitRef} className={`flex flex-1 min-h-0 ${isResizing ? 'select-none cursor-col-resize' : ''}`}>
@@ -516,12 +558,49 @@ export default function DesignStudio() {
                 <Search size={14} /> Search
               </button>
             </div>
-            <p className="text-[10px] text-theme-muted/50 leading-snug">
-              Step {step} of 4 — {DESIGN_STEPS.find(s => s.id === step)?.description}
+            <p className="text-xs text-theme-muted/50 leading-snug">
+              Step {step} of 5 — {DESIGN_STEPS.find(s => s.id === step)?.description}
             </p>
+            {carouselDesigns.length > 1 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {carouselDesigns.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => switchCarouselSlide(i)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                      carouselIndex === i
+                        ? 'bg-curi-pink text-white border-curi-pink'
+                        : 'border-theme-border text-theme-muted/60'
+                    }`}
+                  >
+                    Slide {i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 min-h-0">
+            {panel === 'inspiration' && (
+              <DesignInspirationPanel
+                embedded
+                workspaceId={workspaceId}
+                value={designIdea}
+                onChange={setDesignIdea}
+                onExtract={handleExtractInspiration}
+                onExtractCarousel={handleExtractCarousel}
+                extracting={extracting}
+                brief={brief}
+                postFormat={postFormat}
+                onPostFormatChange={setPostFormat}
+                dimensionId={dimensionId}
+                onDimensionChange={setDimensionId}
+                carouselSlideCount={carouselSlideCount}
+                onCarouselSlideCountChange={setCarouselSlideCount}
+              />
+            )}
+
             {panel === 'templates' && (
               <DesignTemplateGallery
                 embedded
@@ -617,7 +696,7 @@ export default function DesignStudio() {
                 <p className="text-xs text-theme-muted/60">
                   Confirm each step is complete, then save your final asset to the design library.
                 </p>
-                {DESIGN_STEPS.slice(0, 3).map(s => (
+                {DESIGN_STEPS.slice(0, 4).map(s => (
                   <div key={s.id} className="flex items-start gap-2 text-xs">
                     <CheckCircle2
                       size={16}
@@ -692,7 +771,7 @@ export default function DesignStudio() {
               <LayoutTemplate size={48} className="text-theme-muted/30 mb-4" />
               <h3 className="text-lg font-bold text-theme-text mb-2">Start your creative</h3>
               <p className="text-sm text-theme-muted/60 max-w-sm mb-6">
-                Choose a template from the left, search stock photos, or describe your design and hit Generate.
+                Upload design inspiration in Step 1, pick your post format and dimensions, then extract to canvas.
               </p>
               <button
                 type="button"

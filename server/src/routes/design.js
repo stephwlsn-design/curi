@@ -64,6 +64,9 @@ router.post('/from-inspiration', checkCredits(2), async (req, res) => {
     headline,
     subheadline,
     cta,
+    postFormat = 'social_post',
+    creativeType = 'social_post',
+    templateId,
   } = req.body;
 
   const workspace = await findAccessibleWorkspace(workspaceId, req.user._id);
@@ -112,15 +115,17 @@ router.post('/from-inspiration', checkCredits(2), async (req, res) => {
       name: 'Inspired Design',
       referenceImageUrl: ideaContext?.imageUrl,
       designIdeaApplied: true,
+      postFormat,
+      creativeType,
       compositionNotes: ideaContext?.direction
-        ? `Extracted from inspiration: ${ideaContext.direction.slice(0, 200)}`
+        ? `Aesthetic extracted (text stripped): ${ideaContext.direction.slice(0, 200)}`
         : undefined,
     };
 
     const enriched = designService.applyDesignIdeaToDesign(design, ideaContext);
-    const canvasLayout = ideaContext?.imageUrl
-      ? buildCanvasWithDesignIdea(enriched, ideaContext, dimensionId)
-      : designToCanvas(enriched);
+    const canvasLayout = (ideaContext?.imageUrl || ideaContext?.spec)
+      ? buildCanvasWithDesignIdea(enriched, ideaContext, dimensionId, templateId)
+      : designToCanvas(enriched, templateId);
 
     const saved = await Content.create({
       workspace: workspaceId,

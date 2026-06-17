@@ -26,7 +26,7 @@ const resolveDesignIdeaContext = async (designIdea) => {
   const idea = normalizeDesignIdea(designIdea);
   if (!idea.notes && !idea.hasImage) return null;
 
-  if (designIdea?.analyzedSpec && (designIdea?.analyzedDirection || !idea.hasImage)) {
+  if (designIdea?.analyzedSpec && designIdea.analyzedSpec.aestheticOnly && (designIdea?.analyzedDirection || !idea.hasImage)) {
     return {
       direction: designIdea.analyzedDirection || idea.notes,
       imagePath: idea.imagePath,
@@ -40,24 +40,32 @@ const resolveDesignIdeaContext = async (designIdea) => {
   }
 
   const parsed = await generateJSON({
-    system: `You are a senior creative director reverse-engineering a reference design into reusable specs.
-Study the attached reference image precisely. Return ONLY valid JSON.`,
-    user: `Analyze this reference design image in detail for reproduction in marketing creatives.
+    system: `You are a senior creative director reverse-engineering a reference design into reusable AESTHETIC specs only.
+Study the attached reference image precisely. Return ONLY valid JSON.
+
+CRITICAL RULES:
+- IGNORE all text, headlines, body copy, logos with words, and CTAs visible in the reference.
+- Do NOT transcribe, quote, or reproduce any words from the image.
+- Extract ONLY visual aesthetics: color palette, gradients, composition rhythm, spacing, shapes, mood, and typography STYLE (weight, feel — not content).
+- Placements describe where NEW user copy should go — not where existing reference text is.`,
+    user: `Analyze this reference design for aesthetic reproduction WITHOUT any of its text content.
 User notes: ${idea.notes || 'None'}
 
-Extract exact visual specs so new designs can LOOK LIKE this reference with different copy.
+Extract visual specs so new designs share the same LOOK (colors, layout style, typography mood) with completely different copy.
 
 Return JSON:
 {
-  "direction": "2-3 sentences: how to replicate this visual style",
+  "direction": "2-3 sentences describing aesthetic style only — no text from the image",
   "colorPalette": ["#hex1", "#hex2", "#hex3"],
   "layout": "centered|split|grid|hero|minimal",
   "textColor": "#hex",
   "subtextColor": "#hex or rgba",
   "ctaBackground": "#hex",
   "ctaTextColor": "#hex",
-  "overlayOpacity": 0.35,
-  "typography": "description of font style",
+  "overlayOpacity": 0.12,
+  "textureOpacity": 0.2,
+  "gradientAngle": 135,
+  "typography": "description of font style only",
   "placements": {
     "headline": { "x": 0.08, "y": 0.32, "width": 0.84, "align": "center|left|right", "fontSize": 48 },
     "subheadline": { "x": 0.1, "y": 0.48, "width": 0.8, "align": "center", "fontSize": 22 },
@@ -76,9 +84,12 @@ Return JSON:
     subtextColor: parsed.subtextColor || 'rgba(255,255,255,0.85)',
     ctaBackground: parsed.ctaBackground || '#ffffff',
     ctaTextColor: parsed.ctaTextColor || '#1A2B48',
-    overlayOpacity: parsed.overlayOpacity ?? 0.35,
+    overlayOpacity: parsed.overlayOpacity ?? 0.12,
+    textureOpacity: parsed.textureOpacity ?? 0.2,
+    gradientAngle: parsed.gradientAngle ?? 135,
     typography: parsed.typography || 'bold sans-serif',
     placements: parsed.placements || null,
+    aestheticOnly: true,
   };
 
   const direction = [parsed.direction, idea.notes ? `User notes: ${idea.notes}` : ''].filter(Boolean).join('\n');
