@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   LayoutTemplate, Image, Film, Type, Layers, Sparkles, Search, Loader2, CheckCircle2,
@@ -25,7 +25,7 @@ export default function DesignStudio() {
   const navigate = useNavigate()
   const { designId } = useParams()
   const [searchParams] = useSearchParams()
-  const { workspace, fetchMe } = useAuth()
+  const { workspace, fetchMe, loading: authLoading } = useAuth()
   const editorRef = useRef(null)
 
   const initialStep = Number(searchParams.get('step')) || 1
@@ -37,7 +37,7 @@ export default function DesignStudio() {
   const [brief, setBrief] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [generating, setGenerating] = useState(false)
-  const [initLoading, setInitLoading] = useState(true)
+  const [loadingDesign, setLoadingDesign] = useState(false)
 
   const {
     workspaceId,
@@ -64,25 +64,21 @@ export default function DesignStudio() {
     return done
   }, [design, selectedTemplateId])
 
-  const loadDesign = async (id) => {
-    if (!workspaceId || !id) return
+  const loadDesign = useCallback(async (id) => {
+    if (!workspaceId || !id) return null
     try {
       const { data } = await API.get(`/design/library?workspaceId=${workspaceId}`)
-      const found = (data.designs || []).find(d => d._id === id)
-      if (found) setDesign(found)
+      return (data.designs || []).find(d => String(d._id) === String(id)) || null
     } catch {
       toast.error('Could not load design')
+      return null
     }
-  }
+  }, [workspaceId])
 
-  const ensureDesign = async () => {
-    if (design) return design
-    const created = await startBlankCanvas()
-    if (created) {
-      setDesign(created)
-      navigate(`/design/studio/${created._id}`, { replace: true })
-    }
-    return created
+  const applyDesign = (created) => {
+    if (!created?._id) return
+    setDesign(created)
+    navigate(`/design/studio/${created._id}`, { replace: true })
   }
 
   useEffect(() => {
@@ -92,20 +88,26 @@ export default function DesignStudio() {
     if (p) setPanel(p)
   }, [searchParams])
 
-  useEffect(() => {
-    if (!workspaceId || designId) return
-    setInitLoading(true)
-    startBlankCanvas().then((created) => {
-      if (created) navigate(`/design/studio/${created._id}`, { replace: true })
-      setInitLoading(false)
-    })
-  }, [workspaceId, designId])
-
+  // Load existing design when opening a shared /studio/:id URL
   useEffect(() => {
     if (!workspaceId || !designId) return
-    setInitLoading(true)
-    loadDesign(designId).finally(() => setInitLoading(false))
-  }, [workspaceId, designId])
+    let cancelled = false
+    setLoadingDesign(true)
+    loadDesign(designId).then((found) => {
+      if (cancelled) return
+      if (found) setDesign(found)
+      else toast.error('Design not found — pick a template to start')
+      setLoadingDesign(false)
+    })
+    return () => { cancelled = true }
+  }, [workspaceId, designId, loadDesign])
+
+  const ensureDesign = async () => {
+    if (design) return design
+    const created = await startBlankCanvas()
+    if (created) applyDesign(created)
+    return created
+  }
 
   const handleStepChange = (nextStep) => {
     setStep(nextStep)
@@ -123,8 +125,7 @@ export default function DesignStudio() {
     setSelectedTemplateId(template.id)
     const created = await startFromTemplate(template.id, null, true)
     if (created) {
-      setDesign(created)
-      navigate(`/design/studio/${created._id}`, { replace: true })
+      applyDesign(created)
       setStep(2)
       setPanel('photos')
       toast.success('Template applied — add photos or continue customizing')
@@ -135,8 +136,7 @@ export default function DesignStudio() {
     setSelectedTemplateId(template._id)
     const created = await startFromTemplate(null, template)
     if (created) {
-      setDesign(created)
-      navigate(`/design/studio/${created._id}`, { replace: true })
+      applyDesign(created)
       setStep(2)
       setPanel('photos')
     }
@@ -150,8 +150,7 @@ export default function DesignStudio() {
     }
     const created = await createFromPexelsPhoto(item, useAs)
     if (created) {
-      setDesign(created)
-      navigate(`/design/studio/${created._id}`, { replace: true })
+      applyDesign(created)
       setStep(3)
     }
   }
@@ -164,8 +163,7 @@ export default function DesignStudio() {
     }
     const created = await createFromPexelsVideo(item)
     if (created) {
-      setDesign(created)
-      navigate(`/design/studio/${created._id}`, { replace: true })
+      applyDesign(created)
       setStep(3)
     }
   }
@@ -185,8 +183,7 @@ export default function DesignStudio() {
       })
       const first = data.designs?.[0]
       if (first) {
-        setDesign(first)
-        navigate(`/design/studio/${first._id}`, { replace: true })
+        applyDesign(first)
         setStep(3)
         setPanel('text')
         toast.success('Design generated — customize on canvas')
@@ -217,11 +214,20 @@ export default function DesignStudio() {
     setDesign(prev => (prev?._id === updated._id ? { ...prev, ...updated } : prev))
   }
 
-  if (initLoading || !design) {
+  if (authLoading || !workspaceId) {
     return (
       <div className="h-full flex items-center justify-center gap-3 text-theme-muted/60">
         <Loader2 className="animate-spin" size={24} />
-        <span className="text-sm font-medium">Setting up your design studio…</span>
+        <span className="text-sm font-medium">Loading workspace…</span>
+      </div>
+    )
+  }
+
+  if (loadingDesign && designId && !design) {
+    return (
+      <div className="h-full flex items-center justify-center gap-3 text-theme-muted/60">
+        <Loader2 className="animate-spin" size={24} />
+        <span className="text-sm font-medium">Loading design…</span>
       </div>
     )
   }
@@ -390,17 +396,35 @@ export default function DesignStudio() {
 
         {/* Canvas */}
         <div className="flex-1 min-w-0 min-h-0">
-          <DesignCanvasEditor
-            key={design._id}
-            ref={editorRef}
-            embedded
-            hideAssetSidebar
-            hideClose
-            design={design}
-            workspaceId={workspaceId}
-            userTemplates={userTemplates}
-            onSaved={handleDesignSaved}
-          />
+          {design ? (
+            <DesignCanvasEditor
+              key={design._id}
+              ref={editorRef}
+              embedded
+              hideAssetSidebar
+              hideClose
+              design={design}
+              workspaceId={workspaceId}
+              userTemplates={userTemplates}
+              onSaved={handleDesignSaved}
+            />
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center bg-theme-subtle/5 p-8 text-center">
+              <LayoutTemplate size={48} className="text-theme-muted/30 mb-4" />
+              <h3 className="text-lg font-bold text-theme-text mb-2">Start your creative</h3>
+              <p className="text-sm text-theme-muted/60 max-w-sm mb-6">
+                Choose a template from the left, search stock photos, or describe your design and hit Generate.
+              </p>
+              <button
+                type="button"
+                onClick={ensureDesign}
+                disabled={templateLoading}
+                className="btn-secondary text-sm"
+              >
+                {templateLoading ? 'Creating…' : 'Or start with a blank canvas'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
