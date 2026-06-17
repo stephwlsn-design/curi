@@ -140,3 +140,21 @@
     @apply card p-5;
   }
 }
+
+/* Scaled typography for legacy pixel-based text classes (light + dark) */
+.text-\[8px\],
+.text-\[9px\],
+.text-\[10px\] {
+  font-size: 1.125rem !important;
+  line-height: 1.625rem !important;
+}
+
+.text-\[11px\] {
+  font-size: 1.25rem !important;
+  line-height: 1.75rem !important;
+}
+
+.dark body,
+.dark {
+  font-size: inherit;
+}

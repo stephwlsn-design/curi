@@ -498,7 +498,7 @@ export default function DesignStudio() {
               }`}
             >
               <Icon size={18} />
-              <span className="text-xs font-bold leading-none">{label}</span>
+              <span className="text-sm font-bold leading-none">{label}</span>
             </button>
           ))}
         </div>
@@ -512,7 +512,7 @@ export default function DesignStudio() {
           <>
           <div className="p-3 border-b border-theme-border flex-shrink-0 space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold text-theme-muted/50 uppercase tracking-wider">Assets</span>
+              <span className="text-xs font-bold text-theme-muted/50 uppercase tracking-wider">Assets</span>
               <div className="flex items-center gap-0.5">
                 <button
                   type="button"
@@ -535,7 +535,7 @@ export default function DesignStudio() {
               </div>
             </div>
             <textarea
-              className="input w-full text-sm resize-none h-20"
+              className="input w-full resize-none h-20"
               placeholder="Describe your ideal design…"
               value={brief}
               onChange={e => setBrief(e.target.value)}
@@ -545,7 +545,7 @@ export default function DesignStudio() {
                 type="button"
                 onClick={handleGenerate}
                 disabled={generating}
-                className="btn-primary flex-1 text-xs py-2 flex items-center justify-center gap-1.5"
+                className="btn-primary flex-1 py-2 flex items-center justify-center gap-1.5"
               >
                 {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                 Generate
@@ -553,12 +553,12 @@ export default function DesignStudio() {
               <button
                 type="button"
                 onClick={handleSearch}
-                className="btn-secondary flex-1 text-xs py-2 flex items-center justify-center gap-1.5"
+                className="btn-secondary flex-1 py-2 flex items-center justify-center gap-1.5"
               >
                 <Search size={14} /> Search
               </button>
             </div>
-            <p className="text-xs text-theme-muted/50 leading-snug">
+            <p className="text-sm text-theme-muted/50 leading-snug">
               Step {step} of 5 — {DESIGN_STEPS.find(s => s.id === step)?.description}
             </p>
             {carouselDesigns.length > 1 && (
