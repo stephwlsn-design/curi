@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   LayoutTemplate, Image, Film, Type, Layers, Sparkles, Search, Loader2, CheckCircle2,
-  ChevronLeft, ChevronRight, GripVertical, Smile, Volume2, Lightbulb,
+  ChevronLeft, ChevronRight, GripVertical, Volume2, Lightbulb,
 } from 'lucide-react'
 import { API, useAuth } from '../context/AuthContext'
 import DesignStepGuide, { DESIGN_STEPS } from '../components/DesignStepGuide'
