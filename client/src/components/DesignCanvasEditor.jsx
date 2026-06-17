@@ -10,6 +10,8 @@ import { applyCharacterToCanvas, applyTalkingCharacterToCanvas } from '../utils/
 import { applyAudioToCanvas, removeAudioFromCanvas, getCanvasAudioUrl } from '../utils/audioCanvas'
 import {
   designToCanvas, applyTemplateToCanvas, canvasToDesignFields, syncCanvasTextFromDesign,
+  getElementBounds, canResizeElement, applyResizePatch,
+  RESIZE_HANDLES, resizeHandleCursor, resizeHandleStyle,
 } from '../utils/designCanvas'
 import { isDraftDesign } from '../utils/localDesign'
 
@@ -35,6 +37,9 @@ export default forwardRef(function DesignCanvasEditor({
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [sidebarTab, setSidebarTab] = useState('templates')
   const dragRef = useRef(null)
+  const resizeRef = useRef(null)
+
+  const HANDLE_PX = 10
 
   const selected = canvas.elements.find(e => e.id === selectedId)
 
@@ -64,6 +69,7 @@ export default forwardRef(function DesignCanvasEditor({
     setSelectedId(elId)
     const el = canvas.elements.find(x => x.id === elId)
     if (!el) return
+    const bounds = getElementBounds(el)
 
     dragRef.current = {
       elId,
@@ -71,6 +77,8 @@ export default forwardRef(function DesignCanvasEditor({
       startY: e.clientY,
       origX: el.x,
       origY: el.y,
+      maxX: canvas.width - bounds.width,
+      maxY: canvas.height - bounds.height,
     }
 
     const onMove = (ev) => {
@@ -78,13 +86,63 @@ export default forwardRef(function DesignCanvasEditor({
       const dx = (ev.clientX - dragRef.current.startX) / scale
       const dy = (ev.clientY - dragRef.current.startY) / scale
       updateElement(dragRef.current.elId, {
-        x: Math.round(Math.max(0, Math.min(canvas.width - 40, dragRef.current.origX + dx))),
-        y: Math.round(Math.max(0, Math.min(canvas.height - 20, dragRef.current.origY + dy))),
+        x: Math.round(Math.max(0, Math.min(dragRef.current.maxX, dragRef.current.origX + dx))),
+        y: Math.round(Math.max(0, Math.min(dragRef.current.maxY, dragRef.current.origY + dy))),
       })
     }
 
     const onUp = () => {
       dragRef.current = null
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  const onResizePointerDown = (e, elId, handle) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    setSelectedId(elId)
+    const el = canvas.elements.find(x => x.id === elId)
+    if (!el) return
+    const bounds = getElementBounds(el)
+
+    resizeRef.current = {
+      elId,
+      handle,
+      startX: e.clientX,
+      startY: e.clientY,
+      orig: {
+        x: el.x,
+        y: el.y,
+        width: bounds.width,
+        height: bounds.height,
+      },
+    }
+
+    const onMove = (ev) => {
+      if (!resizeRef.current) return
+      const dx = (ev.clientX - resizeRef.current.startX) / scale
+      const dy = (ev.clientY - resizeRef.current.startY) / scale
+      const target = canvas.elements.find(x => x.id === resizeRef.current.elId)
+      if (!target) return
+      const patch = applyResizePatch(
+        target,
+        resizeRef.current.handle,
+        resizeRef.current.orig,
+        dx,
+        dy,
+        canvas.width,
+        canvas.height,
+      )
+      updateElement(resizeRef.current.elId, patch)
+    }
+
+    const onUp = () => {
+      resizeRef.current = null
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
     }
@@ -396,29 +454,85 @@ export default forwardRef(function DesignCanvasEditor({
         {/* Canvas area */}
         <div ref={containerRef} className="flex-1 flex items-center justify-center p-6 bg-theme-subtle/5 overflow-auto">
           <div className="relative shadow-2xl rounded-lg overflow-hidden ring-1 ring-black/10">
-            <div className="relative">
+            <div
+              className="relative"
+              onPointerDown={(e) => {
+                if (e.target === e.currentTarget) setSelectedId(null)
+              }}
+            >
               <DesignCanvasRenderer
                 canvas={canvas}
                 scale={scale}
-                selectedId={selectedId}
+                selectedId={null}
                 onSelect={setSelectedId}
                 interactive
               />
-              {canvas.elements.filter(e => e.visible !== false).map(el => (
+              {canvas.elements.filter(e => e.visible !== false && e.id !== selectedId).map(el => {
+                const bounds = getElementBounds(el)
+                return (
+                  <div
+                    key={`hit-${el.id}`}
+                    className="absolute"
+                    style={{
+                      left: el.x * scale,
+                      top: el.y * scale,
+                      width: Math.max(bounds.width * scale, 24),
+                      height: Math.max(bounds.height * scale, 24),
+                      cursor: 'pointer',
+                      zIndex: 10,
+                    }}
+                    onPointerDown={e => onPointerDown(e, el.id)}
+                  />
+                )
+              })}
+              {selected && canResizeElement(selected) && (() => {
+                const bounds = getElementBounds(selected)
+                return (
+                  <div
+                    className="absolute"
+                    style={{
+                      left: selected.x * scale,
+                      top: selected.y * scale,
+                      width: bounds.width * scale,
+                      height: bounds.height * scale,
+                      zIndex: 20,
+                    }}
+                  >
+                    <div
+                      className="absolute inset-0 border-2 border-curi-pink shadow-[0_0_0_1px_rgba(255,107,157,0.25)] pointer-events-none"
+                    />
+                    <div
+                      className="absolute inset-0 cursor-move"
+                      style={{ margin: HANDLE_PX }}
+                      onPointerDown={e => onPointerDown(e, selected.id)}
+                    />
+                    {RESIZE_HANDLES.map((handle) => (
+                      <div
+                        key={handle}
+                        role="presentation"
+                        className="absolute bg-white border-2 border-curi-pink rounded-sm shadow-sm hover:bg-curi-pink/10 z-30"
+                        style={{
+                          ...resizeHandleStyle(handle, HANDLE_PX),
+                          cursor: resizeHandleCursor(handle),
+                        }}
+                        onPointerDown={e => onResizePointerDown(e, selected.id, handle)}
+                      />
+                    ))}
+                  </div>
+                )
+              })()}
+              {selected && !canResizeElement(selected) && (
                 <div
-                  key={`hit-${el.id}`}
-                  className="absolute"
+                  className="absolute border-2 border-curi-pink border-dashed pointer-events-none"
                   style={{
-                    left: el.x * scale,
-                    top: el.y * scale,
-                    width: Math.max(el.width * scale, 60),
-                    height: Math.max((el.height || (el.fontSize || 24) * 2) * scale, 36),
-                    cursor: 'move',
-                    zIndex: 10,
+                    left: selected.x * scale,
+                    top: selected.y * scale,
+                    width: getElementBounds(selected).width * scale,
+                    height: getElementBounds(selected).height * scale,
+                    zIndex: 20,
                   }}
-                  onPointerDown={e => onPointerDown(e, el.id)}
                 />
-              ))}
+              )}
             </div>
           </div>
         </div>
@@ -501,6 +615,26 @@ export default forwardRef(function DesignCanvasEditor({
                     onChange={e => updateElement(selected.id, { y: Number(e.target.value) })} />
                 </div>
               </div>
+              {canResizeElement(selected) && (
+                <div>
+                  <label className="text-[10px] text-theme-muted/40 font-bold uppercase">Width / Height</label>
+                  <div className="flex gap-2 mt-1">
+                    <input
+                      type="number"
+                      className="input text-sm"
+                      value={getElementBounds(selected).width}
+                      onChange={e => updateElement(selected.id, { width: Number(e.target.value) })}
+                    />
+                    <input
+                      type="number"
+                      className="input text-sm"
+                      value={getElementBounds(selected).height}
+                      onChange={e => updateElement(selected.id, { height: Number(e.target.value) })}
+                    />
+                  </div>
+                  <p className="text-[10px] text-theme-muted/45 mt-1">Drag corner or edge handles on canvas to resize</p>
+                </div>
+              )}
               {(selected.type === 'text' || selected.type === 'badge') && (
                 <>
                   <div>

@@ -70,7 +70,7 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
           top: el.y * scale,
           width: el.width * scale,
           cursor: interactive ? 'move' : 'default',
-          outline: isSelected ? '2px solid #FF6B9D' : 'none',
+          outline: isSelected && !interactive ? '2px solid #FF6B9D' : 'none',
           outlineOffset: 2,
           zIndex: el.zIndex ?? 2,
         }

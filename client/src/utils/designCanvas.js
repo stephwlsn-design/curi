@@ -185,3 +185,85 @@ export const syncCanvasTextFromDesign = (canvas, design) => ({
     return el
   }),
 })
+
+const MIN_ELEMENT_SIZE = 24
+
+export const getElementBounds = (el) => {
+  const width = el.width || 200
+  let height = el.height
+  if (!height) {
+    if (el.type === 'text' || el.type === 'badge') {
+      const lines = String(el.text || '').split('\n').length
+      height = Math.round((el.fontSize || 24) * Math.max(lines, 1) * 1.35)
+    } else if (el.type === 'button') {
+      height = Math.round((el.fontSize || 14) + 28)
+    } else {
+      height = width
+    }
+  }
+  return { width, height }
+}
+
+export const canResizeElement = (el) => {
+  if (!el || el.visible === false) return false
+  return ['image', 'character', 'talking-character', 'shape', 'text', 'button', 'badge'].includes(el.type)
+}
+
+export const applyResizePatch = (el, handle, orig, dx, dy, canvasW, canvasH) => {
+  let { x, y, width, height } = orig
+  const min = MIN_ELEMENT_SIZE
+
+  if (handle.includes('e')) width = Math.max(min, orig.width + dx)
+  if (handle.includes('w')) {
+    const nextW = Math.max(min, orig.width - dx)
+    x = orig.x + (orig.width - nextW)
+    width = nextW
+  }
+  if (handle.includes('s')) height = Math.max(min, orig.height + dy)
+  if (handle.includes('n')) {
+    const nextH = Math.max(min, orig.height - dy)
+    y = orig.y + (orig.height - nextH)
+    height = nextH
+  }
+
+  x = Math.round(Math.max(0, Math.min(canvasW - width, x)))
+  y = Math.round(Math.max(0, Math.min(canvasH - height, y)))
+  width = Math.round(Math.min(width, canvasW - x))
+  height = Math.round(Math.min(height, canvasH - y))
+
+  const patch = { x, y, width, height }
+
+  if ((el.type === 'text' || el.type === 'badge') && orig.width > 0) {
+    const ratio = width / orig.width
+    patch.fontSize = Math.max(8, Math.round((el.fontSize || 24) * ratio))
+  }
+  if (el.type === 'button' && orig.width > 0) {
+    const ratio = width / orig.width
+    patch.fontSize = Math.max(8, Math.round((el.fontSize || 14) * ratio))
+  }
+
+  return patch
+}
+
+export const RESIZE_HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
+
+export const resizeHandleCursor = (handle) => ({
+  nw: 'nwse-resize', n: 'ns-resize', ne: 'nesw-resize', e: 'ew-resize',
+  se: 'nwse-resize', s: 'ns-resize', sw: 'nesw-resize', w: 'ew-resize',
+}[handle] || 'default')
+
+export const resizeHandleStyle = (handle, size) => {
+  const half = size / 2
+  const base = { width: size, height: size, position: 'absolute' }
+  switch (handle) {
+    case 'nw': return { ...base, left: -half, top: -half }
+    case 'n': return { ...base, left: '50%', top: -half, transform: 'translateX(-50%)' }
+    case 'ne': return { ...base, right: -half, top: -half }
+    case 'e': return { ...base, right: -half, top: '50%', transform: 'translateY(-50%)' }
+    case 'se': return { ...base, right: -half, bottom: -half }
+    case 's': return { ...base, left: '50%', bottom: -half, transform: 'translateX(-50%)' }
+    case 'sw': return { ...base, left: -half, bottom: -half }
+    case 'w': return { ...base, left: -half, top: '50%', transform: 'translateY(-50%)' }
+    default: return base
+  }
+}
