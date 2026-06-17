@@ -36,6 +36,13 @@ const autonomousRunSchema = new mongoose.Schema({
     analyzedDirection: String,
     uploadedAt: Date,
   },
+  processingLockAt: Date,
+  pipelineState: {
+    contentIndex: { type: Number, default: 0 },
+    designIndex: { type: Number, default: 0 },
+    videoIndex: { type: Number, default: 0 },
+    designIdeaResolved: { type: Boolean, default: false },
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('AutonomousRun', autonomousRunSchema);

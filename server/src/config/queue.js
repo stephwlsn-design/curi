@@ -10,14 +10,23 @@ const QUEUE_NAMES = {
 
 const queues = {};
 
+const buildRedisOpts = () => {
+  const url = process.env.REDIS_URL?.trim();
+  if (url) return { redis: url };
+  const redis = getRedis();
+  if (!redis) return null;
+  return {
+    redis: {
+      host: process.env.REDIS_HOST || '127.0.0.1',
+      port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    },
+  };
+};
+
 const getQueue = (name) => {
   if (queues[name]) return queues[name];
 
-  const redis = getRedis();
-  const opts = redis
-    ? { redis: { host: process.env.REDIS_HOST || '127.0.0.1', port: parseInt(process.env.REDIS_PORT || '6379', 10) } }
-    : undefined;
-
+  const opts = buildRedisOpts();
   if (!opts) {
     logger.warn(`Queue ${name}: Redis unavailable, jobs will run in-process`);
     return null;

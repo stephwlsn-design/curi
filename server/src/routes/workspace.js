@@ -61,6 +61,7 @@ router.post('/onboarding', async (req, res) => {
   workspace.onboarding = {
     complete: true,
     companyName,
+    industry,
     website,
     targetAudience,
     socialChannels,

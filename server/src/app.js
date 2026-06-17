@@ -77,12 +77,10 @@ const createApp = async () => {
     const { seedTestUser } = require('./utils/seedTestUser');
     await seedTestUser();
   }
-  if (!process.env.VERCEL) {
-    try {
-      await failStaleAutonomousRuns();
-    } catch (err) {
-      logger.warn('Could not check stale autonomous runs:', err.message);
-    }
+  try {
+    await failStaleAutonomousRuns();
+  } catch (err) {
+    logger.warn('Could not check stale autonomous runs:', err.message);
   }
 
   const { UPLOAD_DIR, USER_DESIGN_DIR } = require('./middleware/upload');

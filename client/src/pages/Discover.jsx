@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { API } from '../context/AuthContext'
 import { useAuth } from '../context/AuthContext'
@@ -14,7 +14,7 @@ export default function Discover() {
   const { workspaceId, setWorkspace, fetchMe, workspace } = useAuth()
   const { markDiscoverComplete } = useCoreWorkflow()
   const navigate = useNavigate()
-  const [url, setUrl] = useState('')
+  const [url, setUrl] = useState(workspace?.brandProfile?.url || workspace?.onboarding?.website || '')
   const [loading, setLoading] = useState(false)
   const [profile, setProfile] = useState(workspace?.brandProfile?.name ? workspace.brandProfile : null)
 
@@ -22,6 +22,11 @@ export default function Discover() {
     if (s.url) setUrl(s.url)
     if (s.profile) setProfile(s.profile)
   })
+
+  useEffect(() => {
+    const fromWorkspace = workspace?.brandProfile?.url || workspace?.onboarding?.website
+    if (fromWorkspace && !url) setUrl(fromWorkspace)
+  }, [workspace?.brandProfile?.url, workspace?.onboarding?.website])
 
   const analyze = async () => {
     if (!url.trim()) return toast.error('Enter a URL first')

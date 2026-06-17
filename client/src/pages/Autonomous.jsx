@@ -26,6 +26,26 @@ const WORKFLOW_STEPS = [
 ]
 
 const CHANNELS = ['linkedin', 'instagram', 'twitter', 'tiktok', 'facebook']
+const BRAND_VOICES = ['professional', 'casual', 'witty', 'bold', 'authoritative', 'friendly']
+
+const mapProfileToOnboarding = (bp = {}, ob = {}) => {
+  const competitors = Array.isArray(bp.competitors)
+    ? bp.competitors.join(', ')
+    : (Array.isArray(ob.competitors) ? ob.competitors.join(', ') : (ob.competitors || ''))
+  const palette = bp.colors?.palette || ob.brandColors || []
+  return {
+    companyName: bp.name || ob.companyName || '',
+    website: bp.url || ob.website || '',
+    industry: bp.industry || ob.industry || '',
+    targetAudience: bp.audience || ob.targetAudience || '',
+    brandVoice: bp.voice || ob.brandVoice || 'professional',
+    socialChannels: ob.socialChannels?.length ? ob.socialChannels : [],
+    brandColors: palette,
+    competitors,
+    valueProposition: bp.valueProposition || '',
+    marketingSummary: bp.marketingSummary || '',
+  }
+}
 
 const runLabel = (r) => {
   if (r.label) return r.label
@@ -59,7 +79,9 @@ export default function Autonomous() {
   const [onboarding, setOnboarding] = useState({
     companyName: '', industry: '', website: '', targetAudience: '',
     brandVoice: 'professional', socialChannels: [], brandColors: [], competitors: '',
+    valueProposition: '', marketingSummary: '',
   })
+  const [discovering, setDiscovering] = useState(false)
 
   useDraftModule('autonomous', () => ({
     days, channels, designIdea, onboarding,
@@ -72,6 +94,32 @@ export default function Autonomous() {
   })
 
   const brandReady = workspace?.brandProfile?.name || workspace?.onboarding?.complete || workspace?.brandProfile?.url
+  const hasDiscoveryData = Boolean(workspace?.brandProfile?.name || workspace?.brandProfile?.lastDiscoveredAt)
+
+  const applyDiscoveryData = useCallback((bp = workspace?.brandProfile, ob = workspace?.onboarding) => {
+    if (!bp?.name && !bp?.url) return toast.error('No discovery data — run Discover from a URL first')
+    setOnboarding(mapProfileToOnboarding(bp, ob))
+    toast.success('Fields filled from discovery')
+  }, [workspace])
+
+  const discoverFromUrl = async () => {
+    const url = onboarding.website?.trim() || workspace?.brandProfile?.url
+    if (!url) return toast.error('Enter a website URL first')
+    if (!workspaceId) return toast.error('Workspace not loaded')
+    setDiscovering(true)
+    try {
+      const { data } = await API.post('/discover', { url, workspaceId }, { timeout: 55000 })
+      const bp = data.brandProfile
+      setWorkspace((prev) => (prev ? { ...prev, brandProfile: bp } : prev))
+      setOnboarding(mapProfileToOnboarding(bp, workspace?.onboarding))
+      fetchMe?.()
+      toast.success(data.note || 'Brand discovered from URL — review and save')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Discovery failed')
+    } finally {
+      setDiscovering(false)
+    }
+  }
 
   const fetchHistory = useCallback(async () => {
     if (!workspaceId) return
@@ -144,17 +192,7 @@ export default function Autonomous() {
       const ob = r.data.onboarding
       const bp = r.data.brandProfile
       if (ob || bp) {
-        const competitors = Array.isArray(ob?.competitors) ? ob.competitors.join(', ') : (ob?.competitors || '')
-        setOnboarding(prev => ({
-          ...prev,
-          companyName: ob?.companyName || bp?.name || prev.companyName,
-          website: ob?.website || bp?.url || prev.website,
-          industry: bp?.industry || prev.industry,
-          targetAudience: ob?.targetAudience || bp?.audience || prev.targetAudience,
-          brandVoice: ob?.brandVoice || bp?.voice || prev.brandVoice,
-          ...ob,
-          competitors,
-        }))
+        setOnboarding(mapProfileToOnboarding(bp, ob))
       }
       if (bp) {
         setWorkspace(prev => prev ? { ...prev, brandProfile: bp, onboarding: ob } : prev)
@@ -243,17 +281,73 @@ export default function Autonomous() {
               {brandReady && <span className="badge bg-curi-green/15 text-curi-green">Ready</span>}
             </div>
             <div className="space-y-3">
+              {hasDiscoveryData && (
+                <div className="rounded-xl border border-curi-green/30 bg-curi-green/5 p-3 space-y-2">
+                  <p className="text-[10px] text-theme-muted/60 leading-snug">
+                    Discovery data available for <span className="font-bold text-theme-text">{workspace?.brandProfile?.name}</span>
+                    {workspace?.brandProfile?.lastDiscoveredAt && (
+                      <span className="block text-theme-muted/45 mt-0.5">
+                        Last discovered {new Date(workspace.brandProfile.lastDiscoveredAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => applyDiscoveryData()}
+                      className="btn-secondary text-[10px] py-1.5 px-2"
+                    >
+                      Use discovery data
+                    </button>
+                    <button
+                      type="button"
+                      onClick={discoverFromUrl}
+                      disabled={discovering}
+                      className="btn-secondary text-[10px] py-1.5 px-2"
+                    >
+                      {discovering ? 'Discovering…' : 'Re-discover from URL'}
+                    </button>
+                  </div>
+                </div>
+              )}
               <input className="input text-sm" placeholder="Company name" value={onboarding.companyName}
                 onChange={e => setOnboarding(p => ({ ...p, companyName: e.target.value }))} />
-              <input className="input text-sm" placeholder="Website" value={onboarding.website}
+              <input className="input text-sm" placeholder="Website (https://…)" value={onboarding.website}
                 onChange={e => setOnboarding(p => ({ ...p, website: e.target.value }))} />
               <input className="input text-sm" placeholder="Industry" value={onboarding.industry}
                 onChange={e => setOnboarding(p => ({ ...p, industry: e.target.value }))} />
               <input className="input text-sm" placeholder="Target audience" value={onboarding.targetAudience}
                 onChange={e => setOnboarding(p => ({ ...p, targetAudience: e.target.value }))} />
+              <select
+                className="input text-sm"
+                value={onboarding.brandVoice}
+                onChange={e => setOnboarding(p => ({ ...p, brandVoice: e.target.value }))}
+              >
+                {BRAND_VOICES.map((v) => (
+                  <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)} voice</option>
+                ))}
+              </select>
+              <input className="input text-sm" placeholder="Competitors (comma-separated)" value={onboarding.competitors}
+                onChange={e => setOnboarding(p => ({ ...p, competitors: e.target.value }))} />
+              {onboarding.valueProposition && (
+                <p className="text-[10px] text-theme-muted/55 leading-snug border border-theme-border rounded-lg p-2 bg-theme-subtle/5">
+                  <span className="font-bold text-theme-muted/70">Value prop: </span>
+                  {onboarding.valueProposition}
+                </p>
+              )}
               <button onClick={saveOnboarding} className="btn-secondary w-full text-sm">Save Brand Profile</button>
-              <button onClick={() => navigate('/discover')} className="text-xs text-curi-blue font-bold hover:underline">
-                Or run Discover from URL
+              {!hasDiscoveryData && (
+                <button
+                  type="button"
+                  onClick={discoverFromUrl}
+                  disabled={discovering || !onboarding.website?.trim()}
+                  className="btn-primary w-full text-sm"
+                >
+                  {discovering ? 'Discovering from URL…' : 'Discover brand from URL'}
+                </button>
+              )}
+              <button onClick={() => navigate('/discover')} className="text-xs text-curi-blue font-bold hover:underline w-full text-center">
+                Open full Discover page
               </button>
             </div>
           </div>

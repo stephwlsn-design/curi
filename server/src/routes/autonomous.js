@@ -8,7 +8,7 @@ const Strategy = require('../models/Strategy');
 const CalendarEntry = require('../models/CalendarEntry');
 const PublishJob = require('../models/PublishJob');
 const Content = require('../models/Content');
-const { PIPELINE_STEPS } = require('../services/autonomousEngineService');
+const { PIPELINE_STEPS, advanceAutonomousPipeline } = require('../services/autonomousEngineService');
 const { enqueueAutonomousRun, enqueueTopicDiscovery } = require('../workers');
 const UserPreferences = require('../models/UserPreferences');
 const { getTopPreferences } = require('../services/learningService');
@@ -34,18 +34,50 @@ router.post('/generate', checkCredits(100), async (req, res) => {
   });
 
   await req.user.deductCredits(req.creditCost);
-  enqueueAutonomousRun(run._id);
+  if (process.env.VERCEL) {
+    // Vercel: client polling advances the pipeline step-by-step
+    enqueueAutonomousRun(run._id).catch(() => {});
+  } else {
+    enqueueAutonomousRun(run._id);
+  }
 
   res.status(202).json({ run, message: `Autonomous ${days}-day campaign started` });
 });
 
-router.get('/run/:id', async (req, res) => {
+router.post('/run/:id/advance', async (req, res) => {
   const run = await AutonomousRun.findOne({
+    _id: req.params.id,
+    createdBy: req.user._id,
+  });
+  if (!run) return res.status(404).json({ error: 'Run not found' });
+  if (!['queued', 'running'].includes(run.status)) {
+    return res.json({ run, message: 'Pipeline not active' });
+  }
+  try {
+    const updated = await advanceAutonomousPipeline(run._id);
+    return res.json({ run: updated });
+  } catch (err) {
+    const failed = await AutonomousRun.findById(run._id);
+    return res.status(502).json({ error: err.message, run: failed });
+  }
+});
+
+router.get('/run/:id', async (req, res) => {
+  let run = await AutonomousRun.findOne({
     _id: req.params.id,
     createdBy: req.user._id,
   }).populate('strategy');
 
   if (!run) return res.status(404).json({ error: 'Run not found' });
+
+  if (['queued', 'running'].includes(run.status)) {
+    try {
+      run = await advanceAutonomousPipeline(run._id);
+      run = await AutonomousRun.findById(run._id).populate('strategy');
+    } catch (err) {
+      run = await AutonomousRun.findById(run._id).populate('strategy');
+    }
+  }
 
   const runId = String(run._id);
   const runFilter = { workspace: run.workspace, 'metadata.module': 'autonomous', $or: [{ 'metadata.runId': runId }, { 'metadata.runId': run._id }] };

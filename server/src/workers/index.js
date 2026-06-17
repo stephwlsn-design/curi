@@ -103,6 +103,9 @@ const startWorkers = () => {
 };
 
 const enqueueAutonomousRun = async (runId) => {
+  if (process.env.VERCEL) {
+    return;
+  }
   const queued = await addJob(QUEUE_NAMES.AUTONOMOUS, { runId: runId.toString() });
   if (!queued) {
     runAutonomousPipeline({ runId }).catch(err => logger.error(`In-process pipeline failed: ${err.message}`));
