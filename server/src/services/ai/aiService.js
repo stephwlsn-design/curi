@@ -1,7 +1,20 @@
 const OpenAI = require('openai');
 const logger = require('../../utils/logger');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let openaiClient = null;
+const getOpenAI = () => {
+  const key = process.env.OPENAI_API_KEY;
+  if (!openaiClient && key && key.length >= 20 && !key.includes('...')) {
+    openaiClient = new OpenAI({ apiKey: key });
+  }
+  return openaiClient;
+};
+
+const requireOpenAI = () => {
+  const client = getOpenAI();
+  if (!client) throw new Error('OpenAI not configured');
+  return client;
+};
 
 /**
  * Build the system prompt from a brand profile
@@ -65,6 +78,7 @@ Respond ONLY with valid JSON in this exact format:
 }`;
 
   const start = Date.now();
+  const openai = requireOpenAI();
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
@@ -122,6 +136,7 @@ Respond ONLY with valid JSON:
   }
 }`;
 
+  const openai = requireOpenAI();
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
@@ -169,6 +184,7 @@ Generate a comprehensive campaign package. Respond ONLY with valid JSON:
   "kpis": [{ "metric": "...", "target": "...", "timeline": "..." }]
 }`;
 
+  const openai = requireOpenAI();
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
@@ -219,6 +235,7 @@ Respond ONLY with valid JSON:
   ]
 }`;
 
+  const openai = requireOpenAI();
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
@@ -256,6 +273,7 @@ Respond ONLY with valid JSON:
   "shareableHeadline": "social-ready roast headline"
 }`;
 
+  const openai = requireOpenAI();
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [

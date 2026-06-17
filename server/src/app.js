@@ -8,6 +8,7 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { connectDB } = require('./config/database');
 const { connectRedis } = require('./config/redis');
+const mongoose = require('mongoose');
 const logger = require('./utils/logger');
 const authRoutes = require('./routes/auth');
 const workspaceRoutes = require('./routes/workspace');
@@ -61,7 +62,11 @@ const createApp = async () => {
   if (!process.env.VERCEL && (process.env.NODE_ENV !== 'production' || process.env.SEED_DEMO_USER === 'true')) {
     await seedTestUser();
   }
-  await failStaleAutonomousRuns();
+  try {
+    await failStaleAutonomousRuns();
+  } catch (err) {
+    logger.warn('Could not check stale autonomous runs:', err.message);
+  }
 
   const app = express();
   const allowedOrigins = buildAllowedOrigins();
@@ -90,6 +95,7 @@ const createApp = async () => {
     status: 'ok',
     version: '1.0.0',
     platform: process.env.VERCEL ? 'vercel' : 'node',
+    db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     timestamp: new Date(),
   }));
 

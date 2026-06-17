@@ -3,11 +3,25 @@ const Anthropic = require('@anthropic-ai/sdk');
 const axios = require('axios');
 const logger = require('../utils/logger');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
 const isValidKey = (key, minLen = 20) =>
   key && key.length >= minLen && !key.includes('...') && !key.endsWith('...');
+
+let openaiClient = null;
+let anthropicClient = null;
+
+const getOpenAI = () => {
+  if (!openaiClient && isValidKey(process.env.OPENAI_API_KEY)) {
+    openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return openaiClient;
+};
+
+const getAnthropic = () => {
+  if (!anthropicClient && isValidKey(process.env.ANTHROPIC_API_KEY)) {
+    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
+  return anthropicClient;
+};
 
 const expandHex = (h) => {
   if (!h) return null;
@@ -163,6 +177,8 @@ const buildProfileFromScrape = (url, page) => ({
 });
 
 const callOpenAI = async (prompt) => {
+  const openai = getOpenAI();
+  if (!openai) throw new Error('OpenAI not configured');
   logger.info('Using OpenAI for brand analysis');
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -174,6 +190,8 @@ const callOpenAI = async (prompt) => {
 };
 
 const callAnthropic = async (prompt) => {
+  const anthropic = getAnthropic();
+  if (!anthropic) throw new Error('Anthropic not configured');
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 1500,
@@ -307,6 +325,8 @@ const roastWebsite = async (url) => {
 
   if (isValidKey(process.env.OPENAI_API_KEY)) {
     try {
+      const openai = getOpenAI();
+      if (!openai) throw new Error('OpenAI not configured');
       const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [{

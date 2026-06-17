@@ -6,6 +6,10 @@ const globalCache = global;
 const connectDB = async () => {
   const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/curi';
 
+  if (process.env.VERCEL && !process.env.MONGODB_URI) {
+    throw new Error('MONGODB_URI environment variable is required on Vercel');
+  }
+
   if (globalCache.mongoose?.conn) return globalCache.mongoose.conn;
 
   if (!globalCache.mongoose) {

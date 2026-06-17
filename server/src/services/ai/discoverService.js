@@ -3,7 +3,14 @@ const cheerio = require('cheerio');
 const OpenAI = require('openai');
 const logger = require('../../utils/logger');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let openaiClient = null;
+const getOpenAI = () => {
+  const key = process.env.OPENAI_API_KEY;
+  if (!openaiClient && key && key.length >= 20 && !key.includes('...')) {
+    openaiClient = new OpenAI({ apiKey: key });
+  }
+  return openaiClient;
+};
 
 /**
  * Scrape a website using Browserless or direct Cheerio fallback
@@ -152,6 +159,8 @@ Respond ONLY with valid JSON:
   "keyMessages": ["message1", "message2", "message3"]
 }`;
 
+  const openai = getOpenAI();
+  if (!openai) throw new Error('OpenAI not configured');
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
