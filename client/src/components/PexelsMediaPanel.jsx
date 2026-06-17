@@ -14,14 +14,26 @@ export default function PexelsMediaPanel({
   onVideoSelect,
   compact = false,
   embedded = false,
+  defaultTab = 'photos',
+  externalSearch,
 }) {
-  const [tab, setTab] = useState('photos')
+  const [tab, setTab] = useState(defaultTab)
   const [query, setQuery] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
+
+  useEffect(() => {
+    setTab(defaultTab)
+  }, [defaultTab])
+
+  useEffect(() => {
+    if (externalSearch !== undefined && externalSearch !== searchInput) {
+      setSearchInput(externalSearch)
+    }
+  }, [externalSearch])
 
   const fetchMedia = useCallback(async (mediaTab, q, pageNum, append = false) => {
     setLoading(true)

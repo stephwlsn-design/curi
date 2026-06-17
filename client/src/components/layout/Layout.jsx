@@ -1,14 +1,24 @@
-import { Outlet, useLocation, useNavigate, Link } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate, Link, NavLink } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { motion, AnimatePresence } from 'framer-motion'
 import ThemeToggle from '../ThemeToggle'
 import SaveDraftButton from '../SaveDraftButton'
 
+const DESIGN_CHILDREN = [
+  { path: '/design/templates', label: 'Templates' },
+  { path: '/design/canvas', label: 'Canvas' },
+]
+
 const NAV = [
   { path: '/dashboard', label: 'Dashboard', section: null },
   { path: '/discover', label: 'Curi Discover', section: 'CORE' },
   { path: '/create', label: 'Curi Create', section: 'CORE' },
-  { path: '/design', label: 'Curi Design', section: 'CORE' },
+  {
+    id: 'design',
+    label: 'Curi Design',
+    section: 'CORE',
+    children: DESIGN_CHILDREN,
+  },
   { path: '/video', label: 'Curi Video', section: 'CORE' },
   { path: '/mail', label: 'Curi Mail', section: 'CORE' },
   { path: '/launch', label: 'Curi Launch', section: 'CORE' },
@@ -23,6 +33,8 @@ const NAV = [
   { path: '/analytics', label: 'Analytics', section: 'INSIGHTS' },
   { path: '/settings', label: 'Settings', section: 'INSIGHTS' },
 ]
+
+const isDesignPath = (pathname) => pathname === '/design' || pathname.startsWith('/design/')
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -73,6 +85,45 @@ export default function Layout() {
           {NAV.map(item => {
             const showSection = item.section !== lastSection
             if (showSection) lastSection = item.section
+
+            if (item.children) {
+              const groupActive = isDesignPath(location.pathname)
+              return (
+                <div key={item.id} className="mb-1">
+                  {showSection && item.section && (
+                    <div className="text-xs font-bold text-theme-muted/30 tracking-widest uppercase px-3 pt-4 pb-1.5">
+                      {item.section}
+                    </div>
+                  )}
+                  <div
+                    className={`px-3 py-2 text-sm font-bold tracking-wide ${
+                      groupActive ? 'text-theme-text' : 'text-theme-muted/70'
+                    }`}
+                  >
+                    {item.label}
+                  </div>
+                  <div className="ml-2 pl-2 border-l-2 border-theme-border/60 space-y-0.5">
+                    {item.children.map(child => {
+                      const active = child.path === '/design/templates'
+                        ? location.pathname.startsWith('/design/templates')
+                          || (location.pathname.startsWith('/design/studio') && new URLSearchParams(location.search).get('panel') === 'templates')
+                        : location.pathname.startsWith('/design/canvas')
+                          || location.pathname.startsWith('/design/studio')
+                      return (
+                      <NavLink
+                        key={child.path}
+                        to={child.path}
+                        className={`sidebar-sublink block text-left ${active ? 'active' : ''}`}
+                      >
+                        {child.label}
+                      </NavLink>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            }
+
             const active = location.pathname === item.path
             return (
               <div key={item.path}>
@@ -82,6 +133,7 @@ export default function Layout() {
                   </div>
                 )}
                 <button
+                  type="button"
                   onClick={() => navigate(item.path)}
                   className={`sidebar-link w-full ${active ? 'active' : ''}`}
                 >

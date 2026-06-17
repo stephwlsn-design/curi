@@ -111,6 +111,22 @@
     border border-curi-pink/20 shadow-clay-sm;
   }
 
+  .sidebar-sublink {
+    color: rgb(var(--theme-muted) / 0.75);
+    @apply flex items-center gap-2 pl-3 pr-3 py-2 rounded-xl text-sm font-semibold
+    transition-all duration-200 cursor-pointer w-full no-underline;
+  }
+
+  .sidebar-sublink:hover {
+    background-color: rgb(var(--theme-subtle) / 0.05);
+    color: rgb(var(--theme-text));
+  }
+
+  .sidebar-sublink.active {
+    color: rgb(var(--theme-text));
+    @apply bg-curi-pink/10 border border-curi-pink/15;
+  }
+
   .blob-bg {
     @apply pointer-events-none absolute rounded-full blur-3xl opacity-40;
   }

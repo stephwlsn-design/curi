@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { X, Save, LayoutTemplate, Plus, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { API } from '../context/AuthContext'
@@ -10,7 +10,16 @@ import {
   designToCanvas, applyTemplateToCanvas, canvasToDesignFields, syncCanvasTextFromDesign,
 } from '../utils/designCanvas'
 
-export default function DesignCanvasEditor({ design, workspaceId, onClose, onSaved, userTemplates = [] }) {
+export default forwardRef(function DesignCanvasEditor({
+  design,
+  workspaceId,
+  onClose,
+  onSaved,
+  userTemplates = [],
+  embedded = false,
+  hideAssetSidebar = false,
+  hideClose = false,
+}, ref) {
   const containerRef = useRef(null)
   const [scale, setScale] = useState(0.45)
   const [canvas, setCanvas] = useState(() => {
@@ -181,12 +190,43 @@ export default function DesignCanvasEditor({ design, workspaceId, onClose, onSav
     setSelectedId(null)
   }
 
+  const applyPexelsPhoto = (item, useAs = 'background') => {
+    setCanvas((prev) => applyPexelsPhotoToCanvas(prev, item.url, useAs))
+    toast.success(useAs === 'background' ? 'Background updated' : 'Photo layer added')
+  }
+
+  const applyPexelsVideo = (item) => {
+    setCanvas((prev) => ({
+      ...prev,
+      background: {
+        type: 'video',
+        url: item.url,
+        poster: item.thumbnailUrl,
+        overlay: 'rgba(0,0,0,0.25)',
+      },
+    }))
+    toast.success('Video background applied')
+  }
+
+  useImperativeHandle(ref, () => ({
+    applyTemplate,
+    applyPexelsPhoto,
+    applyPexelsVideo,
+    addTextLayer,
+    saveDesign,
+    getCanvas: () => canvas,
+  }))
+
+  const rootClass = embedded
+    ? 'flex flex-col h-full min-h-0 bg-theme-bg'
+    : 'fixed inset-0 z-50 bg-theme-bg/95 backdrop-blur-sm flex flex-col'
+
   return (
-    <div className="fixed inset-0 z-50 bg-theme-bg/95 backdrop-blur-sm flex flex-col">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-theme-border bg-theme-bg">
+    <div className={rootClass}>
+      <div className={`flex items-center justify-between px-4 py-3 border-b border-theme-border bg-theme-bg ${embedded ? 'flex-shrink-0' : ''}`}>
         <div>
-          <h2 className="text-lg font-bold text-theme-text">Canvas Editor</h2>
-          <p className="text-xs text-theme-muted/50">{design.name} · {canvas.width}×{canvas.height}</p>
+          <h2 className="text-base font-bold text-theme-text">{embedded ? design.name || 'Your Design' : 'Canvas Editor'}</h2>
+          <p className="text-xs text-theme-muted/50">{canvas.width}×{canvas.height}</p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => setShowSaveTemplate(v => !v)} className="btn-secondary text-sm flex items-center gap-1.5">
@@ -195,9 +235,11 @@ export default function DesignCanvasEditor({ design, workspaceId, onClose, onSav
           <button type="button" onClick={saveDesign} disabled={saving} className="btn-primary text-sm flex items-center gap-1.5">
             <Save size={16} /> {saving ? 'Saving...' : 'Save Design'}
           </button>
-          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-theme-subtle/10">
-            <X size={20} />
-          </button>
+          {!hideClose && onClose && (
+            <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-theme-subtle/10">
+              <X size={20} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -214,7 +256,7 @@ export default function DesignCanvasEditor({ design, workspaceId, onClose, onSav
       )}
 
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar */}
+        {!hideAssetSidebar && (
         <div className="w-72 border-r border-theme-border flex flex-col flex-shrink-0 min-h-0">
           <div className="flex border-b border-theme-border p-1 gap-1 flex-shrink-0">
             {['templates', 'pexels'].map((tab) => (
@@ -295,6 +337,7 @@ export default function DesignCanvasEditor({ design, workspaceId, onClose, onSav
           )}
           </div>
         </div>
+        )}
 
         {/* Canvas area */}
         <div ref={containerRef} className="flex-1 flex items-center justify-center p-6 bg-theme-subtle/5 overflow-auto">
@@ -459,4 +502,4 @@ export default function DesignCanvasEditor({ design, workspaceId, onClose, onSav
       </div>
     </div>
   )
-}
+})

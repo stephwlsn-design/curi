@@ -6,7 +6,9 @@ import Auth from './pages/Auth'
 import Dashboard from './pages/Dashboard'
 import Discover from './pages/Discover'
 import Create from './pages/Create'
-import Design from './pages/Design'
+import DesignStudio from './pages/DesignStudio'
+import DesignTemplates from './pages/DesignTemplates'
+import DesignCanvas from './pages/DesignCanvas'
 import Video from './pages/Video'
 import Mail from './pages/Mail'
 import Launch from './pages/Launch'
@@ -43,7 +45,12 @@ export default function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/discover" element={<Discover />} />
         <Route path="/create" element={<Create />} />
-        <Route path="/design" element={<Design />} />
+        <Route path="/design" element={<Navigate to="/design/studio?step=1&panel=templates" replace />} />
+        <Route path="/design/templates" element={<DesignTemplates />} />
+        <Route path="/design/canvas/:designId" element={<DesignCanvas />} />
+        <Route path="/design/canvas" element={<DesignCanvas />} />
+        <Route path="/design/studio/:designId" element={<DesignStudio />} />
+        <Route path="/design/studio" element={<DesignStudio />} />
         <Route path="/video" element={<Video />} />
         <Route path="/mail" element={<Mail />} />
         <Route path="/launch" element={<Launch />} />

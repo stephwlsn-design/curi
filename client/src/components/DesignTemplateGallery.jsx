@@ -13,14 +13,95 @@ export default function DesignTemplateGallery({
   onSelect,
   userTemplates = [],
   onSelectUserTemplate,
+  embedded = false,
+  searchQuery = '',
+  onSearchChange,
 }) {
   const [category, setCategory] = useState('all')
-  const [search, setSearch] = useState('')
+  const [internalSearch, setInternalSearch] = useState('')
+  const search = onSearchChange ? searchQuery : internalSearch
+  const setSearch = onSearchChange || setInternalSearch
 
   const filtered = useMemo(
     () => searchGraphicTemplates(search, category),
     [search, category],
   )
+
+  if (embedded) {
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-1.5">
+          {GRAPHIC_TEMPLATE_CATEGORIES.map(cat => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setCategory(cat.id)}
+              className={`px-2 py-1 rounded-full text-[10px] font-bold transition-all ${
+                category === cat.id
+                  ? 'bg-curi-pink text-white'
+                  : 'bg-theme-subtle/5 text-theme-muted/60 hover:text-theme-text'
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+
+        {filtered.length === 0 ? (
+          <p className="text-center py-8 text-theme-muted/50 text-xs">No templates match your search.</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {filtered.map(template => {
+              const canvas = buildGraphicPreviewCanvas(template, brandColors)
+              const scale = Math.min(1, 120 / canvas.width, 120 / canvas.height)
+              const isSelected = selectedId === template.id
+              return (
+                <button
+                  key={template.id}
+                  type="button"
+                  onClick={() => onSelect(template)}
+                  title={template.name}
+                  className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all hover:scale-[1.02] ${
+                    isSelected ? 'border-curi-pink ring-2 ring-curi-pink/30' : 'border-theme-border hover:border-curi-pink/40'
+                  }`}
+                >
+                  <div className="absolute inset-0 flex items-center justify-center bg-theme-subtle/5">
+                    <DesignCanvasRenderer canvas={canvas} scale={scale} />
+                  </div>
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
+                    <div className="text-white text-[9px] font-bold leading-tight truncate">{template.name}</div>
+                  </div>
+                  {isSelected && (
+                    <span className="absolute top-1 right-1 p-0.5 rounded-full bg-curi-pink text-white">
+                      <Check size={10} />
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {userTemplates.length > 0 && (
+          <div className="pt-3 border-t border-theme-border">
+            <div className="text-[10px] font-semibold text-theme-muted/50 uppercase tracking-wider mb-2">Saved</div>
+            <div className="flex flex-wrap gap-1.5">
+              {userTemplates.map(t => (
+                <button
+                  key={t._id}
+                  type="button"
+                  onClick={() => onSelectUserTemplate?.(t)}
+                  className="px-2 py-1 rounded-md border border-curi-blue/25 text-[10px] font-medium text-theme-text hover:border-curi-blue/50"
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="card p-5 md:p-6">
