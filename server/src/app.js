@@ -104,8 +104,16 @@ const createApp = async () => {
     credentials: true,
   }));
   app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) } }));
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+  const jsonParser = express.json({ limit: '50mb' });
+  const urlencodedParser = express.urlencoded({ extended: true, limit: '50mb' });
+  app.use((req, res, next) => {
+    if (process.env.VERCEL && req._bodyParsed) return next();
+    jsonParser(req, res, next);
+  });
+  app.use((req, res, next) => {
+    if (process.env.VERCEL && req._bodyParsed) return next();
+    urlencodedParser(req, res, next);
+  });
   app.use('/api/uploads/design-ideas', express.static(UPLOAD_DIR));
   app.use('/api/uploads/user-designs', express.static(USER_DESIGN_DIR));
   app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200, message: 'Too many requests' }));

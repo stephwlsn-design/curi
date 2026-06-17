@@ -64,6 +64,106 @@ const sendJson = (res, status, body) => {
   res.end(JSON.stringify(body));
 };
 
+const withTimeout = (promise, ms, message) => Promise.race([
+  promise,
+  new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(message)), ms);
+  }),
+]);
+
+const parseRequestBody = async (req) => {
+  if (req._bodyParsed) return req.body;
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    req._bodyParsed = true;
+    return undefined;
+  }
+
+  if (req.body !== undefined && req.body !== null) {
+    if (typeof req.body === 'string') {
+      try {
+        req.body = JSON.parse(req.body);
+      } catch {
+        req.body = {};
+      }
+    }
+    req._bodyParsed = true;
+    return req.body;
+  }
+
+  const readStream = async () => {
+    if (typeof req[Symbol.asyncIterator] === 'function') {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      return Buffer.concat(chunks).toString('utf8');
+    }
+
+    return new Promise((resolve, reject) => {
+      const chunks = [];
+      req.on('data', (chunk) => chunks.push(chunk));
+      req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+      req.on('error', reject);
+    });
+  };
+
+  const raw = await withTimeout(readStream(), 8000, 'Request body read timed out');
+  req.body = raw ? JSON.parse(raw) : {};
+  req._bodyParsed = true;
+  return req.body;
+};
+
+const formatUser = (user) => ({
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  plan: user.plan,
+  credits: user.credits,
+  currentWorkspace: user.currentWorkspace,
+});
+
+const handleLogin = async (req, res) => {
+  const jwt = require('jsonwebtoken');
+  const User = require('../server/src/models/User');
+  const { findAccessibleWorkspace } = require('../server/src/utils/workspaceAccess');
+
+  if (!process.env.JWT_SECRET) {
+    return sendJson(res, 503, { error: 'JWT_SECRET is not configured' });
+  }
+
+  const body = await parseRequestBody(req);
+  const email = String(body.email || '').trim().toLowerCase();
+  const password = body.password;
+  if (!email || !password) {
+    return sendJson(res, 400, { error: 'Email and password are required' });
+  }
+
+  const user = await User.findOne({ email }).select('+password');
+  if (!user || !(await user.comparePassword(password))) {
+    return sendJson(res, 401, { error: 'Invalid email or password' });
+  }
+
+  user.lastActiveAt = new Date();
+  await user.save();
+
+  let workspace = user.currentWorkspace
+    ? await findAccessibleWorkspace(user.currentWorkspace, user._id)
+    : null;
+  if (!workspace) {
+    workspace = await findAccessibleWorkspace(null, user._id);
+    if (workspace) {
+      user.currentWorkspace = workspace._id;
+      await user.save();
+    }
+  }
+
+  const token = jwt.sign(
+    { id: user._id },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' },
+  );
+
+  return sendJson(res, 200, { token, user: formatUser(user), workspace });
+};
+
 const handleHealth = async (res) => {
   const { connectDB } = require('../server/src/config/database');
   const conn = await connectDB();
@@ -84,20 +184,31 @@ const ensureDemoUser = async () => {
 
 const handleAuth = async (req, res) => {
   normalizeRequestUrl(req);
+  const pathOnly = requestPath(req);
   const { connectDB } = require('../server/src/config/database');
   await connectDB();
   await ensureDemoUser();
+
+  if (pathOnly === '/api/auth/login' && req.method === 'POST') {
+    try {
+      return await handleLogin(req, res);
+    } catch (err) {
+      console.error('[api] login failed:', err);
+      return sendJson(res, 400, { error: err.message || 'Login failed' });
+    }
+  }
+
+  await parseRequestBody(req);
 
   if (!authHandler) {
     const express = require('express');
     const app = express();
     app.set('trust proxy', 1);
-    app.use(express.json({ limit: '1mb' }));
     app.use('/api/auth', require('../server/src/routes/auth'));
     authHandler = serverless(app);
   }
 
-  return authHandler(req, res);
+  return await authHandler(req, res);
 };
 
 module.exports = async (req, res) => {
@@ -123,12 +234,13 @@ module.exports = async (req, res) => {
 
   try {
     normalizeRequestUrl(req);
+    await parseRequestBody(req);
     if (!handler) {
       const { getApp } = require('../server/src/app');
       const app = await getApp();
       handler = serverless(app, { binary: ['image/*', 'multipart/form-data'] });
     }
-    return handler(req, res);
+    return await handler(req, res);
   } catch (err) {
     console.error('[api] bootstrap failed:', err);
     return sendJson(res, 503, { status: 'error', error: err.message });
