@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { API, useAuth } from '../context/AuthContext'
+import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
 import { User, Users, Copy, Trash2, UserPlus, Mail } from 'lucide-react'
 
@@ -125,13 +126,13 @@ export default function Settings() {
   const isOwner = team.owner && String(team.owner._id) === String(user?.id)
 
   return (
-    <div className="p-8 max-w-4xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-theme-text mb-2">Settings</h1>
-        <p className="text-theme-muted/50">Manage your account and workspace team.</p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Settings"
+        description="Manage your account and workspace team."
+      />
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         {TABS.map(t => {
           const Icon = t.icon
           return (
@@ -139,19 +140,19 @@ export default function Settings() {
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
-                tab === t.id ? 'bg-curi-gradient text-white' : 'bg-theme-subtle/5 text-theme-muted/50 hover:text-theme-text'
+              className={`px-4 py-2.5 rounded-xl text-base font-bold flex items-center gap-2 transition-all ${
+                tab === t.id ? 'bg-curi-gradient text-white' : 'bg-theme-subtle/5 text-theme-muted/60 hover:text-theme-text'
               }`}
             >
-              <Icon size={14} /> {t.label}
+              <Icon size={16} /> {t.label}
             </button>
           )
         })}
       </div>
 
       {tab === 'account' && (
-        <div className="card p-6 max-w-lg">
-          <h2 className="font-bold text-theme-text mb-4">Your Account</h2>
+        <div className="page-card max-w-xl">
+          <h2 className="font-bold text-theme-text text-lg mb-4">Your Account</h2>
           <form onSubmit={saveProfile} className="space-y-4">
             <div>
               <label className="label">Full Name</label>
@@ -183,7 +184,7 @@ export default function Settings() {
 
           {isOwner && (
             <>
-              <div className="card p-6">
+              <div className="page-card">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-bold text-theme-text flex items-center gap-2">
                     <Mail size={16} /> Invite by Email
@@ -212,7 +213,7 @@ export default function Settings() {
                 </form>
               </div>
 
-              <div className="card p-6">
+              <div className="page-card">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-bold text-theme-text flex items-center gap-2">
                     <UserPlus size={16} /> Create User Account
@@ -241,7 +242,7 @@ export default function Settings() {
             </>
           )}
 
-          <div className="card p-6">
+          <div className="page-card">
             <h2 className="font-bold text-theme-text mb-4">Team Members</h2>
             {loadingTeam ? (
               <p className="text-sm text-theme-muted/40">Loading team...</p>
@@ -290,7 +291,7 @@ export default function Settings() {
 
                 {team.pendingInvites?.length > 0 && (
                   <div className="pt-3 border-t border-theme-subtle/10">
-                    <div className="text-xs font-semibold text-theme-muted/40 uppercase mb-2">Pending Invites</div>
+                    <div className="section-label mb-2">Pending Invites</div>
                     {team.pendingInvites.map(inv => (
                       <div key={inv.email} className="flex items-center gap-3 p-3 rounded-xl bg-curi-yellow/5 mb-2">
                         <div className="flex-1 min-w-0">
@@ -320,6 +321,6 @@ export default function Settings() {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }

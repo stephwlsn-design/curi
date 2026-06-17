@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { API, useAuth } from '../context/AuthContext'
+import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
 import { Calendar, Rocket, Zap, Clock, UserCheck, Sparkles, Search, SlidersHorizontal, X } from 'lucide-react'
@@ -251,28 +252,26 @@ export default function Scheduled() {
   }
 
   return (
-    <div className="p-8 max-w-6xl">
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-theme-text mb-2">Scheduled Posts</h1>
-          <p className="text-theme-muted/50">
-            Upcoming publishes with creative snapshots, scores, and approval details.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => navigate('/launch')} className="btn-secondary text-sm">Launch</button>
-          <button type="button" onClick={() => navigate('/autonomous')} className="btn-secondary text-sm">Autonomous</button>
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Scheduled Posts"
+        description="Upcoming publishes with creative snapshots, scores, and approval details."
+        action={
+          <div className="flex gap-2">
+            <button type="button" onClick={() => navigate('/launch')} className="btn-secondary text-base">Launch</button>
+            <button type="button" onClick={() => navigate('/autonomous')} className="btn-secondary text-base">Autonomous</button>
+          </div>
+        }
+      />
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4">
         {TABS.map(t => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-              tab === t.id ? 'bg-curi-gradient text-white' : 'bg-theme-subtle/5 text-theme-muted/50 hover:text-theme-text'
+            className={`px-4 py-2.5 rounded-xl text-base font-bold transition-all ${
+              tab === t.id ? 'bg-curi-gradient text-white' : 'bg-theme-subtle/5 text-theme-muted/60 hover:text-theme-text'
             }`}
           >
             {t.label}
@@ -281,7 +280,7 @@ export default function Scheduled() {
         ))}
       </div>
 
-      <div className="card p-4 mb-6 space-y-4">
+      <div className="page-card mb-6 space-y-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-theme-muted/40" />
@@ -401,7 +400,7 @@ export default function Scheduled() {
         <div className="space-y-8">
           {grouped.map(([key, group]) => (
             <div key={key}>
-              <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <div className="section-label mb-3 flex items-center gap-2">
                 <Calendar size={14} />
                 {group.label}
               </div>
@@ -511,6 +510,6 @@ export default function Scheduled() {
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }

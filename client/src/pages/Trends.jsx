@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { API, useAuth } from '../context/AuthContext'
+import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
 
@@ -21,36 +22,36 @@ export default function Trends() {
   }
 
   return (
-    <div className="p-8 max-w-5xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-theme-text mb-2">Curi Trends</h1>
-        <p className="text-theme-muted/50">Discover viral topics and content ideas tailored to your brand and industry.</p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Curi Trends"
+        description="Discover viral topics and content ideas tailored to your brand and industry."
+      />
 
-      <div className="card p-5 mb-6 flex gap-4 items-end">
-        <div className="flex-1">
-          <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-2">Industry</div>
+      <div className="page-card mb-6 flex flex-wrap gap-4 items-end">
+        <div className="flex-1 min-w-[200px]">
+          <div className="section-label mb-2">Industry</div>
           <input className="input" placeholder="E.g. SaaS, DTC skincare, fintech..." value={industry} onChange={e => setIndustry(e.target.value)} />
         </div>
-        <button onClick={scan} disabled={loading} className="btn-primary flex-shrink-0">
+        <button onClick={scan} disabled={loading} className="btn-primary flex-shrink-0 text-base px-6 py-3">
           {loading ? 'Scanning...' : 'Scan Trends'}
         </button>
       </div>
 
       {trends.length > 0 && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {trends.map((t, i) => (
-            <motion.div key={i} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.05 }} className="card p-5">
+            <motion.div key={i} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.05 }} className="page-card">
               <div className="flex justify-between items-start mb-3">
                 <span className="badge bg-curi-yellow/15 text-curi-yellow capitalize">{t.platform}</span>
-                <span className="text-sm font-black text-curi-pink">{t.relevance}%</span>
+                <span className="text-base font-black text-curi-pink">{t.relevance}%</span>
               </div>
-              <h3 className="font-bold text-theme-text mb-2">{t.topic}</h3>
-              <p className="text-theme-muted/60 text-sm mb-3">{t.contentIdea}</p>
+              <h3 className="font-bold text-theme-text text-lg mb-2">{t.topic}</h3>
+              <p className="text-theme-muted/60 text-base mb-3">{t.contentIdea}</p>
               {t.hashtags?.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {t.hashtags.map((h, j) => (
-                    <span key={j} className="text-xs text-curi-blue font-medium">#{h.replace(/^#/, '')}</span>
+                    <span key={j} className="text-sm text-curi-blue font-medium">#{h.replace(/^#/, '')}</span>
                   ))}
                 </div>
               )}
@@ -58,6 +59,6 @@ export default function Trends() {
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }

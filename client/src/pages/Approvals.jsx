@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { API, useAuth } from '../context/AuthContext'
+import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
 import DesignPreview from '../components/DesignPreview'
@@ -50,37 +51,37 @@ export default function Approvals() {
   }
 
   return (
-    <div className="p-8 max-w-5xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-theme-text mb-2">Approval Workflow</h1>
-        <p className="text-theme-muted/50">Review, approve, or reject creatives before they publish. Only assets scoring above 80 auto-approve.</p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Approval Workflow"
+        description="Review, approve, or reject creatives before they publish. Only assets scoring above 80 auto-approve."
+      />
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${tab === t.id ? 'bg-curi-pink text-white' : 'bg-theme-subtle/5 text-theme-muted/50'}`}>
+            className={`px-4 py-2.5 rounded-xl text-base font-bold transition-all ${tab === t.id ? 'bg-curi-pink text-white' : 'bg-theme-subtle/5 text-theme-muted/60'}`}>
             {t.label}
           </button>
         ))}
       </div>
 
       {loading ? (
-        <div className="card p-8 text-center text-theme-muted/40">Loading...</div>
+        <div className="page-card text-center text-theme-muted/50 py-10 text-base">Loading...</div>
       ) : items.length === 0 ? (
-        <div className="card p-8 text-center text-theme-muted/40">No items in this queue</div>
+        <div className="page-card text-center text-theme-muted/50 py-10 text-base">No items in this queue</div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {items.map((item, i) => (
             <motion.div key={item._id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
-              className="card p-4">
+              className="page-card">
               {item.type === 'image' ? (
                 <div className="space-y-4">
                   <DesignPreview design={toDesignPreview(item)} onEdit={setEditingDesign} />
                   {tab === 'review' && (
                     <div className="flex gap-2 justify-end">
-                      <button onClick={() => approve(item._id)} className="btn-primary text-xs px-4 py-2">Approve</button>
-                      <button onClick={() => reject(item._id)} className="btn-secondary text-xs px-4 py-2">Reject</button>
+                      <button onClick={() => approve(item._id)} className="btn-primary text-sm px-4 py-2">Approve</button>
+                      <button onClick={() => reject(item._id)} className="btn-secondary text-sm px-4 py-2">Reject</button>
                     </div>
                   )}
                 </div>
@@ -89,8 +90,8 @@ export default function Approvals() {
                   <VideoPreview video={toVideoPreview(item)} />
                   {tab === 'review' && (
                     <div className="flex gap-2 justify-end">
-                      <button onClick={() => approve(item._id)} className="btn-primary text-xs px-4 py-2">Approve</button>
-                      <button onClick={() => reject(item._id)} className="btn-secondary text-xs px-4 py-2">Reject</button>
+                      <button onClick={() => approve(item._id)} className="btn-primary text-sm px-4 py-2">Approve</button>
+                      <button onClick={() => reject(item._id)} className="btn-secondary text-sm px-4 py-2">Reject</button>
                     </div>
                   )}
                 </div>
@@ -106,8 +107,8 @@ export default function Approvals() {
                       </span>
                     )}
                   </div>
-                  <div className="font-bold text-theme-text text-sm mb-1">{item.title || 'Untitled'}</div>
-                  <p className="text-theme-muted/60 text-sm line-clamp-3">{item.content}</p>
+                  <div className="font-bold text-theme-text text-base mb-1">{item.title || 'Untitled'}</div>
+                  <p className="text-theme-muted/60 text-base line-clamp-3">{item.content}</p>
                 </div>
                 {tab === 'review' && (
                   <div className="flex gap-2 flex-shrink-0">
@@ -133,6 +134,6 @@ export default function Approvals() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   )
 }

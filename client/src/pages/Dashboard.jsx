@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth, API } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
+import { PageShell, PageHeader } from '../components/layout/PageShell'
 import { motion } from 'framer-motion'
 
 const MODULES = [
@@ -37,26 +38,26 @@ export default function Dashboard() {
   }, [workspaceId])
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-extrabold text-theme-text mb-1">{greeting}, {user?.name?.split(' ')[0]}</h1>
-        <p className="text-theme-muted/50 font-medium">What are you creating today?</p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title={`${greeting}, ${user?.name?.split(' ')[0]}`}
+        description="What are you creating today?"
+      />
 
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
         {STATS_DEFAULT.map((s, i) => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }} className="card p-5">
+          <motion.div key={s.label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }} className="page-card">
             <div className={`text-3xl font-black ${s.color} mb-0.5`}>{stats[s.key] ?? 0}</div>
-            <div className="text-theme-muted/40 text-xs font-medium">{s.label}</div>
+            <div className="text-theme-muted/50 text-sm font-medium">{s.label}</div>
           </motion.div>
         ))}
       </div>
 
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-theme-text">Curi Modules</h2>
-        <span className="text-theme-muted/30 text-sm font-medium">{MODULES.length} agents</span>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-xl font-bold text-theme-text">Curi Modules</h2>
+        <span className="text-theme-muted/40 text-sm font-medium">{MODULES.length} agents</span>
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {MODULES.map((m, i) => (
           <motion.button
             key={m.path}
@@ -64,30 +65,30 @@ export default function Dashboard() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: i * 0.04 }}
             onClick={() => navigate(m.path)}
-            className="card p-5 text-left hover:border-theme-border hover:scale-[1.02] transition-all duration-200 group relative overflow-hidden"
+            className="page-card text-left hover:border-theme-border hover:scale-[1.02] transition-all duration-200 group relative overflow-hidden"
           >
             <div className={`absolute inset-0 bg-gradient-to-br ${m.color} opacity-0 group-hover:opacity-100 transition-opacity`} />
             <div className="relative">
               {m.badge && (
                 <span className={`badge mb-3 ${m.badge === 'HOT' ? 'bg-curi-pink/20 text-curi-pink' : 'bg-curi-blue/20 text-curi-blue'}`}>{m.badge}</span>
               )}
-              <div className="font-bold text-theme-text text-sm mb-1">{m.label}</div>
-              <div className="text-theme-muted/40 text-xs leading-relaxed font-medium">{m.desc}</div>
+              <div className="font-bold text-theme-text text-base mb-1">{m.label}</div>
+              <div className="text-theme-muted/50 text-sm leading-relaxed font-medium">{m.desc}</div>
             </div>
           </motion.button>
         ))}
       </div>
 
-      <div className="mt-8 card p-5 bg-gradient-to-r from-curi-pink/10 to-curi-blue/10 border-curi-pink/20">
-        <div className="flex items-center gap-4">
+      <div className="mt-8 page-card bg-gradient-to-r from-curi-pink/10 to-curi-blue/10 border-curi-pink/20">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="w-1 h-12 rounded-full bg-curi-gradient flex-shrink-0" />
-          <div className="flex-1">
-            <div className="font-bold text-theme-text text-sm mb-0.5">Autonomous Content Engine</div>
-            <div className="text-theme-muted/50 text-xs font-medium">Generate your next 30 days — topics, strategy, content, designs, videos, scoring, and scheduling in one click.</div>
+          <div className="flex-1 min-w-[200px]">
+            <div className="font-bold text-theme-text text-base mb-0.5">Autonomous Content Engine</div>
+            <div className="text-theme-muted/60 text-sm font-medium">Generate your next 30 days — topics, strategy, content, designs, videos, scoring, and scheduling in one click.</div>
           </div>
-          <button onClick={() => navigate('/autonomous')} className="btn-primary flex-shrink-0">Generate Next 30 Days</button>
+          <button onClick={() => navigate('/autonomous')} className="btn-primary flex-shrink-0 text-base px-6 py-3">Generate Next 30 Days</button>
         </div>
       </div>
-    </div>
+    </PageShell>
   )
 }

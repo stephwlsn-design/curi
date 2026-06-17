@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { API, useAuth } from '../context/AuthContext'
+import { PageShell, PageHeader } from '../components/layout/PageShell'
 import { motion } from 'framer-motion'
 
 export default function Analytics() {
@@ -21,28 +22,28 @@ export default function Analytics() {
   ] : []
 
   return (
-    <div className="p-8 max-w-5xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-theme-text mb-2">Performance Tracking</h1>
-        <p className="text-theme-muted/50">Track content output, publishing queue, and autonomous campaign performance.</p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Performance Tracking"
+        description="Track content output, publishing queue, and autonomous campaign performance."
+      />
 
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5 mb-8">
         {cards.map((s, i) => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="card p-5">
+          <motion.div key={s.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="page-card">
             <div className={`text-3xl font-black ${s.color} mb-0.5`}>{s.value ?? 0}</div>
-            <div className="text-theme-muted/40 text-xs font-medium">{s.label}</div>
+            <div className="text-theme-muted/50 text-sm font-medium">{s.label}</div>
           </motion.div>
         ))}
       </div>
 
-      <div className="card p-5">
-        <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Learning Engine</div>
-        <p className="text-theme-muted/60 text-sm">
+      <div className="page-card">
+        <div className="section-label mb-3">Learning Engine</div>
+        <p className="text-theme-muted/60 text-base leading-relaxed">
           Every starred creative, approved post, and published asset updates your preferences.
           Future autonomous campaigns automatically prioritize your preferred styles, formats, and channels.
         </p>
       </div>
-    </div>
+    </PageShell>
   )
 }

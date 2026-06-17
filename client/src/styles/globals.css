@@ -114,4 +114,13 @@
   .blob-bg {
     @apply pointer-events-none absolute rounded-full blur-3xl opacity-40;
   }
+
+  .section-label {
+    color: rgb(var(--theme-muted) / 0.5);
+    @apply text-sm font-semibold uppercase tracking-wider;
+  }
+
+  .page-card {
+    @apply card p-5;
+  }
 }

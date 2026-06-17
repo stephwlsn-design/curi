@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useCoreWorkflow } from '../context/CoreWorkflowContext'
 import { useDraftModule } from '../context/DraftContext'
 import CoreWorkflowNav from '../components/CoreWorkflowNav'
+import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -150,125 +151,124 @@ export default function Create() {
   }
 
   return (
-    <div className="p-8 max-w-5xl">
+    <PageShell>
       <CoreWorkflowNav
         stepId="create"
         canProceed={!!result}
         onBeforeNext={handleBeforeNext}
       />
 
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-theme-text mb-2">Curi Create</h1>
-        <p className="text-theme-muted/50">Generate platform-native content in your brand voice. One click.</p>
-      </div>
+      <PageHeader
+        title="Curi Create"
+        description="Generate platform-native content in your brand voice. One click."
+      />
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-1 space-y-5">
-          <div className="card p-4">
-            <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Platform</div>
-            <div className="space-y-2">
-              {PLATFORMS.map(p => (
-                <button key={p.id} onClick={() => setPlatform(p.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all ${platform === p.id ? p.color : 'border-transparent text-theme-muted/50 hover:text-theme-text hover:bg-theme-subtle/5'}`}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="card p-4">
-            <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Tone</div>
-            <div className="grid grid-cols-2 gap-2">
-              {TONES.map(t => (
-                <button key={t} onClick={() => setTone(t)}
-                  className={`py-2 rounded-lg text-sm font-medium capitalize transition-all ${tone === t ? 'bg-curi-gradient text-white' : 'bg-theme-subtle/5 text-theme-muted/50 hover:text-theme-text'}`}>
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="card p-4">
-            <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Content Type</div>
-            <div className="space-y-1.5">
-              {TYPES.map(t => (
-                <button key={t.id} onClick={() => setType(t.id)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${type === t.id ? 'bg-curi-pink/20 text-curi-pink' : 'text-theme-muted/50 hover:text-theme-text hover:bg-theme-subtle/5'}`}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 mb-6">
+        <div className="page-card">
+          <div className="section-label mb-3">Platform</div>
+          <div className="space-y-2">
+            {PLATFORMS.map(p => (
+              <button key={p.id} onClick={() => setPlatform(p.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-base font-medium transition-all ${platform === p.id ? p.color : 'border-transparent text-theme-muted/60 hover:text-theme-text hover:bg-theme-subtle/5'}`}>
+                {p.label}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="col-span-2 space-y-4">
-          <div className="card p-5">
-            <label className="label">What do you want to write about?</label>
-            <textarea
-              className="input resize-none h-24"
-              placeholder="E.g. our new product launch, a customer success story, a hot industry trend..."
-              value={topic}
-              onChange={e => setTopic(e.target.value)}
-            />
-            <button onClick={generate} disabled={loading} className="btn-primary w-full mt-3 py-3">
-              {loading ? 'Generating...' : 'Generate Content'}
-            </button>
+        <div className="page-card">
+          <div className="section-label mb-3">Tone</div>
+          <div className="grid grid-cols-2 gap-2">
+            {TONES.map(t => (
+              <button key={t} onClick={() => setTone(t)}
+                className={`py-2.5 rounded-lg text-base font-medium capitalize transition-all ${tone === t ? 'bg-curi-gradient text-white' : 'bg-theme-subtle/5 text-theme-muted/60 hover:text-theme-text'}`}>
+                {t}
+              </button>
+            ))}
           </div>
+        </div>
 
-          <AnimatePresence>
-            {result && (
-              <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-theme-text capitalize">{platform} Post</span>
-                    <span className="badge bg-theme-subtle/5 text-theme-muted/30">{editedContent?.length} chars</span>
-                    {saved && <span className="badge bg-curi-green/15 text-curi-green">Saved</span>}
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={copy} className="btn-secondary text-xs py-1.5 px-3">
-                      {copied ? 'Copied' : 'Copy'}
-                    </button>
-                    <button onClick={generate} className="btn-secondary text-xs py-1.5 px-3">Retry</button>
-                    <button onClick={() => save(true)} disabled={saving} className="btn-secondary text-xs py-1.5 px-3">
-                      Save Draft
-                    </button>
-                    <button onClick={() => save(false)} disabled={saving} className="btn-primary text-xs py-1.5 px-3">
-                      {saving ? 'Saving...' : 'Save'}
-                    </button>
-                    <button onClick={schedule} className="btn-secondary text-xs py-1.5 px-3">Schedule</button>
-                  </div>
-                </div>
+        <div className="page-card">
+          <div className="section-label mb-3">Content Type</div>
+          <div className="space-y-1.5">
+            {TYPES.map(t => (
+              <button key={t.id} onClick={() => setType(t.id)}
+                className={`w-full text-left px-3 py-2.5 rounded-lg text-base transition-all ${type === t.id ? 'bg-curi-pink/20 text-curi-pink' : 'text-theme-muted/60 hover:text-theme-text hover:bg-theme-subtle/5'}`}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
-                <textarea
-                  className="input resize-none min-h-[160px] text-sm leading-relaxed"
-                  value={editedContent}
-                  onChange={e => { setEditedContent(e.target.value); setSaved(false) }}
-                />
+      <div className="page-card mb-6">
+        <div className="section-label mb-3">Topic</div>
+        <textarea
+          className="input resize-none h-32 text-base"
+          placeholder="E.g. our new product launch, a customer success story, a hot industry trend..."
+          value={topic}
+          onChange={e => setTopic(e.target.value)}
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+          <span className="text-sm text-theme-muted/50 font-medium">Uses your brand voice from Discover</span>
+          <button onClick={generate} disabled={loading} className="btn-primary text-base px-6 py-3">
+            {loading ? 'Generating...' : 'Generate Content'}
+          </button>
+        </div>
+      </div>
 
-                {result.hashtags?.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {result.hashtags.map((h, i) => <span key={i} className="badge bg-curi-blue/15 text-curi-blue">#{h.replace('#', '')}</span>)}
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {history.length > 1 && (
-            <div>
-              <div className="text-xs font-semibold text-theme-muted/30 uppercase tracking-wider mb-2">Previous Generations</div>
-              <div className="space-y-2">
-                {history.slice(1).map((item, i) => (
-                  <button key={i} onClick={() => { setResult(item); setEditedContent(item.content || ''); setSaved(true) }}
-                    className="card p-3 w-full text-left hover:border-theme-border transition-all">
-                    <div className="text-theme-muted/60 text-xs line-clamp-2">{item.content}</div>
-                  </button>
-                ))}
+      <AnimatePresence>
+        {result && (
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="page-card mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-base font-medium text-theme-text capitalize">{platform} Post</span>
+                <span className="badge bg-theme-subtle/5 text-theme-muted/50">{editedContent?.length} chars</span>
+                {saved && <span className="badge bg-curi-green/15 text-curi-green">Saved</span>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={copy} className="btn-secondary text-sm py-2 px-4">
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+                <button onClick={generate} className="btn-secondary text-sm py-2 px-4">Retry</button>
+                <button onClick={() => save(true)} disabled={saving} className="btn-secondary text-sm py-2 px-4">
+                  Save Draft
+                </button>
+                <button onClick={() => save(false)} disabled={saving} className="btn-primary text-sm py-2 px-4">
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+                <button onClick={schedule} className="btn-secondary text-sm py-2 px-4">Schedule</button>
               </div>
             </div>
-          )}
+
+            <textarea
+              className="input resize-none min-h-[180px] text-base leading-relaxed"
+              value={editedContent}
+              onChange={e => { setEditedContent(e.target.value); setSaved(false) }}
+            />
+
+            {result.hashtags?.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {result.hashtags.map((h, i) => <span key={i} className="badge bg-curi-blue/15 text-curi-blue">#{h.replace('#', '')}</span>)}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {history.length > 1 && (
+        <div>
+          <div className="section-label mb-3">Previous Generations</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {history.slice(1).map((item, i) => (
+              <button key={i} onClick={() => { setResult(item); setEditedContent(item.content || ''); setSaved(true) }}
+                className="page-card text-left hover:border-theme-border transition-all">
+                <div className="text-theme-muted/60 text-sm line-clamp-3">{item.content}</div>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </PageShell>
   )
 }

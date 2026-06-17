@@ -75,10 +75,10 @@ export default function UserDesignUpload({ workspaceId, platform: defaultPlatfor
 
   return (
     <div className="space-y-3">
-      <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">
+      <div className="text-sm font-semibold text-theme-muted/50 uppercase tracking-wider">
         Upload Your Designs
       </div>
-      <p className="text-xs text-theme-muted/40">
+      <p className="text-sm text-theme-muted/60 leading-relaxed">
         Upload finished creatives from your computer. Optionally schedule them for publishing.
       </p>
 
@@ -89,9 +89,9 @@ export default function UserDesignUpload({ workspaceId, platform: defaultPlatfor
         }`}
       >
         <input {...getInputProps()} />
-        <Upload size={22} className="mx-auto text-theme-muted/40 mb-2" />
-        <p className="text-xs font-bold text-theme-muted/50">Drop designs here or click to browse</p>
-        <p className="text-[10px] text-theme-muted/30 mt-1">PNG, JPG, WebP, GIF — up to 12MB each</p>
+        <Upload size={24} className="mx-auto text-theme-muted/40 mb-2" />
+        <p className="text-sm font-bold text-theme-muted/60">Drop designs here or click to browse</p>
+        <p className="text-xs text-theme-muted/40 mt-1">PNG, JPG, WebP, GIF — up to 12MB each</p>
       </div>
 
       {files.length > 0 && (
@@ -113,13 +113,13 @@ export default function UserDesignUpload({ workspaceId, platform: defaultPlatfor
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] font-bold text-theme-muted/40 uppercase">Platform</label>
-          <select className="input text-sm mt-1" value={platform} onChange={e => setPlatform(e.target.value)}>
+          <label className="text-xs font-bold text-theme-muted/50 uppercase">Platform</label>
+          <select className="input mt-1" value={platform} onChange={e => setPlatform(e.target.value)}>
             {PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
         <div>
-          <label className="flex items-center gap-2 text-[10px] font-bold text-theme-muted/40 uppercase mt-1">
+          <label className="flex items-center gap-2 text-xs font-bold text-theme-muted/50 uppercase mt-1">
             <input
               type="checkbox"
               checked={scheduleEnabled}
@@ -127,14 +127,14 @@ export default function UserDesignUpload({ workspaceId, platform: defaultPlatfor
                 setScheduleEnabled(e.target.checked)
                 if (e.target.checked && !scheduledAt) setScheduledAt(defaultSchedule())
               }}
-              className="accent-curi-pink"
+              className="accent-curi-pink w-4 h-4"
             />
             Schedule upload
           </label>
           {scheduleEnabled && (
             <input
               type="datetime-local"
-              className="input text-sm mt-1"
+              className="input mt-1"
               value={scheduledAt}
               onChange={e => setScheduledAt(e.target.value)}
             />
@@ -146,7 +146,7 @@ export default function UserDesignUpload({ workspaceId, platform: defaultPlatfor
         type="button"
         onClick={upload}
         disabled={uploading || !files.length}
-        className="btn-primary w-full text-sm flex items-center justify-center gap-2"
+        className="btn-primary w-full text-base flex items-center justify-center gap-2 py-3"
       >
         <Calendar size={16} />
         {uploading ? 'Uploading...' : scheduleEnabled ? `Upload & Schedule ${files.length} Design(s)` : `Upload ${files.length || ''} Design(s)`}

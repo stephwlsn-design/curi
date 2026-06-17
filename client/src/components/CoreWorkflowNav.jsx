@@ -29,19 +29,19 @@ export default function CoreWorkflowNav({
   return (
     <div className="mb-6 space-y-4">
       <div className="card p-4">
-        <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Curi Core Workflow</div>
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="text-sm font-semibold text-theme-muted/50 uppercase tracking-wider mb-3">Curi Core Workflow</div>
+        <div className="flex flex-wrap items-center gap-1.5">
           {CORE_WORKFLOW_STEPS.map((step, i) => {
             const active = step.id === stepId
             const stepIndex = CORE_WORKFLOW_STEPS.findIndex(s => s.id === stepId)
             const completed = i < stepIndex
             return (
               <div key={step.id} className="flex items-center gap-1">
-                {i > 0 && <span className="text-theme-muted/20 text-xs mx-0.5">›</span>}
+                {i > 0 && <span className="text-theme-muted/20 text-sm mx-0.5">›</span>}
                 <button
                   type="button"
                   onClick={() => goTo(step.path)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
                     active
                       ? 'bg-curi-gradient text-white shadow-clay-sm'
                       : completed
@@ -65,7 +65,7 @@ export default function CoreWorkflowNav({
       <div className="flex items-center justify-between gap-3">
         <div>
           {prev ? (
-            <button type="button" onClick={() => goTo(prev.path)} className="btn-secondary text-sm py-2 px-4">
+            <button type="button" onClick={() => goTo(prev.path)} className="btn-secondary text-base py-2.5 px-5">
               ← Back
             </button>
           ) : <span />}
@@ -73,7 +73,7 @@ export default function CoreWorkflowNav({
         <div className="flex items-center gap-2">
           <SaveDraftButton compact />
           {isOptional && next && (
-            <button type="button" onClick={() => goTo(next.path)} className="btn-secondary text-sm py-2 px-4">
+            <button type="button" onClick={() => goTo(next.path)} className="btn-secondary text-base py-2.5 px-5">
               Skip
             </button>
           )}
@@ -82,7 +82,7 @@ export default function CoreWorkflowNav({
               type="button"
               onClick={handleNext}
               disabled={!canProceed}
-              className="btn-primary text-sm py-2 px-5 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn-primary text-base py-2.5 px-6 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {proceedLabel} →
             </button>

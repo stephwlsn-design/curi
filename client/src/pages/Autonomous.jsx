@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { API, useAuth } from '../context/AuthContext'
+import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
@@ -203,18 +204,15 @@ export default function Autonomous() {
   }
 
   return (
-    <div className="p-8 max-w-6xl">
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-theme-text mb-2">Curi Autonomous Content Engine</h1>
-          <p className="text-theme-muted/50">Connect your brand, click one button, and Curi finds trends, builds strategy, writes content, creates designs and videos, scores creatives, and schedules your next campaign.</p>
-        </div>
-        <SaveDraftButton />
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Curi Autonomous Content Engine"
+        description="Connect your brand, click one button, and Curi finds trends, builds strategy, writes content, creates designs and videos, scores creatives, and schedules your next campaign."
+        action={<SaveDraftButton />}
+      />
 
-      {/* Workflow visualization */}
-      <div className="card p-6 mb-6 overflow-x-auto">
-        <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-4">Autonomous Workflow</div>
+      <div className="page-card mb-6 overflow-x-auto">
+        <div className="section-label mb-4">Autonomous Workflow</div>
         <div className="flex items-center gap-1 min-w-max">
           {WORKFLOW_STEPS.map((step, i) => {
             const runStep = run?.steps?.find(s => s.name === step)
@@ -238,12 +236,10 @@ export default function Autonomous() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        {/* Brand onboarding */}
-        <div className="col-span-1 space-y-4">
-          <div className="card p-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
+        <div className="page-card">
             <div className="flex items-center justify-between mb-3">
-              <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">Brand Setup</div>
+              <div className="section-label">Brand Setup</div>
               {brandReady && <span className="badge bg-curi-green/15 text-curi-green">Ready</span>}
             </div>
             <div className="space-y-3">
@@ -262,8 +258,8 @@ export default function Autonomous() {
             </div>
           </div>
 
-          <div className="card p-4">
-            <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Channels</div>
+          <div className="page-card">
+            <div className="section-label mb-3">Channels</div>
             <div className="flex flex-wrap gap-1.5">
               {CHANNELS.map(ch => (
                 <button key={ch} onClick={() => toggleChannel(ch)}
@@ -274,7 +270,7 @@ export default function Autonomous() {
             </div>
           </div>
 
-          <div className="card p-4">
+          <div className="page-card">
             <DesignIdeaUpload
               workspaceId={workspaceId}
               value={designIdea}
@@ -283,8 +279,8 @@ export default function Autonomous() {
             />
           </div>
 
-          <div className="card p-4">
-            <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Campaign Length</div>
+          <div className="page-card">
+            <div className="section-label mb-3">Campaign Length</div>
             <div className="flex gap-2">
               {[30, 60, 90].map(d => (
                 <button key={d} onClick={() => setDays(d)}
@@ -295,47 +291,47 @@ export default function Autonomous() {
             </div>
           </div>
 
-          {historyRuns.length > 0 && (
-            <div className="card p-4">
-              <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Campaign History</div>
-              <div className="space-y-2 max-h-72 overflow-y-auto">
-                {historyRuns.map(h => (
-                  <button
-                    key={h._id}
-                    type="button"
-                    onClick={() => loadRunResults(h._id)}
-                    className={`w-full text-left p-3 rounded-xl border transition-all ${
-                      run?._id === h._id
-                        ? 'border-curi-pink/40 bg-curi-pink/5'
-                        : 'border-theme-border hover:border-theme-border/80 bg-theme-subtle/5'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-sm font-bold text-theme-text truncate">{runLabel(h)}</span>
-                      <span className={`badge text-[10px] capitalize flex-shrink-0 ${statusBadge(h.status)}`}>{h.status}</span>
-                    </div>
-                    {h.stats && (
-                      <div className="text-[10px] text-theme-muted/40 font-medium">
-                        {h.stats.contentGenerated || 0} posts · {h.stats.designsGenerated || 0} designs · {h.stats.videosGenerated || 0} videos
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+      </div>
 
-        {/* Main action + progress */}
-        <div className="col-span-2 space-y-5">
-          <div className="card p-6 bg-gradient-to-br from-curi-pink/10 to-curi-blue/10 border-curi-pink/20">
-            <h2 className="text-xl font-extrabold text-theme-text mb-2">Generate Next {days} Days</h2>
-            <p className="text-theme-muted/60 text-sm mb-5">
+      {historyRuns.length > 0 && (
+        <div className="page-card mb-6">
+          <div className="section-label mb-3">Campaign History</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-72 overflow-y-auto">
+            {historyRuns.map(h => (
+              <button
+                key={h._id}
+                type="button"
+                onClick={() => loadRunResults(h._id)}
+                className={`w-full text-left p-4 rounded-xl border transition-all ${
+                  run?._id === h._id
+                    ? 'border-curi-pink/40 bg-curi-pink/5'
+                    : 'border-theme-border hover:border-theme-border/80 bg-theme-subtle/5'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-base font-bold text-theme-text truncate">{runLabel(h)}</span>
+                  <span className={`badge text-xs capitalize flex-shrink-0 ${statusBadge(h.status)}`}>{h.status}</span>
+                </div>
+                {h.stats && (
+                  <div className="text-sm text-theme-muted/50 font-medium">
+                    {h.stats.contentGenerated || 0} posts · {h.stats.designsGenerated || 0} designs · {h.stats.videosGenerated || 0} videos
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-5">
+          <div className="page-card bg-gradient-to-br from-curi-pink/10 to-curi-blue/10 border-curi-pink/20">
+            <h2 className="text-2xl font-extrabold text-theme-text mb-2">Generate Next {days} Days</h2>
+            <p className="text-theme-muted/60 text-base mb-5">
               Curi builds your strategy, writes up to 8 posts, creates designs and videos, scores assets, and schedules publishing — optimized for your AI quota.
             </p>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-theme-muted/40 font-medium">100 credits</span>
-              <button onClick={generate} disabled={loading} className="btn-primary px-10">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="text-sm text-theme-muted/50 font-medium">100 credits</span>
+              <button onClick={generate} disabled={loading} className="btn-primary text-base px-10 py-3">
                 {loading ? 'Engine Running...' : `Generate Next ${days} Days`}
               </button>
             </div>
@@ -354,7 +350,7 @@ export default function Autonomous() {
 
           <AnimatePresence>
             {run && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="page-card">
                 <div className="flex justify-between items-center mb-3">
                   <span className="font-bold text-theme-text capitalize">{run.status} — {run.progress}%</span>
                   <span className="badge bg-curi-blue/15 text-curi-blue">{runLabel(run)}</span>
@@ -371,7 +367,7 @@ export default function Autonomous() {
                   </p>
                 )}
                 {run.stats && (
-                  <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 text-center">
                     {[
                       { l: 'Topics', v: run.stats.topicsFound },
                       { l: 'Content', v: run.stats.contentGenerated },
@@ -401,8 +397,8 @@ export default function Autonomous() {
           {(designs.length > 0 || videos.length > 0 || posts.length > 0) && (
             <div className="space-y-5">
               {posts.length > 0 && (
-                <div className="card p-5">
-                  <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-4">
+                <div className="page-card">
+                  <div className="section-label mb-4">
                     Generated Posts ({posts.length})
                   </div>
                   <div className="space-y-3 max-h-80 overflow-y-auto">
@@ -420,11 +416,11 @@ export default function Autonomous() {
                 </div>
               )}
               {designs.length > 0 && (
-                <div className="card p-5">
-                  <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-4">
+                <div className="page-card">
+                  <div className="section-label mb-4">
                     Generated Designs ({designs.length})
                   </div>
-                  <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                     {designs.map(d => (
                       <DesignPreview key={d._id} design={d} onEdit={setEditingDesign} />
                     ))}
@@ -432,11 +428,11 @@ export default function Autonomous() {
                 </div>
               )}
               {videos.length > 0 && (
-                <div className="card p-5">
-                  <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-4">
+                <div className="page-card">
+                  <div className="section-label mb-4">
                     Generated Videos ({videos.length})
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {videos.map(v => (
                       <VideoPreview key={v._id} video={v} />
                     ))}
@@ -447,8 +443,8 @@ export default function Autonomous() {
           )}
 
           {topics.length > 0 && !run && !loading && (
-            <div className="card p-5">
-              <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Discovered Topics</div>
+            <div className="page-card">
+              <div className="section-label mb-3">Discovered Topics</div>
               <div className="flex flex-wrap gap-2">
                 {topics.slice(0, 12).map(t => (
                   <span key={t._id} className="badge bg-theme-subtle/10 text-theme-muted/60">
@@ -460,8 +456,8 @@ export default function Autonomous() {
           )}
 
           {entries.length > 0 && (
-            <div className="card p-5">
-              <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-3">Generated Calendar Preview</div>
+            <div className="page-card">
+              <div className="section-label mb-3">Generated Calendar Preview</div>
               <div className="space-y-2 max-h-80 overflow-y-auto">
                 {entries.slice(0, 15).map(e => (
                   <div key={e._id} className="flex gap-3 items-center py-2 border-b border-theme-border last:border-0">
@@ -476,7 +472,6 @@ export default function Autonomous() {
               </div>
             </div>
           )}
-        </div>
       </div>
 
       {editingDesign && (
@@ -491,6 +486,6 @@ export default function Autonomous() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   )
 }

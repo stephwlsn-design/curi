@@ -69,10 +69,10 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
 
   return (
     <div className={compact ? 'space-y-2' : 'space-y-3'}>
-      <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">
+      <div className="text-sm font-semibold text-theme-muted/50 uppercase tracking-wider">
         Design Idea {compact ? '' : '(optional)'}
       </div>
-      <p className="text-xs text-theme-muted/40">
+      <p className="text-sm text-theme-muted/60 leading-relaxed">
         Upload a reference image or describe your visual direction. Generated designs will use your reference as the visual base — same layout, colors, and style with your copy on top.
       </p>
 
@@ -95,8 +95,8 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
           disabled={uploading}
           className="w-full border-2 border-dashed border-theme-border rounded-xl p-4 flex flex-col items-center gap-2 hover:border-curi-pink/40 hover:bg-curi-pink/5 transition-all"
         >
-          <Upload size={20} className="text-theme-muted/40" />
-          <span className="text-xs font-bold text-theme-muted/50">
+          <Upload size={22} className="text-theme-muted/40" />
+          <span className="text-sm font-bold text-theme-muted/60">
             {uploading ? 'Uploading...' : 'Upload reference image'}
           </span>
         </button>
@@ -105,7 +105,7 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
 
       <textarea
-        className="input resize-none h-20 text-sm"
+        className="input resize-none h-24 text-base"
         placeholder="Describe the look you want — colors, layout, mood, typography..."
         value={notes}
         onChange={e => setNotes(e.target.value)}
@@ -113,8 +113,8 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
       />
 
       {(value?.notes || value?.imageUrl) && (
-        <div className="flex items-center gap-2 text-xs text-curi-green font-medium">
-          <ImageIcon size={14} />
+        <div className="flex items-center gap-2 text-sm text-curi-green font-medium">
+          <ImageIcon size={16} />
           {value?.imageUrl
             ? 'Reference image locked — designs will replicate this look'
             : 'Creative notes will guide design generation'}

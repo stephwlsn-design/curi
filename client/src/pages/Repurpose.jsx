@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { API, useAuth } from '../context/AuthContext'
+import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
 
@@ -30,50 +31,51 @@ export default function Repurpose() {
   }
 
   return (
-    <div className="p-8 max-w-5xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-theme-text mb-2">Curi Repurpose</h1>
-        <p className="text-theme-muted/50">Turn one piece of content into 10 platform-ready formats — tweets, posts, emails, video scripts, ads, and more.</p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Curi Repurpose"
+        description="Turn one piece of content into 10 platform-ready formats — tweets, posts, emails, video scripts, ads, and more."
+      />
 
-      <div className="card p-5 mb-6">
-        <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider mb-2">Source Type</div>
-        <div className="flex flex-wrap gap-2 mb-4">
+      <div className="page-card mb-6">
+        <div className="section-label mb-3">Source Type</div>
+        <div className="flex flex-wrap gap-2 mb-5">
           {SOURCE_TYPES.map(t => (
             <button key={t} onClick={() => setSourceType(t)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition-all ${sourceType === t ? 'bg-curi-green/15 text-curi-green' : 'bg-theme-subtle/5 text-theme-muted/50'}`}>
+              className={`px-4 py-2 rounded-xl text-sm font-bold capitalize transition-all ${sourceType === t ? 'bg-curi-green/15 text-curi-green' : 'bg-theme-subtle/5 text-theme-muted/60'}`}>
               {t.replace(/_/g, ' ')}
             </button>
           ))}
         </div>
+        <div className="section-label mb-3">Source Content</div>
         <textarea
           className="input resize-none h-40 text-base"
           placeholder="Paste your blog post, article, newsletter, or any long-form content..."
           value={sourceContent}
           onChange={e => setSourceContent(e.target.value)}
         />
-        <div className="flex justify-between items-center mt-4">
-          <span className="text-xs text-theme-muted/40">5 credits</span>
-          <button onClick={generate} disabled={loading} className="btn-primary">
+        <div className="flex flex-wrap justify-between items-center gap-3 mt-4">
+          <span className="text-sm text-theme-muted/50">5 credits</span>
+          <button onClick={generate} disabled={loading} className="btn-primary text-base px-6 py-3">
             {loading ? 'Repurposing...' : 'Repurpose to 10 Formats'}
           </button>
         </div>
       </div>
 
       {formats.length > 0 && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {formats.map((f, i) => (
-            <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="card p-4">
+            <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="page-card">
               <div className="flex justify-between items-start mb-2">
                 <span className="badge bg-curi-blue/15 text-curi-blue capitalize">{f.type?.replace(/_/g, ' ')}</span>
-                <button onClick={() => copy(f.content)} className="text-xs text-theme-muted/40 hover:text-curi-pink font-bold">Copy</button>
+                <button onClick={() => copy(f.content)} className="text-sm text-theme-muted/50 hover:text-curi-pink font-bold">Copy</button>
               </div>
-              {f.title && <div className="font-bold text-theme-text text-sm mb-2">{f.title}</div>}
+              {f.title && <div className="font-bold text-theme-text text-base mb-2">{f.title}</div>}
               <p className="text-theme-muted/60 text-sm whitespace-pre-wrap line-clamp-6">{f.content}</p>
             </motion.div>
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }
