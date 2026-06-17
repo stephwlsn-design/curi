@@ -76,6 +76,7 @@ export default function DesignStudio() {
   const [carouselSlideCount, setCarouselSlideCount] = useState(5)
   const [carouselDesigns, setCarouselDesigns] = useState([])
   const [carouselIndex, setCarouselIndex] = useState(0)
+  const [loadingDesign, setLoadingDesign] = useState(false)
   const [characterPanelFocus, setCharacterPanelFocus] = useState(null)
 
   const clearCharacterFocus = useCallback(() => setCharacterPanelFocus(null), [])
