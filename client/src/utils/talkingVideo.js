@@ -190,3 +190,41 @@ export function previewWithBrowserVoice({ text, language, tonality, gender = 'fe
   if (voice) utterance.voice = voice
   window.speechSynthesis.speak(utterance)
 }
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+export async function downloadVideoBlob(remoteUrl) {
+  const blob = await fetch(remoteUrl).then((r) => {
+    if (!r.ok) throw new Error('Could not download lip-sync video')
+    return r.blob()
+  })
+  return {
+    videoBlob: blob,
+    videoUrl: URL.createObjectURL(blob),
+  }
+}
+
+/**
+ * Real lip-sync via SadTalker (server). Falls back to simple bounce animation if unavailable.
+ */
+export async function requestLipSyncVideo(API, { imageDataUrl, audioDataUrl, portrait = true }) {
+  const { data } = await API.post('/design/character/lipsync', {
+    imageDataUrl,
+    audioDataUrl,
+    portrait,
+  })
+
+  if (data.videoUrl) return data
+
+  if (data.status === 'processing' && data.requestId) {
+    for (let attempt = 0; attempt < 45; attempt += 1) {
+      await sleep(3000)
+      const poll = await API.get(`/design/character/lipsync/${data.requestId}`)
+      if (poll.data?.videoUrl) return poll.data
+      if (poll.data?.error) throw new Error(poll.data.error)
+    }
+    throw new Error('Lip-sync is still processing — wait a moment and try again')
+  }
+
+  throw new Error(data.error || 'Lip-sync did not return a video')
+}

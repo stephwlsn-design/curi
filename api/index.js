@@ -74,6 +74,8 @@ const isDesignFastRequest = (req) => {
   if (pathOnly === '/api/design/library' && req.method === 'GET') return true;
   if (pathOnly === '/api/design/templates' && req.method === 'GET') return true;
   if (pathOnly === '/api/design/character/speak' && req.method === 'POST') return true;
+  if (pathOnly === '/api/design/character/lipsync' && req.method === 'POST') return true;
+  if (/^\/api\/design\/character\/lipsync\/[^/]+$/.test(pathOnly) && req.method === 'GET') return true;
   if (req.method === 'PATCH' && /^\/api\/design\/[^/]+$/.test(pathOnly)) return true;
   return false;
 };
@@ -318,6 +320,44 @@ const handleDesignFast = async (req, res) => {
       return sendJson(res, 200, result);
     } catch (err) {
       return sendJson(res, err.status || 503, {
+        error: err.message,
+        hint: err.hint,
+        code: err.code,
+      });
+    }
+  }
+
+  if (pathOnly === '/api/design/character/lipsync' && req.method === 'POST') {
+    try {
+      const lipSyncService = require('../server/src/services/lipSyncService');
+      const User = require('../server/src/models/User');
+      const userWithCredits = await User.findById(user._id);
+      const result = await lipSyncService.generateLipSyncVideo({
+        imageDataUrl: body.imageDataUrl,
+        audioDataUrl: body.audioDataUrl,
+        portrait: body.portrait !== false,
+      });
+      if (result.videoUrl && userWithCredits?.credits > 0) {
+        await userWithCredits.deductCredits(3);
+      }
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, err.status || 503, {
+        error: err.message,
+        hint: err.hint,
+        code: err.code,
+      });
+    }
+  }
+
+  const lipsyncPollMatch = pathOnly.match(/^\/api\/design\/character\/lipsync\/([^/]+)$/);
+  if (lipsyncPollMatch && req.method === 'GET') {
+    try {
+      const lipSyncService = require('../server/src/services/lipSyncService');
+      const result = await lipSyncService.getLipSyncJob(lipsyncPollMatch[1]);
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, err.status || 502, {
         error: err.message,
         hint: err.hint,
         code: err.code,

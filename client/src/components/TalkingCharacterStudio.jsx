@@ -17,8 +17,10 @@ import {
 import {
   base64ToBlob,
   createTalkingVideo,
+  downloadVideoBlob,
   mediaUrlToDataUrl,
   previewWithBrowserVoice,
+  requestLipSyncVideo,
 } from '../utils/talkingVideo'
 
 export default function TalkingCharacterStudio({
@@ -183,11 +185,42 @@ export default function TalkingCharacterStudio({
     if (!script.trim()) return toast.error('Enter script text')
 
     setCreatingVideo(true)
+    const progressId = 'lipsync-progress'
+    toast.loading('Generating lip-sync video (mouth matches audio)…', { id: progressId })
     try {
       let audioUrl = audioDataUrl
       if (!audioUrl) {
         audioUrl = await synthesizeAudio()
         if (!audioUrl) return
+      }
+
+      const imageDataUrl = await mediaUrlToDataUrl(imageUrl)
+      const portrait = Boolean(uploadPreview || initialImageUrl)
+
+      try {
+        const lipSync = await requestLipSyncVideo(API, {
+          imageDataUrl,
+          audioDataUrl: audioUrl,
+          portrait,
+        })
+        const local = await downloadVideoBlob(lipSync.videoUrl)
+        if (videoUrl) URL.revokeObjectURL(videoUrl)
+        setVideoUrl(local.videoUrl)
+        setVideoBlob(local.videoBlob)
+        toast.success('Lip-synced video ready — mouth matches speech', { id: progressId })
+        return
+      } catch (lipErr) {
+        const status = lipErr.response?.status
+        const hint = lipErr.response?.data?.hint
+        if (status === 503) {
+          toast.error(hint || 'Real lip-sync needs FAL_KEY on the server', { id: progressId })
+        } else if (!lipErr.response) {
+          toast.error(lipErr.message || 'Lip-sync failed', { id: progressId })
+          return
+        } else {
+          console.warn('Lip-sync unavailable, using basic animation', lipErr)
+          toast.loading('Using basic animation (add FAL_KEY for real lip dubbing)…', { id: progressId })
+        }
       }
 
       const audioBlob = audioUrl.startsWith('data:')
@@ -203,10 +236,10 @@ export default function TalkingCharacterStudio({
       if (videoUrl) URL.revokeObjectURL(videoUrl)
       setVideoUrl(result.videoUrl)
       setVideoBlob(result.videoBlob)
-      toast.success('Talking video ready')
+      toast.success('Talking video ready (basic animation)', { id: progressId })
     } catch (err) {
       console.error(err)
-      toast.error('Could not create talking video — try again')
+      toast.error('Could not create talking video — try again', { id: progressId })
     } finally {
       setCreatingVideo(false)
     }
@@ -254,7 +287,7 @@ export default function TalkingCharacterStudio({
       <div>
         <div className="text-xs font-bold text-theme-text">Talking Character Studio</div>
         <p className="text-[10px] text-theme-muted/55 mt-0.5 leading-snug">
-          Make any character speak your script in any language, or upload your own image for a talking video.
+          Upload a portrait or pick a character, write a script, then create a lip-synced video where the mouth matches the audio.
         </p>
       </div>
 
@@ -417,7 +450,7 @@ export default function TalkingCharacterStudio({
           className="btn-primary flex-1 text-xs py-2 flex items-center justify-center gap-1 min-w-[120px]"
         >
           {creatingVideo ? <Loader2 size={14} className="animate-spin" /> : <Video size={14} />}
-          Create video
+          Create lip-sync video
         </button>
       </div>
 

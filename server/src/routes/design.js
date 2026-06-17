@@ -326,6 +326,47 @@ router.post('/character/speak', checkCredits(1), async (req, res) => {
   }
 });
 
+router.post('/character/lipsync', checkCredits(3), async (req, res) => {
+  const { imageDataUrl, audioDataUrl, portrait = true } = req.body;
+  if (!imageDataUrl || !audioDataUrl) {
+    return res.status(400).json({ error: 'Image and audio are required for lip-sync' });
+  }
+
+  try {
+    const lipSyncService = require('../services/lipSyncService');
+    const result = await lipSyncService.generateLipSyncVideo({
+      imageDataUrl,
+      audioDataUrl,
+      portrait: portrait !== false,
+    });
+    if (result.videoUrl) {
+      await req.user.deductCredits(req.creditCost);
+    }
+    res.json(result);
+  } catch (err) {
+    const status = err.status || (err.code === 'LIPSYNC_UNAVAILABLE' ? 503 : 502);
+    res.status(status).json({
+      error: err.message,
+      hint: err.hint,
+      code: err.code,
+    });
+  }
+});
+
+router.get('/character/lipsync/:requestId', async (req, res) => {
+  try {
+    const lipSyncService = require('../services/lipSyncService');
+    const result = await lipSyncService.getLipSyncJob(req.params.requestId);
+    res.json(result);
+  } catch (err) {
+    res.status(err.status || 502).json({
+      error: err.message,
+      hint: err.hint,
+      code: err.code,
+    });
+  }
+});
+
 router.get('/media/photos', async (req, res) => {
   try {
     const { query, page = 1, perPage = 24 } = req.query;
