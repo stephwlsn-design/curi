@@ -75,6 +75,7 @@ Return JSON:
     temperature: 0.3,
     label: 'Design Idea Analysis',
     imagePath: idea.imagePath,
+    timeoutMs: 22000,
   });
 
   const spec = {

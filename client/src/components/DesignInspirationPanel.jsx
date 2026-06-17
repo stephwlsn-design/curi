@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { Upload, Sparkles, X, Loader2, ImageIcon, Layers } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { API } from '../context/AuthContext'
@@ -22,9 +22,14 @@ export default function DesignInspirationPanel({
 }) {
   const inputRef = useRef(null)
   const [uploading, setUploading] = useState(false)
+  const [localPreview, setLocalPreview] = useState(null)
   const [notes, setNotes] = useState(value?.notes || '')
 
-  const previewUrl = value?.imageUrl || null
+  const previewUrl = value?.previewDataUrl || value?.imageUrl || localPreview || null
+
+  useEffect(() => () => {
+    if (localPreview?.startsWith('blob:')) URL.revokeObjectURL(localPreview)
+  }, [localPreview])
   const format = getPostFormat(postFormat)
   const dimensionOptions = getDimensionOptions(postFormat)
 
@@ -43,13 +48,26 @@ export default function DesignInspirationPanel({
       if (file) formData.append('image', file)
 
       const { data } = await API.post('/design/idea', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 55000,
       })
       onChange?.(data.designIdea)
-      if (file) toast.success('Inspiration uploaded — aesthetics extracted, text ignored')
+      if (file) {
+        if (localPreview?.startsWith('blob:')) URL.revokeObjectURL(localPreview)
+        setLocalPreview(null)
+        toast.success(
+          data.designIdea?.analyzedSpec
+            ? 'Inspiration uploaded — style extracted'
+            : 'Inspiration uploaded — you can create your design',
+        )
+      }
       return data.designIdea
     } catch (err) {
-      toast.error(err.response?.data?.error || err.message || 'Upload failed')
+      const msg = err.code === 'ECONNABORTED'
+        ? 'Upload timed out — try a smaller image or try again'
+        : (err.response?.data?.error || err.message || 'Upload failed')
+      toast.error(msg)
+      if (localPreview?.startsWith('blob:')) URL.revokeObjectURL(localPreview)
+      setLocalPreview(null)
       return null
     } finally {
       setUploading(false)
@@ -60,11 +78,19 @@ export default function DesignInspirationPanel({
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error('Image must be under 8 MB')
+      return
+    }
+    const blobUrl = URL.createObjectURL(file)
+    setLocalPreview(blobUrl)
     await saveIdea(file, notes)
   }
 
   const clearIdea = async () => {
     setNotes('')
+    if (localPreview?.startsWith('blob:')) URL.revokeObjectURL(localPreview)
+    setLocalPreview(null)
     onChange?.(null)
     if (workspaceId) {
       try {
@@ -108,9 +134,21 @@ export default function DesignInspirationPanel({
         onChange={onFileChange}
       />
 
-      {previewUrl ? (
+      {previewUrl || uploading ? (
         <div className="relative rounded-xl overflow-hidden border border-theme-border">
-          <img src={previewUrl} alt="Inspiration reference" className="w-full h-40 object-cover" />
+          {previewUrl ? (
+            <img src={previewUrl} alt="Inspiration reference" className="w-full h-40 object-cover" />
+          ) : (
+            <div className="w-full h-40 flex items-center justify-center bg-theme-subtle/5">
+              <Loader2 size={28} className="animate-spin text-curi-pink" />
+            </div>
+          )}
+          {uploading && (
+            <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2">
+              <Loader2 size={24} className="animate-spin text-white" />
+              <span className="text-xs font-bold text-white">Uploading & analyzing…</span>
+            </div>
+          )}
           <button
             type="button"
             onClick={clearIdea}

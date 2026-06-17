@@ -26,10 +26,10 @@ const callOpenAI = async ({ system, user, temperature = 0.8, model = 'gpt-4o-min
   return json ? JSON.parse(text) : text;
 };
 
-const generateJSON = async ({ system, user, temperature = 0.8, label = 'LLM', imagePath = null }) => {
+const generateJSON = async ({ system, user, temperature = 0.8, label = 'LLM', imagePath = null, timeoutMs }) => {
   if (useGemini()) {
     logger.info(`${label}: using Gemini${imagePath ? ' (with reference image)' : ''}`);
-    return gemini.generateJSON({ system, user, temperature, imagePath });
+    return gemini.generateJSON({ system, user, temperature, imagePath, timeoutMs });
   }
 
   logger.info(`${label}: using OpenAI`);

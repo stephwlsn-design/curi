@@ -39,20 +39,35 @@ router.post('/idea', uploadDesignIdea.single('image'), async (req, res) => {
 
   if (designIdea.imageUrl && req.file) {
     try {
-      const ideaContext = await designService.resolveDesignIdeaContext(normalizeDesignIdea(designIdea));
+      const ideaContext = await Promise.race([
+        designService.resolveDesignIdeaContext(normalizeDesignIdea(designIdea)),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Style analysis timed out')), 22000);
+        }),
+      ]);
       if (ideaContext) {
         designIdea.analyzedDirection = ideaContext.direction;
         designIdea.analyzedSpec = ideaContext.spec;
         workspace.brandProfile.designIdea = designIdea;
       }
     } catch (e) {
-      // analysis optional on upload
+      console.warn('[design] idea analysis skipped:', e.message);
     }
   }
 
   await workspace.save();
 
-  res.json({ designIdea });
+  const responseIdea = { ...designIdea };
+  if (req.file?.path && req.file.size < 900000) {
+    try {
+      const fs = require('fs');
+      const buf = fs.readFileSync(req.file.path);
+      const mime = req.file.mimetype || 'image/jpeg';
+      responseIdea.previewDataUrl = `data:${mime};base64,${buf.toString('base64')}`;
+    } catch { /* preview optional */ }
+  }
+
+  res.json({ designIdea: responseIdea });
 });
 
 router.post('/from-inspiration', checkCredits(2), async (req, res) => {

@@ -7,6 +7,10 @@ const API = axios.create({ baseURL: '/api' });
 API.interceptors.request.use(cfg => {
   const token = localStorage.getItem('curi_token');
   if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  // Let the browser set multipart boundary — manual Content-Type breaks uploads on the server.
+  if (cfg.data instanceof FormData) {
+    delete cfg.headers['Content-Type'];
+  }
   return cfg;
 });
 
