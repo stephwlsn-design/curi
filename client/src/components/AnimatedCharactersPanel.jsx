@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Search, Sparkles, Mic, Grid3X3 } from 'lucide-react'
+import { useMemo, useState, useEffect, useRef } from 'react'
+import { Search, Sparkles, Mic, Grid3X3, Upload } from 'lucide-react'
 import {
   CHARACTER_CATEGORIES,
   searchCharacters,
@@ -13,13 +13,25 @@ export default function AnimatedCharactersPanel({
   onSearchChange,
   onSelect,
   onTalkingCharacter,
+  focusMode = null,
+  onFocusHandled,
 }) {
-  const [mode, setMode] = useState('browse')
+  const [mode, setMode] = useState(defaultMode)
   const [category, setCategory] = useState('mascots')
   const [internalSearch, setInternalSearch] = useState('')
   const [talkTarget, setTalkTarget] = useState(null)
+  const uploadRef = useRef(null)
   const search = onSearchChange ? searchQuery : internalSearch
   const setSearch = onSearchChange || setInternalSearch
+
+  useEffect(() => {
+    if (!focusMode) return
+    setMode(focusMode === 'upload' ? 'talk' : 'talk')
+    if (focusMode === 'upload') {
+      setTimeout(() => uploadRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 150)
+    }
+    onFocusHandled?.()
+  }, [focusMode, onFocusHandled])
 
   const filtered = useMemo(
     () => searchCharacters(search, category),
@@ -34,6 +46,11 @@ export default function AnimatedCharactersPanel({
     setTalkTarget(character)
   }
 
+  const openTalkWithCharacter = (character) => {
+    setMode('talk')
+    setTalkTarget(character)
+  }
+
   return (
     <div className={embedded ? 'space-y-3' : 'card p-5'}>
       {!embedded && (
@@ -43,10 +60,25 @@ export default function AnimatedCharactersPanel({
             Animated Characters
           </div>
           <p className="text-sm text-theme-muted/60 mt-1">
-            Browse glossy 3D mascots or create talking videos with voice
+            Make mascots speak, or upload a real photo to create a talking video
           </p>
         </div>
       )}
+
+      <div ref={uploadRef} className="rounded-xl border border-curi-blue/25 bg-gradient-to-br from-curi-blue/10 to-curi-pink/10 p-3">
+        <div className="flex items-center gap-2 mb-2">
+          <Mic size={16} className="text-curi-blue" />
+          <span className="text-xs font-bold text-theme-text">Talking Character Studio</span>
+        </div>
+        <p className="text-[10px] text-theme-muted/60 mb-3 leading-snug">
+          Write a script, pick a voice & language, then create a talking video from any mascot or uploaded portrait.
+        </p>
+        <TalkingCharacterStudio
+          workspaceId={workspaceId}
+          initialCharacter={talkTarget}
+          onAddToCanvas={onTalkingCharacter}
+        />
+      </div>
 
       <div className="flex gap-1 p-1 rounded-xl bg-theme-subtle/5 border border-theme-border">
         <button
@@ -56,7 +88,7 @@ export default function AnimatedCharactersPanel({
             mode === 'browse' ? 'bg-curi-pink text-white' : 'text-theme-muted/60'
           }`}
         >
-          <Grid3X3 size={12} /> Browse
+          <Grid3X3 size={12} /> Add mascot
         </button>
         <button
           type="button"
@@ -65,17 +97,11 @@ export default function AnimatedCharactersPanel({
             mode === 'talk' ? 'bg-curi-blue text-white' : 'text-theme-muted/60'
           }`}
         >
-          <Mic size={12} /> Talking Studio
+          <Upload size={12} /> Upload & talk
         </button>
       </div>
 
-      {mode === 'talk' ? (
-        <TalkingCharacterStudio
-          workspaceId={workspaceId}
-          initialCharacter={talkTarget}
-          onAddToCanvas={onTalkingCharacter}
-        />
-      ) : (
+      {mode === 'browse' ? (
         <>
           <div className="relative mb-2">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted/40" />
@@ -111,57 +137,62 @@ export default function AnimatedCharactersPanel({
             <>
               <p className="text-[10px] text-theme-muted/50 mb-2">
                 {filtered.length} character{filtered.length === 1 ? '' : 's'}
-                {category === 'mascots' ? ' · glossy 3D style' : ''}
+                {category === 'mascots' ? ' · click to add, mic to make speak' : ''}
               </p>
               <div className={`grid gap-2 ${embedded ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-3'}`}>
                 {filtered.map((character) => (
-                  <button
-                    key={character.id}
-                    type="button"
-                    onClick={() => handleCharacterClick(character)}
-                    title={character.name}
-                    className={`group relative aspect-square rounded-lg overflow-hidden border-2 border-theme-border hover:border-curi-pink/50 hover:scale-[1.02] transition-all ${
-                      character.style === '3d'
-                        ? 'bg-gradient-to-br from-pink-100/80 via-pink-50/40 to-blue-50/40 dark:from-pink-900/20 dark:via-theme-subtle/10 dark:to-blue-900/10'
-                        : 'bg-theme-subtle/5'
-                    }`}
-                  >
-                    <img
-                      src={character.previewUrl}
-                      alt={character.name}
-                      className="w-full h-full object-contain p-1.5"
-                      loading="lazy"
-                    />
-                    {character.style === '3d' ? (
-                      <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-curi-blue/90 text-white text-[8px] font-bold uppercase">
-                        3D
-                      </span>
-                    ) : character.animated ? (
-                      <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-curi-pink/90 text-white text-[8px] font-bold uppercase">
-                        GIF
-                      </span>
-                    ) : null}
-                    {character.style === '3d' && (
-                      <span className="absolute top-1 right-1 p-0.5 rounded bg-curi-green/90 text-white" title="Can speak in Talking Studio">
-                        <Mic size={8} />
-                      </span>
-                    )}
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5 pt-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span className="text-white text-[9px] font-bold leading-tight block truncate">{character.name}</span>
-                    </div>
-                  </button>
+                  <div key={character.id} className="relative group">
+                    <button
+                      type="button"
+                      onClick={() => handleCharacterClick(character)}
+                      title={`Add ${character.name}`}
+                      className={`w-full aspect-square rounded-lg overflow-hidden border-2 border-theme-border hover:border-curi-pink/50 hover:scale-[1.02] transition-all ${
+                        character.style === '3d'
+                          ? 'bg-gradient-to-br from-pink-100/80 via-pink-50/40 to-blue-50/40 dark:from-pink-900/20 dark:via-theme-subtle/10 dark:to-blue-900/10'
+                          : 'bg-theme-subtle/5'
+                      }`}
+                    >
+                      <img
+                        src={character.previewUrl}
+                        alt={character.name}
+                        className="w-full h-full object-contain p-1.5"
+                        loading="lazy"
+                      />
+                      {character.style === '3d' ? (
+                        <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-curi-blue/90 text-white text-[8px] font-bold uppercase">
+                          3D
+                        </span>
+                      ) : character.animated ? (
+                        <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-curi-pink/90 text-white text-[8px] font-bold uppercase">
+                          GIF
+                        </span>
+                      ) : null}
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5 pt-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-white text-[9px] font-bold leading-tight block truncate">{character.name}</span>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openTalkWithCharacter(character)}
+                      title={`Make ${character.name} speak`}
+                      className="absolute top-1 right-1 p-1 rounded-md bg-curi-blue text-white shadow-clay-sm opacity-90 hover:opacity-100 hover:scale-105 transition-all z-10"
+                    >
+                      <Mic size={10} />
+                    </button>
+                  </div>
                 ))}
               </div>
-              <button
-                type="button"
-                onClick={() => setMode('talk')}
-                className="btn-secondary w-full text-xs py-2 mt-2 flex items-center justify-center gap-1.5"
-              >
-                <Mic size={14} /> Make a talking video
-              </button>
             </>
           )}
         </>
+      ) : (
+        <div className="text-center py-4 px-2 rounded-xl border border-dashed border-theme-border bg-theme-subtle/5">
+          <Upload size={24} className="mx-auto text-curi-blue mb-2 opacity-80" />
+          <p className="text-xs font-semibold text-theme-text mb-1">Upload a portrait above</p>
+          <p className="text-[10px] text-theme-muted/55 leading-snug">
+            Use the <strong>Upload photo of a person</strong> button in Talking Studio, write a script, then hit Create video.
+          </p>
+        </div>
       )}
     </div>
   )

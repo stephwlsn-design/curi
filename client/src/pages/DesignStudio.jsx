@@ -25,7 +25,7 @@ const PANELS = [
   { id: 'templates', label: 'Templates', icon: LayoutTemplate, step: 2 },
   { id: 'photos', label: 'Photos', icon: Image, step: 3 },
   { id: 'videos', label: 'Videos', icon: Film, step: 3 },
-  { id: 'characters', label: 'Characters', icon: Smile, step: 3 },
+  { id: 'characters', label: 'Talk', icon: Mic, step: 3 },
   { id: 'audio', label: 'Audio', icon: Volume2, step: 3 },
   { id: 'text', label: 'Text', icon: Type, step: 4 },
   { id: 'elements', label: 'Elements', icon: Layers, step: 4 },
@@ -76,7 +76,14 @@ export default function DesignStudio() {
   const [carouselSlideCount, setCarouselSlideCount] = useState(5)
   const [carouselDesigns, setCarouselDesigns] = useState([])
   const [carouselIndex, setCarouselIndex] = useState(0)
-  const [loadingDesign, setLoadingDesign] = useState(false)
+  const [characterPanelFocus, setCharacterPanelFocus] = useState(null)
+
+  const openCharactersPanel = useCallback((focus = 'talk') => {
+    setStep(3)
+    setPanel('characters')
+    setPanelCollapsed(false)
+    setCharacterPanelFocus(focus)
+  }, [])
 
   const {
     workspaceId,
@@ -490,7 +497,7 @@ export default function DesignStudio() {
               key={id}
               type="button"
               onClick={() => handlePanelChange(id)}
-              title={label}
+              title={`${label}${id === 'characters' ? ' — make mascots speak or upload a portrait' : ''}`}
               className={`w-12 py-2.5 rounded-xl flex flex-col items-center gap-1 transition-all ${
                 panel === id
                   ? 'bg-curi-pink/15 text-curi-pink'
@@ -646,6 +653,8 @@ export default function DesignStudio() {
                 onSearchChange={setSearchQuery}
                 onSelect={handleCharacter}
                 onTalkingCharacter={handleTalkingCharacter}
+                focusMode={characterPanelFocus}
+                onFocusHandled={() => setCharacterPanelFocus(null)}
               />
             )}
 
@@ -765,6 +774,7 @@ export default function DesignStudio() {
               workspaceId={workspaceId}
               userTemplates={userTemplates}
               onSaved={handleDesignSaved}
+              onOpenCharactersPanel={openCharactersPanel}
             />
           ) : (
             <div className="h-full flex flex-col items-center justify-center bg-theme-subtle/5 p-8 text-center">

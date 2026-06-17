@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
-import { X, Save, LayoutTemplate, Plus, Trash2, Volume2, Play } from 'lucide-react'
+import { X, Save, LayoutTemplate, Plus, Trash2, Volume2, Play, Mic, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { API } from '../context/AuthContext'
 import DesignCanvasRenderer from './DesignCanvasRenderer'
 import { BUILTIN_TEMPLATES } from '../constants/designTemplates'
 import PexelsMediaPanel from './PexelsMediaPanel'
+import TalkingCharacterStudio from './TalkingCharacterStudio'
 import { applyPexelsPhotoToCanvas } from '../utils/pexelsCanvas'
-import { applyCharacterToCanvas, applyTalkingCharacterToCanvas } from '../utils/characterCanvas'
+import { applyCharacterToCanvas, applyTalkingCharacterToCanvas, ANIMATED_CHARACTERS } from '../utils/characterCanvas'
 import { applyAudioToCanvas, removeAudioFromCanvas, getCanvasAudioUrl } from '../utils/audioCanvas'
 import {
   designToCanvas, applyTemplateToCanvas, canvasToDesignFields, syncCanvasTextFromDesign,
@@ -24,6 +25,7 @@ export default forwardRef(function DesignCanvasEditor({
   embedded = false,
   hideAssetSidebar = false,
   hideClose = false,
+  onOpenCharactersPanel,
 }, ref) {
   const containerRef = useRef(null)
   const [scale, setScale] = useState(0.45)
@@ -307,6 +309,33 @@ export default forwardRef(function DesignCanvasEditor({
     toast.success(`Added talking character: ${payload.name}`)
   }
 
+  const applyTalkToSelected = (payload) => {
+    if (!selectedId) return
+    const el = canvas.elements.find((e) => e.id === selectedId)
+    if (!el) return
+    updateElement(selectedId, {
+      type: 'talking-character',
+      characterId: payload.characterId || el.characterId || null,
+      url: payload.imageUrl,
+      posterUrl: payload.imageUrl,
+      previewUrl: payload.imageUrl,
+      videoUrl: payload.videoUrl || null,
+      audioDataUrl: payload.audioDataUrl || null,
+      name: payload.name || el.name || 'Talking Character',
+      script: payload.script || '',
+      language: payload.language || 'en',
+      tonality: payload.tonality || 'friendly',
+      animated: false,
+    })
+    toast.success('Character updated with voice & video')
+  }
+
+  const selectedCharacter = selected?.type === 'character' || selected?.type === 'talking-character'
+    ? ANIMATED_CHARACTERS.find((c) => c.id === selected.characterId) || null
+    : null
+
+  const isCharacterLayer = selected?.type === 'character' || selected?.type === 'talking-character'
+
   const applyAudio = (audio) => {
     setCanvas((prev) => applyAudioToCanvas(prev, audio))
     toast.success(`Audio added: ${audio.name}`)
@@ -498,6 +527,33 @@ export default forwardRef(function DesignCanvasEditor({
                       zIndex: 20,
                     }}
                   >
+                    {isCharacterLayer && (
+                      <div
+                        className="absolute left-1/2 -translate-x-1/2 flex gap-1.5 z-40 pointer-events-auto"
+                        style={{ top: -40 }}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onOpenCharactersPanel?.('talk')
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-curi-blue text-white text-[10px] font-bold shadow-clay-sm hover:opacity-90"
+                        >
+                          <Mic size={12} /> Make speak
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onOpenCharactersPanel?.('upload')
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-theme-surface border border-theme-border text-theme-text text-[10px] font-bold shadow-clay-sm hover:border-curi-pink/40"
+                        >
+                          <Upload size={12} /> Upload photo
+                        </button>
+                      </div>
+                    )}
                     <div
                       className="absolute inset-0 border-2 border-curi-pink shadow-[0_0_0_1px_rgba(255,107,157,0.25)] pointer-events-none"
                     />
@@ -538,7 +594,7 @@ export default forwardRef(function DesignCanvasEditor({
         </div>
 
         {/* Properties panel */}
-        <div className="w-64 border-l border-theme-border p-4 overflow-y-auto flex-shrink-0 space-y-4">
+        <div className={`${isCharacterLayer ? 'w-80' : 'w-64'} border-l border-theme-border p-4 overflow-y-auto flex-shrink-0 space-y-4 transition-all`}>
           <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">Layers</div>
           <div className="space-y-1">
             {canvas.elements.map(el => (
@@ -673,6 +729,26 @@ export default forwardRef(function DesignCanvasEditor({
                 <button type="button" onClick={deleteSelected} className="text-xs text-red-400 flex items-center gap-1 hover:underline">
                   <Trash2 size={12} /> Delete layer
                 </button>
+              )}
+
+              {isCharacterLayer && (
+                <div className="space-y-2 pt-2 border-t border-theme-border">
+                  <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider flex items-center gap-1.5">
+                    <Mic size={12} className="text-curi-blue" />
+                    Make character speak
+                  </div>
+                  <p className="text-[10px] text-theme-muted/50 leading-snug">
+                    Write a script, generate voice, create a talking video — or upload a real portrait.
+                  </p>
+                  <TalkingCharacterStudio
+                    workspaceId={workspaceId}
+                    initialCharacter={selectedCharacter}
+                    initialImageUrl={selected.url || selected.posterUrl}
+                    initialScript={selected.script || ''}
+                    applyLabel={selected.type === 'talking-character' ? 'Update voice & video' : 'Apply to this character'}
+                    onAddToCanvas={applyTalkToSelected}
+                  />
+                </div>
               )}
             </div>
           )}

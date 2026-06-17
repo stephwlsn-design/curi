@@ -25,12 +25,15 @@ const SPEAKABLE_MASCOTS = ANIMATED_CHARACTERS.filter(
 export default function TalkingCharacterStudio({
   workspaceId,
   initialCharacter = null,
+  initialImageUrl = null,
+  initialScript = '',
   onAddToCanvas,
+  applyLabel = 'Add to canvas',
 }) {
   const fileRef = useRef(null)
   const [selectedId, setSelectedId] = useState(initialCharacter?.id || 'char-eco-mascot')
-  const [uploadPreview, setUploadPreview] = useState(null)
-  const [script, setScript] = useState('')
+  const [uploadPreview, setUploadPreview] = useState(initialImageUrl || null)
+  const [script, setScript] = useState(initialScript || '')
   const [language, setLanguage] = useState('en')
   const [tonality, setTonality] = useState('friendly')
   const [generating, setGenerating] = useState(false)
@@ -50,6 +53,17 @@ export default function TalkingCharacterStudio({
   useEffect(() => {
     if (initialCharacter?.id) setSelectedId(initialCharacter.id)
   }, [initialCharacter?.id])
+
+  useEffect(() => {
+    if (initialImageUrl) {
+      setUploadPreview(initialImageUrl)
+      setSelectedId(null)
+    }
+  }, [initialImageUrl])
+
+  useEffect(() => {
+    if (initialScript) setScript(initialScript)
+  }, [initialScript])
 
   const resetOutputs = () => {
     if (videoUrl) URL.revokeObjectURL(videoUrl)
@@ -227,11 +241,14 @@ export default function TalkingCharacterStudio({
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          className="btn-secondary w-full text-xs py-2 flex items-center justify-center gap-1.5"
+          className="btn-primary w-full text-xs py-2.5 flex items-center justify-center gap-1.5"
         >
           <Upload size={14} />
-          Upload your image
+          Upload photo of a person
         </button>
+        <p className="text-[10px] text-theme-muted/45 mt-1 text-center">
+          PNG, JPG, or WebP — turn any portrait into a talking video
+        </p>
         {uploadPreview && (
           <p className="text-[10px] text-curi-green mt-1 flex items-center gap-1">
             <ImagePlus size={12} /> Custom image selected
@@ -354,7 +371,7 @@ export default function TalkingCharacterStudio({
               onClick={addToCanvas}
               className="btn-primary flex-1 text-xs py-1.5 flex items-center justify-center gap-1"
             >
-              <Mic size={12} /> Add to canvas
+              <Mic size={12} /> {applyLabel}
             </button>
           </div>
         </div>
