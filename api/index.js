@@ -124,6 +124,7 @@ const handleLogin = async (req, res) => {
   const jwt = require('jsonwebtoken');
   const User = require('../server/src/models/User');
   const { findAccessibleWorkspace } = require('../server/src/utils/workspaceAccess');
+  const { seedTestUser, TEST_USER } = require('../server/src/utils/seedTestUser');
 
   if (!process.env.JWT_SECRET) {
     return sendJson(res, 503, { error: 'JWT_SECRET is not configured' });
@@ -136,7 +137,17 @@ const handleLogin = async (req, res) => {
     return sendJson(res, 400, { error: 'Email and password are required' });
   }
 
-  const user = await User.findOne({ email }).select('+password');
+  let user = await User.findOne({ email }).select('+password');
+  if (
+    !user
+    && email === TEST_USER.email
+    && password === TEST_USER.password
+    && (process.env.SEED_DEMO_USER === 'true' || process.env.VERCEL)
+  ) {
+    await seedTestUser();
+    user = await User.findOne({ email }).select('+password');
+  }
+
   if (!user || !(await user.comparePassword(password))) {
     return sendJson(res, 401, { error: 'Invalid email or password' });
   }
@@ -162,6 +173,55 @@ const handleLogin = async (req, res) => {
   );
 
   return sendJson(res, 200, { token, user: formatUser(user), workspace });
+};
+
+const handleRegister = async (req, res) => {
+  const jwt = require('jsonwebtoken');
+  const User = require('../server/src/models/User');
+  const Workspace = require('../server/src/models/Workspace');
+  const { acceptPendingInvite } = require('../server/src/services/userService');
+
+  if (!process.env.JWT_SECRET) {
+    return sendJson(res, 503, { error: 'JWT_SECRET is not configured' });
+  }
+
+  const body = await parseRequestBody(req);
+  const name = String(body.name || '').trim();
+  const email = String(body.email || '').trim().toLowerCase();
+  const password = body.password;
+  const inviteToken = body.inviteToken;
+
+  if (!name) return sendJson(res, 400, { error: 'Name is required' });
+  if (!email || !email.includes('@')) return sendJson(res, 400, { error: 'Valid email is required' });
+  if (!password || password.length < 8) {
+    return sendJson(res, 400, { error: 'Password must be at least 8 characters' });
+  }
+
+  const existing = await User.findOne({ email });
+  if (existing) return sendJson(res, 409, { error: 'Email already in use' });
+
+  const user = await User.create({ name, email, password });
+
+  let workspace = null;
+  if (inviteToken) {
+    workspace = await acceptPendingInvite(user, inviteToken);
+    if (!workspace) {
+      await User.findByIdAndDelete(user._id);
+      return sendJson(res, 400, { error: 'Invalid invite — email must match the invitation' });
+    }
+  } else {
+    workspace = await Workspace.create({ name: `${name}'s Brand`, owner: user._id });
+    user.currentWorkspace = workspace._id;
+    await user.save();
+  }
+
+  const token = jwt.sign(
+    { id: user._id },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' },
+  );
+
+  return sendJson(res, 201, { token, user: formatUser(user), workspace });
 };
 
 const handleHealth = async (res) => {
@@ -195,6 +255,15 @@ const handleAuth = async (req, res) => {
     } catch (err) {
       console.error('[api] login failed:', err);
       return sendJson(res, 400, { error: err.message || 'Login failed' });
+    }
+  }
+
+  if (pathOnly === '/api/auth/register' && req.method === 'POST') {
+    try {
+      return await handleRegister(req, res);
+    } catch (err) {
+      console.error('[api] register failed:', err);
+      return sendJson(res, 400, { error: err.message || 'Registration failed' });
     }
   }
 
