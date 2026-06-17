@@ -23,6 +23,9 @@ const handleHealth = async (res) => {
   const mongoose = require('mongoose');
   const { connectDB } = require('../server/src/config/database');
   await connectDB();
+  if (mongoose.connection.readyState !== 1) {
+    throw new Error('MongoDB not connected after connectDB()');
+  }
   sendJson(res, 200, {
     status: 'ok',
     version: '1.0.0',

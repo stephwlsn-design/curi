@@ -53,7 +53,9 @@ const connectDB = async () => {
     );
   }
 
-  if (globalCache.mongoose?.conn) return globalCache.mongoose.conn;
+  const existing = globalCache.mongoose?.conn;
+  if (existing?.connection?.readyState === 1) return existing;
+  if (existing) resetMongoCache();
 
   if (!globalCache.mongoose) {
     globalCache.mongoose = { conn: null, promise: null };
