@@ -16,7 +16,7 @@ export default function AnimatedCharactersPanel({
   focusMode = null,
   onFocusHandled,
 }) {
-  const [mode, setMode] = useState(defaultMode)
+  const [mode, setMode] = useState('browse')
   const [category, setCategory] = useState('mascots')
   const [internalSearch, setInternalSearch] = useState('')
   const [talkTarget, setTalkTarget] = useState(null)
