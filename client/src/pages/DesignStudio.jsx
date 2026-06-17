@@ -8,7 +8,7 @@ import DesignStepGuide, { DESIGN_STEPS } from '../components/DesignStepGuide'
 import DesignTemplateGallery from '../components/DesignTemplateGallery'
 import PexelsMediaPanel from '../components/PexelsMediaPanel'
 import DesignCanvasEditor from '../components/DesignCanvasEditor'
-import { useDesignCreation } from '../hooks/useDesignCreation'
+import { isDraftDesign } from '../utils/localDesign'
 import toast from 'react-hot-toast'
 
 const PANELS = [
@@ -49,7 +49,10 @@ export default function DesignStudio() {
     startBlankCanvas,
     createFromPexelsPhoto,
     createFromPexelsVideo,
-  } = useDesignCreation({ prompt: brief })
+  } = useDesignCreation({
+    prompt: brief,
+    brandColors: workspace?.brandProfile?.colors?.palette,
+  })
 
   const completedSteps = useMemo(() => {
     const done = []
@@ -76,9 +79,11 @@ export default function DesignStudio() {
   }, [workspaceId])
 
   const applyDesign = (created) => {
-    if (!created?._id) return
+    if (!created) return
     setDesign(created)
-    navigate(`/design/studio/${created._id}`, { replace: true })
+    if (!isDraftDesign(created) && created._id) {
+      navigate(`/design/studio/${created._id}`, { replace: true })
+    }
   }
 
   useEffect(() => {
@@ -90,13 +95,15 @@ export default function DesignStudio() {
 
   // Load existing design when opening a shared /studio/:id URL
   useEffect(() => {
-    if (!workspaceId || !designId) return
+    if (!workspaceId || !designId || String(designId).startsWith('draft-')) return
+    if (design && isDraftDesign(design)) return
+    if (design && String(design._id) === String(designId)) return
     let cancelled = false
     setLoadingDesign(true)
     loadDesign(designId).then((found) => {
       if (cancelled) return
       if (found) setDesign(found)
-      else toast.error('Design not found — pick a template to start')
+      else if (!design) toast.error('Design not found — pick a template to start')
       setLoadingDesign(false)
     })
     return () => { cancelled = true }
@@ -123,7 +130,7 @@ export default function DesignStudio() {
 
   const handleTemplateSelect = async (template) => {
     setSelectedTemplateId(template.id)
-    const created = await startFromTemplate(template.id, null, true)
+    const created = await startFromTemplate(template.id)
     if (created) {
       applyDesign(created)
       setStep(2)
@@ -143,27 +150,27 @@ export default function DesignStudio() {
   }
 
   const handlePhoto = async (item, useAs) => {
-    if (editorRef.current) {
+    if (editorRef.current && design) {
       editorRef.current.applyPexelsPhoto(item, useAs)
       setStep(3)
       return
     }
-    const created = await createFromPexelsPhoto(item, useAs)
+    const created = await createFromPexelsPhoto(item, useAs, design)
     if (created) {
-      applyDesign(created)
+      setDesign(created)
       setStep(3)
     }
   }
 
   const handleVideo = async (item) => {
-    if (editorRef.current) {
+    if (editorRef.current && design) {
       editorRef.current.applyPexelsVideo(item)
       setStep(3)
       return
     }
-    const created = await createFromPexelsVideo(item)
+    const created = await createFromPexelsVideo(item, design)
     if (created) {
-      applyDesign(created)
+      setDesign(created)
       setStep(3)
     }
   }
@@ -211,7 +218,10 @@ export default function DesignStudio() {
   }
 
   const handleDesignSaved = (updated) => {
-    setDesign(prev => (prev?._id === updated._id ? { ...prev, ...updated } : prev))
+    setDesign(prev => ({ ...prev, ...updated, _local: false }))
+    if (updated._id && !isDraftDesign(updated)) {
+      navigate(`/design/studio/${updated._id}`, { replace: true })
+    }
   }
 
   if (authLoading || !workspaceId) {

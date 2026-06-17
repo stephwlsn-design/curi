@@ -9,6 +9,7 @@ import { applyPexelsPhotoToCanvas } from '../utils/pexelsCanvas'
 import {
   designToCanvas, applyTemplateToCanvas, canvasToDesignFields, syncCanvasTextFromDesign,
 } from '../utils/designCanvas'
+import { isDraftDesign } from '../utils/localDesign'
 
 export default forwardRef(function DesignCanvasEditor({
   design,
@@ -101,21 +102,49 @@ export default forwardRef(function DesignCanvasEditor({
   }
 
   const saveDesign = async () => {
+    const fields = canvasToDesignFields(canvas)
+    const draft = isDraftDesign(design)
+
+    if (draft) {
+      setSaving(true)
+      try {
+        const { data } = await API.post('/design/save', {
+          workspaceId,
+          canvasLayout: canvas,
+          ...fields,
+          name: design.name,
+          layout: design.layout,
+        })
+        const saved = {
+          ...(data.design || {}),
+          _id: data.design?._id,
+          canvasLayout: canvas,
+          _local: false,
+        }
+        onSaved?.(saved)
+        toast.success('Design saved')
+      } catch (err) {
+        toast.error(err.response?.data?.error || 'Save failed')
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
+
     if (!design._id) {
-      onSaved?.({ ...design, ...canvasToDesignFields(canvas), canvasLayout: canvas })
+      onSaved?.({ ...design, ...fields, canvasLayout: canvas })
       toast.success('Canvas updated')
       onClose?.()
       return
     }
     setSaving(true)
     try {
-      const fields = canvasToDesignFields(canvas)
       const { data } = await API.patch(`/design/${design._id}`, {
         workspaceId,
         canvasLayout: canvas,
         ...fields,
       })
-      const updated = { ...(data.design.metadata || {}), _id: data.design._id }
+      const updated = { ...(data.design.metadata || data.design || {}), _id: data.design._id || design._id, canvasLayout: canvas }
       onSaved?.(updated)
       toast.success('Design saved')
       onClose?.()

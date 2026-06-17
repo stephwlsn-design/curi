@@ -68,6 +68,58 @@ const isDesignMediaRequest = (req) => {
   );
 };
 
+const isDesignFastRequest = (req) => {
+  const pathOnly = requestPath(req);
+  if (pathOnly === '/api/design/save' && req.method === 'POST') return true;
+  if (pathOnly === '/api/design/library' && req.method === 'GET') return true;
+  if (pathOnly === '/api/design/templates' && req.method === 'GET') return true;
+  if (req.method === 'PATCH' && /^\/api\/design\/[^/]+$/.test(pathOnly)) return true;
+  return false;
+};
+
+const handleDesignFast = async (req, res) => {
+  const { connectDB } = require('../server/src/config/database');
+  const {
+    saveDesignDraft, patchDesign, listDesignLibrary,
+  } = require('../server/src/services/designSaveService');
+  const DesignTemplate = require('../server/src/models/DesignTemplate');
+  const { findAccessibleWorkspace } = require('../server/src/utils/workspaceAccess');
+
+  await connectDB();
+  const user = await authenticateRequest(req);
+  const pathOnly = requestPath(req);
+  const q = getQueryParams(req);
+  const body = req.body || {};
+
+  if (pathOnly === '/api/design/library' && req.method === 'GET') {
+    const designs = await listDesignLibrary(q.workspaceId);
+    return sendJson(res, 200, { designs });
+  }
+
+  if (pathOnly === '/api/design/templates' && req.method === 'GET') {
+    const workspace = await findAccessibleWorkspace(q.workspaceId, user._id);
+    if (!workspace) return sendJson(res, 404, { error: 'Workspace not found' });
+    const userTemplates = await DesignTemplate.find({ workspace: q.workspaceId })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+    return sendJson(res, 200, { templates: userTemplates });
+  }
+
+  if (pathOnly === '/api/design/save' && req.method === 'POST') {
+    const design = await saveDesignDraft({ user, workspaceId: body.workspaceId, body });
+    return sendJson(res, 201, { design });
+  }
+
+  if (req.method === 'PATCH') {
+    const designId = pathOnly.replace('/api/design/', '');
+    const design = await patchDesign({ user, designId, body });
+    return sendJson(res, 200, { design });
+  }
+
+  return sendJson(res, 404, { error: 'Not found' });
+};
+
 const authenticateRequest = async (req) => {
   const jwt = require('jsonwebtoken');
   const User = require('../server/src/models/User');
@@ -396,6 +448,17 @@ module.exports = async (req, res) => {
       return await handleDesignMedia(req, res);
     } catch (err) {
       console.error('[api] design media failed:', err);
+      return sendJson(res, err.status || 502, { error: err.message });
+    }
+  }
+
+  if (isDesignFastRequest(req)) {
+    try {
+      normalizeRequestUrl(req);
+      await parseRequestBody(req);
+      return await handleDesignFast(req, res);
+    } catch (err) {
+      console.error('[api] design fast failed:', err);
       return sendJson(res, err.status || 502, { error: err.message });
     }
   }

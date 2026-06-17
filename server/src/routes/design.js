@@ -127,18 +127,9 @@ router.post('/generate', checkCredits(5), async (req, res) => {
 
 router.get('/library', async (req, res) => {
   const { workspaceId } = req.query;
-  const designs = await Content.find({
-    workspace: workspaceId,
-    type: 'image',
-    $or: [{ 'metadata.module': 'design' }, { 'metadata.module': 'autonomous' }, { 'metadata.module': 'upload' }],
-  }).sort({ createdAt: -1 }).limit(50);
-  res.json({
-    designs: designs.map(c => ({
-      ...(c.metadata?.toObject?.() ?? c.metadata ?? {}),
-      _id: c._id,
-      canvasLayout: c.metadata?.canvasLayout,
-    })),
-  });
+  const { listDesignLibrary } = require('../services/designSaveService');
+  const designs = await listDesignLibrary(workspaceId);
+  res.json({ designs });
 });
 
 router.get('/templates', async (req, res) => {
@@ -358,30 +349,32 @@ router.post('/from-media', checkCredits(2), async (req, res) => {
   });
 });
 
+router.post('/save', async (req, res) => {
+  try {
+    const { saveDesignDraft } = require('../services/designSaveService');
+    const design = await saveDesignDraft({
+      user: req.user,
+      workspaceId: req.body.workspaceId,
+      body: req.body,
+    });
+    res.status(201).json({ design });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'Save failed' });
+  }
+});
+
 router.patch('/:id', async (req, res) => {
-  const { workspaceId, canvasLayout, headline, subheadline, cta, layout } = req.body;
-  const item = await Content.findOne({
-    _id: req.params.id,
-    workspace: workspaceId,
-    createdBy: req.user._id,
-    type: 'image',
-  });
-  if (!item) return res.status(404).json({ error: 'Design not found' });
-
-  const meta = item.metadata?.toObject?.() ?? { ...item.metadata };
-  if (canvasLayout) meta.canvasLayout = canvasLayout;
-  if (headline !== undefined) meta.headline = headline;
-  if (subheadline !== undefined) meta.subheadline = subheadline;
-  if (cta !== undefined) meta.cta = cta;
-  if (layout !== undefined) meta.layout = layout;
-  if (canvasLayout?.background?.colors) meta.colorPalette = canvasLayout.background.colors;
-
-  item.metadata = meta;
-  item.content = headline ?? item.content;
-  item.markModified('metadata');
-  await item.save();
-
-  res.json({ design: item });
+  try {
+    const { patchDesign } = require('../services/designSaveService');
+    const design = await patchDesign({
+      user: req.user,
+      designId: req.params.id,
+      body: req.body,
+    });
+    res.json({ design });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'Update failed' });
+  }
 });
 
 router.post('/from-template', checkCredits(3), async (req, res) => {
