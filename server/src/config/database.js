@@ -4,10 +4,18 @@ const logger = require('../utils/logger');
 const globalCache = global;
 
 const connectDB = async () => {
-  const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/curi';
+  const raw = process.env.MONGODB_URI?.trim();
+  const uri = raw || 'mongodb://localhost:27017/curi';
 
-  if (process.env.VERCEL && !process.env.MONGODB_URI) {
+  if (process.env.VERCEL && !raw) {
     throw new Error('MONGODB_URI environment variable is required on Vercel');
+  }
+
+  if (!uri.startsWith('mongodb://') && !uri.startsWith('mongodb+srv://')) {
+    throw new Error(
+      'MONGODB_URI must start with mongodb:// or mongodb+srv://. '
+      + 'Set a MongoDB Atlas connection string in Vercel → Settings → Environment Variables.',
+    );
   }
 
   if (globalCache.mongoose?.conn) return globalCache.mongoose.conn;
