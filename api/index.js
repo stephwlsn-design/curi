@@ -2,8 +2,8 @@ const path = require('path');
 const serverless = require('serverless-http');
 
 module.paths.unshift(
-  path.join(__dirname, 'node_modules'),
   path.join(__dirname, '..', 'server', 'node_modules'),
+  path.join(__dirname, 'node_modules'),
 );
 
 let handler;
@@ -20,18 +20,13 @@ const sendJson = (res, status, body) => {
 };
 
 const handleHealth = async (res) => {
-  const mongoose = require('mongoose');
   const { connectDB } = require('../server/src/config/database');
-  await connectDB();
-  const readyState = mongoose.connection.readyState;
-  if (readyState !== 1) {
-    throw new Error(`MongoDB not connected (readyState=${readyState})`);
-  }
+  const conn = await connectDB();
   sendJson(res, 200, {
     status: 'ok',
     version: '1.0.0',
     platform: process.env.VERCEL ? 'vercel' : 'node',
-    db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    db: conn.connection.readyState === 1 ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString(),
   });
 };
