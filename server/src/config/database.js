@@ -37,7 +37,11 @@ const connectDB = async () => {
   }
 
   if (!globalCache.mongoose.promise) {
-    globalCache.mongoose.promise = mongoose.connect(uri, { autoIndex: !process.env.VERCEL })
+    globalCache.mongoose.promise = mongoose.connect(uri, {
+      autoIndex: !process.env.VERCEL,
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
+    })
       .then((conn) => {
         logger.info(`MongoDB connected: ${conn.connection.host}`);
         return conn;
@@ -45,6 +49,18 @@ const connectDB = async () => {
       .catch((err) => {
         globalCache.mongoose.promise = null;
         logger.error('MongoDB connection error:', err);
+        if (err.message?.includes('authentication failed')) {
+          throw new Error(
+            'MongoDB authentication failed. Check the username and password in MONGODB_URI '
+            + '(URL-encode special characters in the password).',
+          );
+        }
+        if (err.name === 'MongoServerSelectionError') {
+          throw new Error(
+            'Could not reach MongoDB Atlas. Confirm the cluster is running (not paused), '
+            + 'Network Access allows 0.0.0.0/0, and MONGODB_URI is correct.',
+          );
+        }
         if (!process.env.VERCEL) process.exit(1);
         throw err;
       });
