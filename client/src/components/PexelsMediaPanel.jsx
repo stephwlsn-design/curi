@@ -15,9 +15,10 @@ export default function PexelsMediaPanel({
   compact = false,
   embedded = false,
   defaultTab = 'photos',
+  fixedTab,
   externalSearch,
 }) {
-  const [tab, setTab] = useState(defaultTab)
+  const [tab, setTab] = useState(fixedTab || defaultTab)
   const [query, setQuery] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [items, setItems] = useState([])
@@ -26,8 +27,9 @@ export default function PexelsMediaPanel({
   const [hasMore, setHasMore] = useState(false)
 
   useEffect(() => {
-    setTab(defaultTab)
-  }, [defaultTab])
+    if (fixedTab) setTab(fixedTab)
+    else setTab(defaultTab)
+  }, [defaultTab, fixedTab])
 
   useEffect(() => {
     if (externalSearch !== undefined && externalSearch !== searchInput) {
@@ -106,7 +108,7 @@ export default function PexelsMediaPanel({
       </div>
       )}
 
-      {embedded && (
+      {embedded && !fixedTab && (
         <div className="flex rounded-lg border border-theme-border p-0.5 bg-theme-subtle/5 mb-3">
           <button
             type="button"

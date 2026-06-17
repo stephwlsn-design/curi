@@ -7,7 +7,7 @@ import {
 import { API, useAuth } from '../context/AuthContext'
 import DesignStepGuide, { DESIGN_STEPS } from '../components/DesignStepGuide'
 import DesignTemplateGallery from '../components/DesignTemplateGallery'
-import PexelsMediaPanel from '../components/PexelsMediaPanel'
+import DesignMediaPanel from '../components/DesignMediaPanel'
 import AnimatedCharactersPanel from '../components/AnimatedCharactersPanel'
 import DesignAudioPanel from '../components/DesignAudioPanel'
 import DesignCanvasEditor from '../components/DesignCanvasEditor'
@@ -472,11 +472,11 @@ export default function DesignStudio() {
             )}
 
             {panel === 'photos' && (
-              <PexelsMediaPanel
+              <DesignMediaPanel
                 workspaceId={workspaceId}
+                mediaType="photos"
                 compact
                 embedded
-                defaultTab="photos"
                 externalSearch={searchQuery}
                 onPhotoSelect={handlePhoto}
                 onVideoSelect={handleVideo}
@@ -484,11 +484,11 @@ export default function DesignStudio() {
             )}
 
             {panel === 'videos' && (
-              <PexelsMediaPanel
+              <DesignMediaPanel
                 workspaceId={workspaceId}
+                mediaType="videos"
                 compact
                 embedded
-                defaultTab="videos"
                 externalSearch={searchQuery}
                 onPhotoSelect={handlePhoto}
                 onVideoSelect={handleVideo}
