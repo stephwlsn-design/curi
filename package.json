@@ -11,6 +11,7 @@
     "build": "cd client && npm run build",
     "deploy:prod": "docker compose -f docker-compose.prod.yml up -d --build",
     "deploy:check": "bash deploy/check.sh",
+    "verify:fal": "node scripts/verify-fal-key.js",
     "deploy:git": "bash deploy/git-deploy.sh",
     "deploy:logs": "docker compose -f docker-compose.prod.yml logs -f",
     "test": "cd server && npm test"

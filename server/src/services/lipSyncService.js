@@ -2,7 +2,7 @@ const logger = require('../utils/logger');
 
 const FAL_MODEL = 'fal-ai/sadtalker';
 const FAL_QUEUE_BASE = `https://queue.fal.run/${FAL_MODEL}`;
-const FAL_STORAGE_UPLOAD = 'https://fal.run/storage/upload';
+const FAL_STORAGE_INITIATE = 'https://rest.alpha.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3';
 const POLL_INTERVAL_MS = 2000;
 const SERVER_POLL_BUDGET_MS = 55000;
 
@@ -21,7 +21,7 @@ const normalizeStatus = (status) => String(status || '').toUpperCase();
 const parseDataUrl = (dataUrl, fallbackMime) => {
   if (!dataUrl) return null;
   if (dataUrl.startsWith('data:')) {
-    const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
     if (!match) return null;
     return {
       mime: match[1],
@@ -49,6 +49,38 @@ const extractVideoUrl = (payload) => {
     || null;
 };
 
+const formatFalDetail = (detail) => {
+  if (!detail) return null;
+  if (typeof detail === 'string') return detail;
+  if (typeof detail === 'object' && detail.message) return detail.message;
+  return null;
+};
+
+const buildFalError = (response, detailText = '') => {
+  let body = {};
+  try {
+    body = detailText ? JSON.parse(detailText) : {};
+  } catch {
+    body = {};
+  }
+  const detail = formatFalDetail(body.detail) || detailText || `Fal API error (${response.status})`;
+  const err = new Error(detail);
+  err.status = response.status === 403 || response.status === 402 ? 402 : (response.status >= 500 ? 503 : 502);
+
+  if (/exhausted balance|user is locked|insufficient credits/i.test(detail)) {
+    err.code = 'FAL_BALANCE_EXHAUSTED';
+    err.hint = 'Top up your fal.ai balance at https://fal.ai/dashboard/billing to enable lip-sync.';
+  } else if (response.status === 401 || /unauthorized|invalid.*key/i.test(detail)) {
+    err.code = 'FAL_AUTH_FAILED';
+    err.hint = 'Check FAL_KEY or FAL_API_KEY in Vercel environment variables.';
+  } else if (response.status === 422 || /face|no face|detect/i.test(detail)) {
+    err.code = 'FAL_FACE_DETECT_FAILED';
+    err.hint = 'Use a clear front-facing portrait with a visible face.';
+  }
+
+  return err;
+};
+
 async function uploadDataUrlToFal(apiKey, dataUrl, fallbackMime, filename) {
   const parsed = parseDataUrl(dataUrl, fallbackMime);
   if (!parsed?.buffer?.length) {
@@ -57,32 +89,43 @@ async function uploadDataUrlToFal(apiKey, dataUrl, fallbackMime, filename) {
     throw err;
   }
 
-  const form = new FormData();
-  const blob = new Blob([parsed.buffer], { type: parsed.mime });
-  form.append('file', blob, filename);
-
-  const response = await fetch(FAL_STORAGE_UPLOAD, {
+  const initRes = await fetch(FAL_STORAGE_INITIATE, {
     method: 'POST',
-    headers: { Authorization: `Key ${apiKey}` },
-    body: form,
+    headers: falHeaders(apiKey),
+    body: JSON.stringify({
+      file_name: filename,
+      content_type: parsed.mime,
+    }),
   });
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    logger.warn(`Fal storage upload failed (${response.status}): ${detail.slice(0, 200)}`);
-    const err = new Error('Could not upload media for lip-sync');
+  if (!initRes.ok) {
+    const detail = await initRes.text().catch(() => '');
+    logger.warn(`Fal storage initiate failed (${initRes.status}): ${detail.slice(0, 200)}`);
+    throw buildFalError(initRes, detail);
+  }
+
+  const init = await initRes.json();
+  const uploadUrl = init.upload_url;
+  const fileUrl = init.file_url || init.file_access_url;
+  if (!uploadUrl || !fileUrl) {
+    const err = new Error('Fal storage did not return upload URLs');
     err.status = 502;
     throw err;
   }
 
-  const payload = await response.json();
-  const url = payload?.url || payload?.file_url;
-  if (!url) {
-    const err = new Error('Fal storage did not return a file URL');
+  const putRes = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': parsed.mime },
+    body: parsed.buffer,
+  });
+
+  if (!putRes.ok) {
+    const err = new Error('Failed to upload media to Fal CDN');
     err.status = 502;
     throw err;
   }
-  return url;
+
+  return fileUrl;
 }
 
 async function submitSadTalkerJob({ apiKey, imageUrl, audioUrl, portrait = true }) {
@@ -102,9 +145,7 @@ async function submitSadTalkerJob({ apiKey, imageUrl, audioUrl, portrait = true 
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
     logger.warn(`SadTalker submit failed (${response.status}): ${detail.slice(0, 300)}`);
-    const err = new Error(detail?.slice(0, 120) || 'Could not start lip-sync job');
-    err.status = response.status >= 500 ? 503 : 502;
-    throw err;
+    throw buildFalError(response, detail);
   }
 
   const payload = await response.json();
@@ -122,9 +163,8 @@ async function fetchSadTalkerStatus(apiKey, requestId) {
     headers: { Authorization: `Key ${apiKey}` },
   });
   if (!response.ok) {
-    const err = new Error('Could not check lip-sync status');
-    err.status = response.status;
-    throw err;
+    const detail = await response.text().catch(() => '');
+    throw buildFalError(response, detail);
   }
   return response.json();
 }
@@ -159,9 +199,8 @@ async function fetchSadTalkerResult(apiKey, requestId, statusPayload = null) {
     headers: { Authorization: `Key ${apiKey}` },
   });
   if (!response.ok) {
-    const err = new Error('Could not fetch lip-sync result');
-    err.status = response.status;
-    throw err;
+    const detail = await response.text().catch(() => '');
+    throw buildFalError(response, detail);
   }
   const payload = await response.json();
   const videoUrl = extractVideoUrl(payload);
@@ -188,13 +227,44 @@ async function pollUntilReady(apiKey, requestId, budgetMs = SERVER_POLL_BUDGET_M
       return fetchSadTalkerResult(apiKey, requestId, status);
     }
     if (state === 'FAILED' || state === 'CANCELLED') {
-      const err = new Error(status.error || status.message || 'Lip-sync generation failed');
+      const msg = formatFalDetail(status.error) || status.message || 'Lip-sync generation failed';
+      const err = new Error(msg);
       err.status = 502;
+      if (/face|detect/i.test(msg)) {
+        err.code = 'FAL_FACE_DETECT_FAILED';
+        err.hint = 'Use a clear front-facing portrait with a visible face.';
+      }
       throw err;
     }
     await sleep(POLL_INTERVAL_MS);
   }
   return { status: 'processing', requestId, provider: 'fal-sadtalker' };
+}
+
+async function checkFalAvailability() {
+  const apiKey = getFalApiKey();
+  if (!isValidKey(apiKey)) {
+    return { configured: false, ok: false, reason: 'FAL_KEY or FAL_API_KEY not set' };
+  }
+
+  try {
+    const response = await fetch(FAL_STORAGE_INITIATE, {
+      method: 'POST',
+      headers: falHeaders(apiKey),
+      body: JSON.stringify({
+        file_name: 'probe.txt',
+        content_type: 'text/plain',
+      }),
+    });
+    if (response.ok) {
+      return { configured: true, ok: true, reason: 'ready' };
+    }
+    const detail = await response.text().catch(() => '');
+    const err = buildFalError(response, detail);
+    return { configured: true, ok: false, reason: err.message, code: err.code, hint: err.hint };
+  } catch (e) {
+    return { configured: true, ok: false, reason: e.message };
+  }
 }
 
 async function generateLipSyncVideo({
@@ -217,18 +287,8 @@ async function generateLipSyncVideo({
     throw err;
   }
 
-  let imageUrl;
-  let audioUrl;
-  try {
-    imageUrl = await uploadDataUrlToFal(apiKey, imageDataUrl, 'image/jpeg', 'portrait.jpg');
-    audioUrl = await uploadDataUrlToFal(apiKey, audioDataUrl, 'audio/mpeg', 'speech.mp3');
-  } catch (uploadErr) {
-    logger.warn(`Fal upload failed, trying inline data URLs: ${uploadErr.message}`);
-    const image = imageDataUrl.startsWith('data:') ? imageDataUrl : `data:image/jpeg;base64,${imageDataUrl}`;
-    const audio = audioDataUrl.startsWith('data:') ? audioDataUrl : `data:audio/mpeg;base64,${audioDataUrl}`;
-    imageUrl = image;
-    audioUrl = audio;
-  }
+  const imageUrl = await uploadDataUrlToFal(apiKey, imageDataUrl, 'image/jpeg', 'portrait.jpg');
+  const audioUrl = await uploadDataUrlToFal(apiKey, audioDataUrl, 'audio/mpeg', 'speech.mp3');
 
   const requestId = await submitSadTalkerJob({
     apiKey,
@@ -259,7 +319,8 @@ async function getLipSyncJob(requestId) {
     return fetchSadTalkerResult(apiKey, requestId, status);
   }
   if (state === 'FAILED' || state === 'CANCELLED') {
-    const err = new Error(status.error || status.message || 'Lip-sync generation failed');
+    const msg = formatFalDetail(status.error) || status.message || 'Lip-sync generation failed';
+    const err = new Error(msg);
     err.status = 502;
     throw err;
   }
@@ -274,4 +335,7 @@ async function getLipSyncJob(requestId) {
 module.exports = {
   generateLipSyncVideo,
   getLipSyncJob,
+  checkFalAvailability,
+  getFalApiKey,
+  isValidKey,
 };

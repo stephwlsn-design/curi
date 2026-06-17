@@ -709,7 +709,11 @@ const parseRequestBody = async (req) => {
     });
   };
 
-  const raw = await withTimeout(readStream(), 8000, 'Request body read timed out');
+  const pathOnly = requestPath(req);
+  const bodyTimeoutMs = (
+    pathOnly === '/api/design/character/lipsync' && req.method === 'POST'
+  ) ? 30000 : 8000;
+  const raw = await withTimeout(readStream(), bodyTimeoutMs, 'Request body read timed out');
   try {
     req.body = raw ? JSON.parse(raw) : {};
   } catch (err) {
@@ -835,12 +839,21 @@ const handleRegister = async (req, res) => {
 
 const handleHealth = async (res) => {
   const { connectDB } = require('../server/src/config/database');
+  const lipSyncService = require('../server/src/services/lipSyncService');
+  const talkingCharacterService = require('../server/src/services/talkingCharacterService');
   const conn = await connectDB();
+  const falKey = lipSyncService.getFalApiKey();
   sendJson(res, 200, {
     status: 'ok',
     version: '1.0.0',
     platform: process.env.VERCEL ? 'vercel' : 'node',
     db: conn.connection.readyState === 1 ? 'connected' : 'disconnected',
+    talking: {
+      tts: talkingCharacterService.isConfigured?.() ?? Boolean(
+        process.env.ELEVENLABS_API_KEY || process.env.OPENAI_API_KEY
+      ),
+      lipSync: lipSyncService.isValidKey(falKey),
+    },
     timestamp: new Date().toISOString(),
   });
 };

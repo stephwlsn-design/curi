@@ -235,13 +235,30 @@ export async function downloadVideoBlob(remoteUrl) {
 /**
  * Real lip-sync via SadTalker (server). Falls back to simple bounce animation if unavailable.
  */
+const lipSyncErrorFromResponse = (data, status) => {
+  const err = new Error(data?.error || data?.hint || 'Lip-sync did not return a video')
+  err.code = data?.code
+  err.hint = data?.hint
+  err.status = status
+  return err
+}
+
 export async function requestLipSyncVideo(API, { imageDataUrl, audioDataUrl, portrait = true, onProgress }) {
   onProgress?.('Uploading to lip-sync engine…')
-  const { data } = await API.post('/design/character/lipsync', {
-    imageDataUrl,
-    audioDataUrl,
-    portrait,
-  }, { timeout: 120000 })
+  let data
+  try {
+    ({ data } = await API.post('/design/character/lipsync', {
+      imageDataUrl,
+      audioDataUrl,
+      portrait,
+    }, { timeout: 120000 }))
+  } catch (axiosErr) {
+    const payload = axiosErr.response?.data
+    if (payload?.error || payload?.code) {
+      throw lipSyncErrorFromResponse(payload, axiosErr.response?.status)
+    }
+    throw axiosErr
+  }
 
   if (data.videoUrl) return data
 
@@ -250,12 +267,20 @@ export async function requestLipSyncVideo(API, { imageDataUrl, audioDataUrl, por
     for (let attempt = 0; attempt < 60; attempt += 1) {
       await sleep(3000)
       onProgress?.(`Lip-sync in progress… (${Math.min(attempt + 1, 60) * 3}s)`)
-      const poll = await API.get(`/design/character/lipsync/${data.requestId}`)
-      if (poll.data?.videoUrl) return poll.data
-      if (poll.data?.error) throw new Error(poll.data.error)
+      try {
+        const poll = await API.get(`/design/character/lipsync/${data.requestId}`)
+        if (poll.data?.videoUrl) return poll.data
+        if (poll.data?.error) throw lipSyncErrorFromResponse(poll.data, poll.status)
+      } catch (pollErr) {
+        const payload = pollErr.response?.data
+        if (payload?.error || payload?.code) {
+          throw lipSyncErrorFromResponse(payload, pollErr.response?.status)
+        }
+        throw pollErr
+      }
     }
     throw new Error('Lip-sync is still processing — wait a moment and try again')
   }
 
-  throw new Error(data.error || data.hint || 'Lip-sync did not return a video')
+  throw lipSyncErrorFromResponse(data, 502)
 }

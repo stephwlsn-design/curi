@@ -60,9 +60,27 @@ Workflow: `.github/workflows/vercel.yml`
 ```bash
 curl https://curi.corpcrunch.io/health
 curl https://curi.corpcrunch.io/api/auth/login
+node scripts/verify-fal-key.js   # local: checks FAL_KEY + fal.ai balance
 ```
 
 Open https://curi.corpcrunch.io
+
+### Talking characters (production checklist)
+
+| Step | Action |
+|------|--------|
+| TTS voices | Set `ELEVENLABS_API_KEY` (or `OPENAI_API_KEY` fallback) in Vercel |
+| Real lip-sync | Set `FAL_KEY` or `FAL_API_KEY` in Vercel — get key at [fal.ai/dashboard/keys](https://fal.ai/dashboard/keys) |
+| fal.ai billing | **Top up balance** at [fal.ai/dashboard/billing](https://fal.ai/dashboard/billing). SadTalker returns 403 when balance is exhausted |
+| Redeploy | After env changes: Vercel → Deployments → Redeploy (or push to `main`) |
+| Health | `curl https://curi.corpcrunch.io/health` should show `"lipSync": true` when key is set |
+| Fallback | If lip-sync is unavailable, the app creates a basic talking animation with audio (mouth does not match) |
+
+**Common failures**
+
+- `FAL_BALANCE_EXHAUSTED` — top up fal.ai; until then, use **Generate voice** + **Apply to canvas** (audio playback works)
+- `LIPSYNC_UNAVAILABLE` — `FAL_KEY` missing in Vercel env
+- `FAL_FACE_DETECT_FAILED` — use a clear front-facing portrait photo
 
 ---
 

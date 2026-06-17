@@ -53,6 +53,7 @@ export default function TalkingCharacterStudio({
   const [lipSyncStatus, setLipSyncStatus] = useState('')
   const [previewScale, setPreviewScale] = useState(1)
   const previewAnimRef = useRef(null)
+  const userUploadedRef = useRef(false)
 
   const filteredCharacters = useMemo(
     () => searchCharacters(charSearch, category),
@@ -71,7 +72,7 @@ export default function TalkingCharacterStudio({
   }, [initialCharacter?.id])
 
   useEffect(() => {
-    if (initialImageUrl) {
+    if (initialImageUrl && !userUploadedRef.current) {
       setUploadPreview(initialImageUrl)
       setUploadFileName('Canvas image')
       setSelectedId(null)
@@ -134,6 +135,7 @@ export default function TalkingCharacterStudio({
     }
     if (uploadPreview?.startsWith('blob:')) URL.revokeObjectURL(uploadPreview)
     const url = URL.createObjectURL(file)
+    userUploadedRef.current = true
     setUploadPreview(url)
     setUploadFileName(file.name)
     setSelectedId(null)
@@ -237,12 +239,22 @@ export default function TalkingCharacterStudio({
         toast.success('Lip-synced video ready — mouth matches speech', { id: progressId })
         return
       } catch (lipErr) {
-        const status = lipErr.response?.status
-        const hint = lipErr.response?.data?.hint
+        const status = lipErr.response?.status || lipErr.status
+        const code = lipErr.response?.data?.code || lipErr.code
+        const hint = lipErr.response?.data?.hint || lipErr.hint
         const error = lipErr.response?.data?.error || lipErr.message
         setLipSyncStatus('')
-        if (status === 503) {
-          toast.loading('Lip-sync unavailable — using basic animation…', { id: progressId })
+        const fallbackCodes = ['FAL_BALANCE_EXHAUSTED', 'LIPSYNC_UNAVAILABLE', 'FAL_AUTH_FAILED']
+        const shouldFallback = status === 503 || status === 402 || fallbackCodes.includes(code)
+        if (code === 'FAL_FACE_DETECT_FAILED') {
+          toast.error(hint || error || 'Could not detect a face in this image', { id: progressId })
+          return
+        }
+        if (shouldFallback) {
+          const fallbackMsg = code === 'FAL_BALANCE_EXHAUSTED'
+            ? 'Fal.ai balance exhausted — using basic animation'
+            : 'Lip-sync unavailable — using basic animation'
+          toast.loading(hint ? `${fallbackMsg}. ${hint}` : fallbackMsg, { id: progressId, duration: 6000 })
         } else {
           toast.error(hint || error || 'Lip-sync failed', { id: progressId })
           return
@@ -512,12 +524,21 @@ export default function TalkingCharacterStudio({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
+          onClick={synthesizeAudio}
+          disabled={generating || !script.trim()}
+          className="btn-secondary flex-1 text-xs py-2 flex items-center justify-center gap-1 min-w-[100px]"
+        >
+          {generating ? <Loader2 size={14} className="animate-spin" /> : <Mic size={14} />}
+          Generate voice
+        </button>
+        <button
+          type="button"
           onClick={previewVoice}
           disabled={generating || !script.trim()}
-          className="btn-secondary flex-1 text-xs py-2 flex items-center justify-center gap-1 min-w-[120px]"
+          className="btn-secondary flex-1 text-xs py-2 flex items-center justify-center gap-1 min-w-[100px]"
         >
-          {generating ? <Loader2 size={14} className="animate-spin" /> : <Volume2 size={14} />}
-          Preview voice
+          <Volume2 size={14} />
+          Preview
         </button>
         <button
           type="button"
@@ -526,7 +547,7 @@ export default function TalkingCharacterStudio({
           className="btn-primary flex-1 text-xs py-2 flex items-center justify-center gap-1 min-w-[120px]"
         >
           {creatingVideo ? <Loader2 size={14} className="animate-spin" /> : <Video size={14} />}
-          Create lip-sync video
+          Create video
         </button>
       </div>
 
