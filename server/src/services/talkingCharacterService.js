@@ -93,6 +93,11 @@ const getOpenAI = () => {
 
 const isValidKey = (key) => key && key.length >= 20 && !String(key).includes('...');
 
+const isConfigured = () => (
+  isValidKey(process.env.ELEVENLABS_API_KEY?.trim())
+  || isValidKey(process.env.OPENAI_API_KEY?.trim())
+);
+
 const parseElevenLabsError = async (response) => {
   try {
     const body = await response.json();
@@ -264,4 +269,5 @@ module.exports = {
   TONALITIES,
   GENDERS,
   synthesizeSpeech,
+  isConfigured,
 };

@@ -25,8 +25,8 @@ In Vercel → Project → **Settings → Environment Variables**, add:
 | `CLIENT_URL` | Yes | `https://curi.corpcrunch.io` |
 | `REDIS_URL` | Optional | Upstash Redis URL (for queues) |
 | `PEXELS_API_KEY` | Optional | [Pexels API key](https://www.pexels.com/api/) for stock photos & videos in Design |
-| `ELEVENLABS_API_KEY` | Optional | Talking Character voices in Design Studio (Starter plan + API permissions) |
-| `FAL_KEY` or `FAL_API_KEY` | Optional | **Real lip-sync** for uploaded portraits (SadTalker via [fal.ai](https://fal.ai)) — required for mouth dubbing |
+| `ELEVENLABS_API_KEY` | **Recommended** | Talking Character voices in Design Studio (Starter plan + API permissions) |
+| `FAL_KEY` or `FAL_API_KEY` | Optional | Real lip-sync only — not required for voice generation. Omit for ElevenLabs-only production |
 | `OPENAI_API_KEY` | Optional | Fallback TTS if ElevenLabs unavailable |
 | `GEMINI_MODEL` | Optional | `gemini-2.5-flash` |
 | `SEED_DEMO_USER` | Optional | `false` |
@@ -67,11 +67,22 @@ Open https://curi.corpcrunch.io
 
 ### Talking characters (production checklist)
 
+**ElevenLabs-only (recommended to start):**
+
+```bash
+# Sync ELEVENLABS_API_KEY from server/.env to Vercel; removes Fal keys
+VERCEL_TOKEN=xxx npm run sync:vercel-talking
+```
+
+Or manually in Vercel → Settings → Environment Variables:
+- Add `ELEVENLABS_API_KEY` (production + preview)
+- Remove `FAL_KEY` / `FAL_API_KEY` if present
+- Redeploy
+
 | Step | Action |
 |------|--------|
-| TTS voices | Set `ELEVENLABS_API_KEY` (or `OPENAI_API_KEY` fallback) in Vercel |
-| Real lip-sync | Set `FAL_KEY` or `FAL_API_KEY` in Vercel — get key at [fal.ai/dashboard/keys](https://fal.ai/dashboard/keys) |
-| fal.ai billing | **Top up balance** at [fal.ai/dashboard/billing](https://fal.ai/dashboard/billing). SadTalker returns 403 when balance is exhausted |
+| TTS voices | Set `ELEVENLABS_API_KEY` in Vercel |
+| Lip-sync (optional) | Add `FAL_KEY` later when fal.ai billing is topped up |
 | Redeploy | After env changes: Vercel → Deployments → Redeploy (or push to `main`) |
 | Health | `curl https://curi.corpcrunch.io/health` should show `"lipSync": true` when key is set |
 | Fallback | If lip-sync is unavailable, the app creates a basic talking animation with audio (mouth does not match) |

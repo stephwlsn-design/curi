@@ -849,9 +849,7 @@ const handleHealth = async (res) => {
     platform: process.env.VERCEL ? 'vercel' : 'node',
     db: conn.connection.readyState === 1 ? 'connected' : 'disconnected',
     talking: {
-      tts: talkingCharacterService.isConfigured?.() ?? Boolean(
-        process.env.ELEVENLABS_API_KEY || process.env.OPENAI_API_KEY
-      ),
+      tts: talkingCharacterService.isConfigured(),
       lipSync: lipSyncService.isValidKey(falKey),
     },
     timestamp: new Date().toISOString(),

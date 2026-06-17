@@ -51,6 +51,7 @@ export default function TalkingCharacterStudio({
   const [provider, setProvider] = useState(null)
   const [videoSpeed, setVideoSpeed] = useState(1)
   const [lipSyncStatus, setLipSyncStatus] = useState('')
+  const [lipSyncConfigured, setLipSyncConfigured] = useState(null)
   const [previewScale, setPreviewScale] = useState(1)
   const previewAnimRef = useRef(null)
   const userUploadedRef = useRef(false)
@@ -66,6 +67,13 @@ export default function TalkingCharacterStudio({
   )
 
   const imageUrl = uploadPreview || selectedCharacter?.assetUrl || selectedCharacter?.previewUrl
+
+  useEffect(() => {
+    fetch('/health')
+      .then((r) => r.json())
+      .then((data) => setLipSyncConfigured(Boolean(data.talking?.lipSync)))
+      .catch(() => setLipSyncConfigured(false))
+  }, [])
 
   useEffect(() => {
     if (initialCharacter?.id) setSelectedId(initialCharacter.id)
@@ -210,7 +218,11 @@ export default function TalkingCharacterStudio({
     setCreatingVideo(true)
     setLipSyncStatus('Preparing image and audio…')
     const progressId = 'lipsync-progress'
-    toast.loading('Generating lip-sync video…', { id: progressId })
+    const useLipSync = lipSyncConfigured !== false
+    toast.loading(
+      useLipSync ? 'Generating lip-sync video…' : 'Creating talking video with voice…',
+      { id: progressId },
+    )
     try {
       let audioUrl = audioDataUrl
       if (!audioUrl) {
@@ -218,46 +230,48 @@ export default function TalkingCharacterStudio({
         if (!audioUrl) return
       }
 
-      const imageDataUrl = await compressImageForLipSync(imageUrl)
-      const portrait = Boolean(uploadPreview)
+      if (useLipSync) {
+        const imageDataUrl = await compressImageForLipSync(imageUrl)
+        const portrait = Boolean(uploadPreview)
 
-      try {
-        const lipSync = await requestLipSyncVideo(API, {
-          imageDataUrl,
-          audioDataUrl: audioUrl,
-          portrait,
-          onProgress: (msg) => {
-            setLipSyncStatus(msg)
-            toast.loading(msg, { id: progressId })
-          },
-        })
-        const local = await downloadVideoBlob(lipSync.videoUrl)
-        if (videoUrl) URL.revokeObjectURL(videoUrl)
-        setVideoUrl(local.videoUrl)
-        setVideoBlob(local.videoBlob)
-        setLipSyncStatus('')
-        toast.success('Lip-synced video ready — mouth matches speech', { id: progressId })
-        return
-      } catch (lipErr) {
-        const status = lipErr.response?.status || lipErr.status
-        const code = lipErr.response?.data?.code || lipErr.code
-        const hint = lipErr.response?.data?.hint || lipErr.hint
-        const error = lipErr.response?.data?.error || lipErr.message
-        setLipSyncStatus('')
-        const fallbackCodes = ['FAL_BALANCE_EXHAUSTED', 'LIPSYNC_UNAVAILABLE', 'FAL_AUTH_FAILED']
-        const shouldFallback = status === 503 || status === 402 || fallbackCodes.includes(code)
-        if (code === 'FAL_FACE_DETECT_FAILED') {
-          toast.error(hint || error || 'Could not detect a face in this image', { id: progressId })
+        try {
+          const lipSync = await requestLipSyncVideo(API, {
+            imageDataUrl,
+            audioDataUrl: audioUrl,
+            portrait,
+            onProgress: (msg) => {
+              setLipSyncStatus(msg)
+              toast.loading(msg, { id: progressId })
+            },
+          })
+          const local = await downloadVideoBlob(lipSync.videoUrl)
+          if (videoUrl) URL.revokeObjectURL(videoUrl)
+          setVideoUrl(local.videoUrl)
+          setVideoBlob(local.videoBlob)
+          setLipSyncStatus('')
+          toast.success('Lip-synced video ready — mouth matches speech', { id: progressId })
           return
-        }
-        if (shouldFallback) {
-          const fallbackMsg = code === 'FAL_BALANCE_EXHAUSTED'
-            ? 'Fal.ai balance exhausted — using basic animation'
-            : 'Lip-sync unavailable — using basic animation'
-          toast.loading(hint ? `${fallbackMsg}. ${hint}` : fallbackMsg, { id: progressId, duration: 6000 })
-        } else {
-          toast.error(hint || error || 'Lip-sync failed', { id: progressId })
-          return
+        } catch (lipErr) {
+          const status = lipErr.response?.status || lipErr.status
+          const code = lipErr.response?.data?.code || lipErr.code
+          const hint = lipErr.response?.data?.hint || lipErr.hint
+          const error = lipErr.response?.data?.error || lipErr.message
+          setLipSyncStatus('')
+          const fallbackCodes = ['FAL_BALANCE_EXHAUSTED', 'LIPSYNC_UNAVAILABLE', 'FAL_AUTH_FAILED']
+          const shouldFallback = status === 503 || status === 402 || fallbackCodes.includes(code)
+          if (code === 'FAL_FACE_DETECT_FAILED') {
+            toast.error(hint || error || 'Could not detect a face in this image', { id: progressId })
+            return
+          }
+          if (shouldFallback) {
+            const fallbackMsg = code === 'FAL_BALANCE_EXHAUSTED'
+              ? 'Fal.ai balance exhausted — using basic animation'
+              : 'Lip-sync unavailable — using basic animation'
+            toast.loading(hint ? `${fallbackMsg}. ${hint}` : fallbackMsg, { id: progressId, duration: 6000 })
+          } else {
+            toast.error(hint || error || 'Lip-sync failed', { id: progressId })
+            return
+          }
         }
       }
 
@@ -327,7 +341,9 @@ export default function TalkingCharacterStudio({
       <div>
         <div className="text-xs font-bold text-theme-text">Talking Character Studio</div>
         <p className="text-[10px] text-theme-muted/55 mt-0.5 leading-snug">
-          Upload a portrait or pick a character, write a script, then create a lip-synced video where the mouth matches the audio.
+          {lipSyncConfigured === false
+            ? 'Upload a portrait or pick a character, generate voice with ElevenLabs, then create a talking video or apply audio to the canvas.'
+            : 'Upload a portrait or pick a character, write a script, then create a lip-synced video where the mouth matches the audio.'}
         </p>
       </div>
 
