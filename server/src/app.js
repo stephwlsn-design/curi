@@ -59,13 +59,17 @@ const createApp = async () => {
   await connectDB();
   await connectRedis();
 
-  if (!process.env.VERCEL && (process.env.NODE_ENV !== 'production' || process.env.SEED_DEMO_USER === 'true')) {
+  const shouldSeedDemo = process.env.SEED_DEMO_USER === 'true'
+    || (!process.env.VERCEL && process.env.NODE_ENV !== 'production');
+  if (shouldSeedDemo) {
     await seedTestUser();
   }
-  try {
-    await failStaleAutonomousRuns();
-  } catch (err) {
-    logger.warn('Could not check stale autonomous runs:', err.message);
+  if (!process.env.VERCEL) {
+    try {
+      await failStaleAutonomousRuns();
+    } catch (err) {
+      logger.warn('Could not check stale autonomous runs:', err.message);
+    }
   }
 
   const app = express();
