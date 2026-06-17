@@ -58,7 +58,7 @@ const handleAuth = async (req, res) => {
 module.exports = async (req, res) => {
   const pathOnly = requestPath(req);
 
-  if (pathOnly === '/health') {
+  if (pathOnly === '/health' || pathOnly === '/api/health') {
     try {
       return await handleHealth(res);
     } catch (err) {
@@ -67,7 +67,7 @@ module.exports = async (req, res) => {
     }
   }
 
-  if (pathOnly.startsWith('/api/auth')) {
+  if (pathOnly.startsWith('/api/auth') || pathOnly.startsWith('/auth')) {
     try {
       return await handleAuth(req, res);
     } catch (err) {
