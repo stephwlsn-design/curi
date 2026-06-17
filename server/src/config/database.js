@@ -3,8 +3,20 @@ const logger = require('../utils/logger');
 
 const globalCache = global;
 
+const normalizeMongoUri = (value) => {
+  if (!value) return '';
+  let uri = value.trim();
+  if (
+    (uri.startsWith('"') && uri.endsWith('"'))
+    || (uri.startsWith("'") && uri.endsWith("'"))
+  ) {
+    uri = uri.slice(1, -1).trim();
+  }
+  return uri;
+};
+
 const connectDB = async () => {
-  const raw = process.env.MONGODB_URI?.trim();
+  const raw = normalizeMongoUri(process.env.MONGODB_URI);
   const uri = raw || 'mongodb://localhost:27017/curi';
 
   if (process.env.VERCEL && !raw) {
