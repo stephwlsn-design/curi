@@ -48,7 +48,7 @@ export default function DesignStudio() {
   const navigate = useNavigate()
   const { designId } = useParams()
   const [searchParams] = useSearchParams()
-  const { workspace, fetchMe, loading: authLoading } = useAuth()
+  const { workspace, fetchMe, loading: authLoading, user } = useAuth()
   const editorRef = useRef(null)
   const splitRef = useRef(null)
   const resizeDragRef = useRef(null)
@@ -108,6 +108,11 @@ export default function DesignStudio() {
       setDesignIdea(workspace.brandProfile.designIdea)
     }
   }, [workspace?.brandProfile?.designIdea])
+
+  useEffect(() => {
+    if (authLoading || workspaceId || !user) return
+    fetchMe?.()
+  }, [authLoading, workspaceId, user, fetchMe])
 
   const completedSteps = useMemo(() => {
     const done = []
@@ -466,11 +471,28 @@ export default function DesignStudio() {
     }
   }
 
-  if (authLoading || !workspaceId) {
+  if (authLoading) {
     return (
       <div className="h-full flex items-center justify-center gap-3 text-theme-muted/60">
         <Loader2 className="animate-spin" size={24} />
         <span className="text-sm font-medium">Loading workspace…</span>
+      </div>
+    )
+  }
+
+  if (!workspaceId) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-4 p-8 text-center">
+        <Loader2 className="animate-spin text-theme-muted/40" size={28} />
+        <div>
+          <p className="text-sm font-semibold text-theme-text">Couldn't load your workspace</p>
+          <p className="text-xs text-theme-muted/60 mt-1 max-w-sm">
+            Try again, or sign out and back in. If Design Studio still fails, hard-refresh to clear cached files (Cmd+Shift+R).
+          </p>
+        </div>
+        <button type="button" onClick={() => fetchMe?.()} className="btn-primary text-sm">
+          Retry
+        </button>
       </div>
     )
   }
