@@ -6,6 +6,8 @@ const globalCache = global;
 const normalizeMongoUri = (value) => {
   if (!value) return '';
   let uri = value.trim();
+  // Accidentally pasted "MONGODB_URI=..." into Vercel value field
+  uri = uri.replace(/^MONGODB_URI\s*=\s*/i, '');
   if (
     (uri.startsWith('"') && uri.endsWith('"'))
     || (uri.startsWith("'") && uri.endsWith("'"))
