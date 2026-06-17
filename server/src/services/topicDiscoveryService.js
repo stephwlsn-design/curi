@@ -2,13 +2,9 @@ const Topic = require('../models/Topic');
 const logger = require('../utils/logger');
 const { generateJSON } = require('./llmService');
 
-const brandCtx = (bp) => `
-Brand: ${bp?.name || 'Brand'}
-Industry: ${bp?.industry || 'General'}
-Audience: ${bp?.audience || 'General'}
-Competitors: ${(bp?.competitors || []).join(', ')}
-Keywords: ${(bp?.keywords || []).join(', ')}
-`;
+const { buildBrandBrief } = require('../utils/strategyPrompt');
+
+const brandCtx = (bp) => buildBrandBrief(bp);
 
 const fallbackTopicsFromBrand = async (workspaceId, brandProfile) => {
   const seeds = [

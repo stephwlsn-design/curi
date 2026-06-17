@@ -448,7 +448,7 @@ export default function Autonomous() {
           <div className="page-card bg-gradient-to-br from-curi-pink/10 to-curi-blue/10 border-curi-pink/20">
             <h2 className="text-2xl font-extrabold text-theme-text mb-2">Generate Next {days} Days</h2>
             <p className="text-theme-muted/60 text-base mb-5">
-              Curi builds your strategy, writes up to 8 posts, creates designs and videos, scores assets, and schedules publishing — optimized for your AI quota.
+              Curi builds a custom {days}-day content plan tailored to your brand — phased themes, channel strategy, and calendar items — then writes posts, creates designs and videos, and schedules publishing.
             </p>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-sm text-theme-muted/50 font-medium">100 credits</span>
@@ -486,6 +486,51 @@ export default function Autonomous() {
                       ? ` — ${run.steps.find(s => s.status === 'running').summary}`
                       : ''}
                   </p>
+                )}
+                {run.strategy?.planBrief && (
+                  <div className="mb-4 p-4 rounded-xl bg-theme-subtle/5 border border-theme-border space-y-3">
+                    <div className="section-label">Custom content plan</div>
+                    {run.strategy.name && (
+                      <p className="text-sm font-bold text-theme-text">{run.strategy.name}</p>
+                    )}
+                    {run.strategy.planBrief.campaignGoal && (
+                      <p className="text-sm text-theme-muted/70">
+                        <span className="font-semibold text-theme-text">Goal: </span>
+                        {run.strategy.planBrief.campaignGoal}
+                      </p>
+                    )}
+                    {run.strategy.planBrief.narrative && (
+                      <p className="text-sm text-theme-muted/60 leading-relaxed">{run.strategy.planBrief.narrative}</p>
+                    )}
+                    {run.strategy.planBrief.contentPillars?.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-bold text-theme-muted/50 uppercase tracking-wider mb-1.5">Content pillars</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {run.strategy.planBrief.contentPillars.map((p) => (
+                            <span key={p} className="badge bg-curi-pink/10 text-curi-pink text-[10px]">{p}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {run.strategy.planBrief.phases?.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-theme-muted/50 uppercase tracking-wider">Phases</p>
+                        {run.strategy.planBrief.phases.map((phase) => (
+                          <div key={phase.name} className="text-xs text-theme-muted/60">
+                            <span className="font-bold text-theme-text">{phase.name}</span>
+                            {phase.dayRange && <span className="text-theme-muted/40"> ({phase.dayRange})</span>}
+                            {phase.focus && <span> — {phase.focus}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {run.strategy.planBrief.channelStrategy && (
+                      <p className="text-xs text-theme-muted/55 leading-relaxed">
+                        <span className="font-semibold text-theme-text">Channel approach: </span>
+                        {run.strategy.planBrief.channelStrategy}
+                      </p>
+                    )}
+                  </div>
                 )}
                 {run.stats && (
                   <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 text-center">
@@ -585,6 +630,9 @@ export default function Autonomous() {
                     <span className="w-8 h-8 rounded-lg bg-curi-gradient text-white text-xs font-black flex items-center justify-center flex-shrink-0">{e.day}</span>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-bold text-theme-text truncate">{e.topic}</div>
+                      {e.caption && e.caption !== e.topic && (
+                        <div className="text-[10px] text-theme-muted/45 truncate">{e.caption}</div>
+                      )}
                       <div className="text-xs text-theme-muted/40 capitalize">{e.platform} · {e.type} · {e.publishTime}</div>
                     </div>
                     <span className={`badge text-[10px] ${e.status === 'scheduled' ? 'bg-curi-green/15 text-curi-green' : 'bg-theme-subtle/10 text-theme-muted/40'}`}>{e.status}</span>

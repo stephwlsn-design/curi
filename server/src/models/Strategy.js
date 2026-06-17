@@ -7,6 +7,17 @@ const strategyItemSchema = new mongoose.Schema({
   day: Number,
   publishTime: String,
   priority: { type: Number, default: 1 },
+  angle: String,
+  goal: String,
+  pillar: String,
+}, { _id: false });
+
+const planBriefSchema = new mongoose.Schema({
+  campaignGoal: String,
+  narrative: String,
+  contentPillars: [String],
+  phases: [{ name: String, dayRange: String, focus: String }],
+  channelStrategy: String,
 }, { _id: false });
 
 const strategySchema = new mongoose.Schema({
@@ -16,6 +27,7 @@ const strategySchema = new mongoose.Schema({
   days: { type: Number, default: 30 },
   items: [strategyItemSchema],
   clusters: [{ name: String, topics: [String], channels: [String] }],
+  planBrief: planBriefSchema,
   status: { type: String, enum: ['draft', 'active', 'completed'], default: 'draft' },
   autonomousRun: { type: mongoose.Schema.Types.ObjectId, ref: 'AutonomousRun' },
 }, { timestamps: true });

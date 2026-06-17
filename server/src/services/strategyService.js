@@ -1,6 +1,7 @@
 const Strategy = require('../models/Strategy');
 const CalendarEntry = require('../models/CalendarEntry');
 const { generateJSON } = require('./llmService');
+const { buildStrategyPrompt } = require('../utils/strategyPrompt');
 const logger = require('../utils/logger');
 
 const FORMATS = ['post', 'carousel', 'story', 'video', 'reel'];
@@ -21,17 +22,34 @@ const normalizeChannel = (channel) => {
   return map[c] || 'linkedin';
 };
 
-const buildFallbackItems = ({ topics, days, channels, entryCount }) => {
-  const pool = topics.length ? topics : [{ topic: 'Brand update' }];
+const spreadDay = (index, total, days) => {
+  if (total <= 1) return 1;
+  return Math.max(1, Math.min(days, Math.round(((index + 1) / total) * days)));
+};
+
+const buildFallbackItems = ({ topics, days, channels, entryCount, brandProfile }) => {
+  const pool = topics.length ? topics : [{ topic: `${brandProfile?.name || 'Brand'} update` }];
+  const pillars = ['Education', 'Social proof', 'Product value', 'Thought leadership'];
   return Array.from({ length: entryCount }, (_, i) => ({
-    day: Math.max(1, Math.round(((i + 1) / entryCount) * days)),
+    day: spreadDay(i, entryCount, days),
     topic: pool[i % pool.length].topic,
+    angle: `Tailored for ${brandProfile?.audience || 'your audience'}`,
+    goal: ['awareness', 'education', 'engagement', 'conversion'][i % 4],
+    pillar: pillars[i % pillars.length],
     channel: channels[i % channels.length] || 'linkedin',
     format: FORMATS[i % FORMATS.length],
     publishTime: '09:00',
     priority: i + 1,
   }));
 };
+
+const extractPlanBrief = (parsed, days) => ({
+  campaignGoal: parsed.campaignGoal || `Build consistent ${days}-day brand presence`,
+  narrative: parsed.narrative || '',
+  contentPillars: parsed.contentPillars || [],
+  phases: parsed.phases || [],
+  channelStrategy: parsed.channelStrategy || '',
+});
 
 const persistStrategy = async ({
   workspaceId, userId, days, runId, parsed, items,
@@ -41,20 +59,33 @@ const persistStrategy = async ({
     createdBy: userId,
     name: parsed.name || `${days}-Day Content Strategy`,
     days,
-    items,
+    items: items.map((item) => ({
+      topic: item.topic,
+      channel: normalizeChannel(item.channel),
+      format: normalizeFormat(item.format),
+      day: item.day,
+      publishTime: item.publishTime || '09:00',
+      priority: item.priority || 1,
+      angle: item.angle,
+      goal: item.goal,
+      pillar: item.pillar,
+    })),
     clusters: parsed.clusters || [],
+    planBrief: extractPlanBrief(parsed, days),
     status: 'active',
     autonomousRun: runId,
   });
 
   const entries = [];
   for (const item of strategy.items) {
+    const planningNote = [item.topic, item.angle].filter(Boolean).join(' — ');
     const entry = await CalendarEntry.create({
       workspace: workspaceId,
       day: item.day,
       platform: normalizeChannel(item.channel),
       type: normalizeFormat(item.format),
       topic: item.topic,
+      caption: planningNote,
       publishTime: item.publishTime || '09:00',
       strategy: strategy._id,
       autonomousRun: runId,
@@ -67,54 +98,67 @@ const persistStrategy = async ({
 };
 
 const generateStrategy = async ({
-  workspaceId, userId, brandProfile, topics, days = 30,
-  channels = ['linkedin', 'instagram'], preferences = null, runId = null, maxEntries = null,
+  workspaceId,
+  userId,
+  brandProfile,
+  onboarding = null,
+  topics,
+  days = 30,
+  channels = ['linkedin', 'instagram'],
+  preferences = null,
+  designIdea = null,
+  runId = null,
+  maxEntries = null,
 }) => {
   const entryCount = maxEntries || Math.min(days, 30);
-  const prefHint = preferences
-    ? `User preferences: styles=${preferences.styles?.map(s => s.name).join(',')}, formats=${preferences.formats?.map(f => f.name).join(',')}`
-    : '';
+  const { system, user } = buildStrategyPrompt({
+    brandProfile,
+    onboarding,
+    topics,
+    days,
+    channels,
+    preferences,
+    designIdea,
+    maxEntries: entryCount,
+  });
 
   let parsed;
   try {
     parsed = await generateJSON({
       label: 'Strategy',
-      system: 'You are a content strategist. Return ONLY valid JSON. Use format values exactly: post, carousel, story, video, reel.',
-      user: `${prefHint}
-Brand: ${brandProfile?.name}, Industry: ${brandProfile?.industry}
-Channels: ${channels.join(', ')}
-Days: ${days}
-Topics: ${topics.slice(0, 15).map(t => t.topic).join(', ')}
-
-Generate exactly ${entryCount} calendar items spread across ${days} days. Mix formats (post, carousel, story, video, reel) across channels.
-Return JSON:
-{
-  "name": "30-Day Strategy",
-  "items": [{ "day": 1, "topic": "...", "channel": "linkedin", "format": "carousel", "publishTime": "09:00", "priority": 1 }],
-  "clusters": [{ "name": "AI Agents Week", "topics": ["..."], "channels": ["linkedin"] }]
-}`,
-      temperature: 0.75,
-      timeoutMs: process.env.VERCEL ? 22_000 : 45_000,
+      system,
+      user,
+      temperature: 0.72,
+      timeoutMs: process.env.VERCEL ? 22_000 : 55_000,
     });
   } catch (err) {
     logger.warn(`Strategy AI failed, using topic-based fallback: ${err.message?.slice(0, 100)}`);
-    const items = buildFallbackItems({ topics, days, channels, entryCount });
+    const items = buildFallbackItems({ topics, days, channels, entryCount, brandProfile });
     return persistStrategy({
       workspaceId, userId, days, runId,
-      parsed: { name: `${days}-Day Strategy (template)`, clusters: [] },
+      parsed: {
+        name: `${days}-Day ${brandProfile?.name || 'Brand'} Plan`,
+        campaignGoal: `Sustain ${days}-day visibility for ${brandProfile?.name || 'the brand'}`,
+        narrative: `A phased content arc across ${days} days using discovered brand topics.`,
+        contentPillars: ['Education', 'Engagement', 'Conversion'],
+        clusters: [],
+      },
       items,
     });
   }
 
-  const items = (parsed.items || []).slice(0, entryCount);
+  let items = (parsed.items || []).slice(0, entryCount);
   if (!items.length) {
-    const fallbackItems = buildFallbackItems({ topics, days, channels, entryCount });
-    return persistStrategy({
-      workspaceId, userId, days, runId,
-      parsed: { name: `${days}-Day Strategy (template)`, clusters: [] },
-      items: fallbackItems,
-    });
+    items = buildFallbackItems({ topics, days, channels, entryCount, brandProfile });
   }
+
+  // Ensure days are spread across the campaign window
+  items = items.map((item, i) => ({
+    ...item,
+    day: item.day && item.day <= days ? item.day : spreadDay(i, items.length, days),
+    channel: normalizeChannel(item.channel || channels[i % channels.length]),
+    format: normalizeFormat(item.format),
+  }));
 
   return persistStrategy({ workspaceId, userId, days, runId, parsed, items });
 };

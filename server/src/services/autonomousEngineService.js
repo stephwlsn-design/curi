@@ -33,7 +33,6 @@ const VIDEO_CAP = 2;
 const BATCH_PAUSE_MS = process.env.VERCEL ? 600 : 3500;
 const ITEMS_PER_TICK = process.env.VERCEL ? 1 : 99;
 const LOCK_TTL_MS = process.env.VERCEL ? 30_000 : 85_000;
-const LLM_STEP_TIMEOUT_MS = process.env.VERCEL ? 22_000 : 60_000;
 const AUTONOMOUS_MAX_ENTRIES = 8;
 const MIN_TOPICS_TO_REUSE = 5;
 
@@ -61,18 +60,6 @@ const setProgress = async (run, completedSteps, stepFraction = 0) => {
   const total = PIPELINE_STEPS.length;
   run.progress = Math.min(99, Math.round(((completedSteps + stepFraction) / total) * 100));
   await run.save();
-};
-
-const processInBatches = async (items, concurrency, fn, onBatchDone) => {
-  const results = [];
-  for (let i = 0; i < items.length; i += concurrency) {
-    const batch = items.slice(i, i + concurrency);
-    const batchResults = await Promise.allSettled(batch.map(fn));
-    results.push(...batchResults);
-    if (onBatchDone) await onBatchDone(i + batch.length, items.length);
-    if (i + concurrency < items.length) await sleep(BATCH_PAUSE_MS);
-  }
-  return results;
 };
 
 const updateStep = async (run, stepName, status, summary = null, error = null) => {
@@ -180,16 +167,6 @@ const releasePipelineLock = async (runId) => {
   await AutonomousRun.findByIdAndUpdate(runId, { $unset: { processingLockAt: 1 } });
 };
 
-const failRun = async (run, err) => {
-  logger.error(`Autonomous pipeline failed: ${err.message}`);
-  run.status = 'failed';
-  run.error = err.message;
-  const activeStep = run.steps.find((s) => s.status === 'running');
-  if (activeStep) await updateStep(run, activeStep.name, 'failed', null, err.message);
-  else await run.save();
-  await releasePipelineLock(run._id);
-};
-
 const buildPipelineContext = async (run) => {
   const workspace = await Workspace.findById(run.workspace);
   const brandProfile = workspace?.brandProfile || {};
@@ -216,11 +193,13 @@ const generateOnePost = async (run, entry, brandProfile, runIdStr) => {
   const platform = normalizePlatform(entry.platform);
   let generated;
   try {
-    generated = await createService.generatePost({
-      brandProfile,
-      platform,
-      topic: entry.topic,
-      tone: brandProfile.voice || 'professional',
+        generated = await createService.generatePost({
+          brandProfile,
+          platform,
+          topic: entry.caption && entry.caption !== entry.topic
+            ? entry.caption
+            : entry.topic,
+          tone: brandProfile.voice || 'professional',
       type: ['carousel', 'story', 'video', 'reel'].includes(entry.type) ? 'social_post' : (entry.type || 'social_post'),
     });
   } catch (e) {
@@ -343,10 +322,12 @@ const advanceAutonomousPipeline = async (runId) => {
           workspaceId: run.workspace,
           userId: run.createdBy,
           brandProfile: ctx.brandProfile,
+          onboarding: ctx.workspace.onboarding,
           topics,
           days: run.days,
           channels: ctx.channels,
           preferences: ctx.topPrefs,
+          designIdea: run.designIdea,
           runId: run._id,
           maxEntries: ctx.maxEntries,
         });
