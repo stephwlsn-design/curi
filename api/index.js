@@ -8,15 +8,8 @@ module.paths.unshift(
 );
 
 let handler;
-let initError;
 
 module.exports = async (req, res) => {
-  if (initError) {
-    res.statusCode = 503;
-    res.setHeader('Content-Type', 'application/json');
-    return res.end(JSON.stringify({ status: 'error', error: initError.message }));
-  }
-
   try {
     if (!handler) {
       const { getApp } = require('../server/src/app');
@@ -25,9 +18,8 @@ module.exports = async (req, res) => {
     }
     return handler(req, res);
   } catch (err) {
-    initError = err;
     console.error('[api] bootstrap failed:', err);
-    res.statusCode = 500;
+    res.statusCode = 503;
     res.setHeader('Content-Type', 'application/json');
     return res.end(JSON.stringify({ status: 'error', error: err.message }));
   }
