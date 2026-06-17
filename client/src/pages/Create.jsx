@@ -7,6 +7,7 @@ import CoreWorkflowNav from '../components/CoreWorkflowNav'
 import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
+import LoadingMascot from '../components/LoadingMascot'
 
 const PLATFORMS = [
   { id: 'linkedin', label: 'LinkedIn', color: 'bg-blue-600/20 text-blue-400 border-blue-600/30' },
@@ -63,24 +64,38 @@ export default function Create() {
 
   const generate = async () => {
     if (!topic.trim()) return toast.error('Enter a topic first')
+    if (!workspaceId) return toast.error('Workspace not loaded — please sign out and sign in again')
     setLoading(true)
     setSaved(false)
     try {
-      const { data } = await API.post('/create/post', { workspaceId, platform, tone, type, topic })
-      setResult(data.content)
-      setEditedContent(data.content.content || '')
+      const { data } = await API.post('/create/post', {
+        workspaceId, platform, tone, type, topic: topic.trim(),
+      }, { timeout: 55000 })
+
+      const contentDoc = data?.content
+      if (!contentDoc?.content?.trim()) {
+        return toast.error('No content returned — try again with a more specific topic')
+      }
+
+      setResult(contentDoc)
+      setEditedContent(contentDoc.content)
       setSaved(true)
       setContent({
-        contentId: data.content._id,
-        contentText: data.content.content,
+        contentId: contentDoc._id,
+        contentText: contentDoc.content,
         topic,
         saved: true,
       })
-      setHistory(h => [data.content, ...h.slice(0, 4)])
+      setHistory(h => [contentDoc, ...h.slice(0, 4)])
       toast.success('Content generated and saved!')
       fetchMe?.()
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Generation failed')
+      const msg = err.response?.data?.error
+        || (err.response?.status === 402 ? 'Not enough credits — you need 1 credit to generate' : null)
+        || (err.code === 'ECONNABORTED' ? 'Generation timed out — try again' : null)
+        || (err.code === 'ERR_NETWORK' ? 'Cannot reach server — check your connection' : null)
+        || 'Generation failed'
+      toast.error(msg)
     } finally { setLoading(false) }
   }
 
@@ -217,8 +232,16 @@ export default function Create() {
         </div>
       </div>
 
+      {loading && (
+        <div className="page-card text-center py-12 mb-6">
+          <LoadingMascot size="xl" className="mb-6" />
+          <div className="text-theme-text font-semibold text-lg mb-1">Writing in your brand voice...</div>
+          <div className="text-theme-muted/50 text-base">Crafting platform-native content with Gemini</div>
+        </div>
+      )}
+
       <AnimatePresence>
-        {result && (
+        {result && !loading && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="page-card mb-6">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div className="flex items-center gap-2 flex-wrap">

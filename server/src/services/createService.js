@@ -1,4 +1,16 @@
 const { generateJSON } = require('./llmService');
+const gemini = require('./geminiService');
+const logger = require('../utils/logger');
+
+const AI_TIMEOUT_MS = process.env.VERCEL ? 20000 : 30000;
+const GEMINI_TIMEOUT_MS = process.env.VERCEL ? 15000 : 30000;
+
+const withTimeout = (promise, ms, message) => Promise.race([
+  promise,
+  new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(message)), ms);
+  }),
+]);
 
 const PLATFORM_SPECS = {
   linkedin: { maxChars: 3000, style: 'professional, insightful, narrative-driven, no hard sells', hashtagCount: '3-5' },
@@ -27,26 +39,66 @@ Platform Rules for ${platform}:
 - Style: ${spec.style}
 - Hashtags: ${spec.hashtagCount} hashtags
 
-Return ONLY valid JSON with keys: content, hashtags (array), emojis (array), characterCount`,
+Return ONLY valid JSON with keys: content (string), hashtags (array of strings without #), emojis (array)`,
     user: `Create a ${type || 'social post'} about: ${topic}. Make it authentic to the brand voice and optimised for ${platform}.`,
   };
 };
 
+const normalizePostResult = (result) => {
+  const content = (
+    result?.content
+    || result?.text
+    || result?.body
+    || result?.post
+    || ''
+  ).trim();
+
+  const hashtags = Array.isArray(result?.hashtags)
+    ? result.hashtags
+    : Array.isArray(result?.tags)
+      ? result.tags
+      : [];
+
+  const emojis = Array.isArray(result?.emojis) ? result.emojis : [];
+
+  return { content, hashtags, emojis };
+};
+
+const callCreateAI = async ({ system, user, label }) => {
+  if (gemini.isValidKey(process.env.GEMINI_API_KEY)) {
+    logger.info(`${label}: using Gemini`);
+    return withTimeout(
+      gemini.generateJSON({ system, user, temperature: 0.8, timeoutMs: GEMINI_TIMEOUT_MS }),
+      AI_TIMEOUT_MS,
+      'Content generation timed out',
+    );
+  }
+
+  logger.info(`${label}: using OpenAI`);
+  return withTimeout(
+    generateJSON({ system, user, label }),
+    AI_TIMEOUT_MS,
+    'Content generation timed out',
+  );
+};
+
 const generatePost = async ({ brandProfile, platform, topic, tone, type }) => {
   const { system, user } = buildPostPrompt({ brandProfile, platform, topic, tone, type });
-  const result = await generateJSON({ system, user, label: 'Create' });
-  return {
-    content: result.content || '',
-    hashtags: result.hashtags || [],
-    emojis: result.emojis || [],
-  };
+  const result = await callCreateAI({ system, user, label: 'Create' });
+  const normalized = normalizePostResult(result);
+
+  if (!normalized.content) {
+    throw new Error('AI returned empty content — try again with a more specific topic');
+  }
+
+  return normalized;
 };
 
 const generateBlog = async ({ brandProfile, topic, tone, wordCount }) => {
   const system = `You are a content strategist writing for ${brandProfile?.name || 'a brand'} in the ${brandProfile?.industry || 'general'} space. Voice: ${tone || 'professional'}. Audience: ${brandProfile?.audience || 'general'}.`;
   const user = `Write a ${wordCount}-word SEO-optimised blog article about: ${topic}. Return JSON with: title, content (markdown), metaDescription, suggestedTags (array).`;
 
-  return generateJSON({ system, user, label: 'CreateBlog' });
+  return callCreateAI({ system, user, label: 'CreateBlog' });
 };
 
 module.exports = { generatePost, generateBlog };

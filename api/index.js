@@ -154,6 +154,109 @@ const handleDiscover = async (req, res) => {
   }
 };
 
+const isCreateFastRequest = (req) => {
+  const pathOnly = requestPath(req);
+  if (pathOnly === '/api/create/post' && req.method === 'POST') return true;
+  if (req.method === 'PATCH' && /^\/api\/create\/[^/]+$/.test(pathOnly)) return true;
+  return false;
+};
+
+const formatCreateError = (err) => {
+  const msg = err.message || '';
+  if (msg.includes('timed out')) return 'Generation timed out — try again';
+  if (msg.includes('quota') || err.status === 429) {
+    return 'AI quota exceeded — check your Gemini or OpenAI billing';
+  }
+  if (msg.includes('GEMINI') || msg.includes('API key')) {
+    return 'AI API key error — check GEMINI_API_KEY in Vercel environment variables';
+  }
+  return msg || 'Content generation failed';
+};
+
+const handleCreateFast = async (req, res) => {
+  const { connectDB } = require('../server/src/config/database');
+  const createService = require('../server/src/services/createService');
+  const Content = require('../server/src/models/Content');
+  const { findAccessibleWorkspace } = require('../server/src/utils/workspaceAccess');
+  const User = require('../server/src/models/User');
+
+  await connectDB();
+  const user = await authenticateRequest(req);
+  const pathOnly = requestPath(req);
+  const body = req.body || {};
+
+  if (pathOnly === '/api/create/post' && req.method === 'POST') {
+    const { workspaceId, platform, topic, tone, type } = body;
+    if (!topic?.trim()) return sendJson(res, 400, { error: 'Topic is required' });
+    if (!workspaceId) {
+      return sendJson(res, 400, { error: 'Workspace not loaded. Sign out and sign in again.' });
+    }
+
+    const creditCost = 1;
+    const userWithCredits = await User.findById(user._id);
+    if (!userWithCredits) return sendJson(res, 401, { error: 'User not found' });
+    if (userWithCredits.credits < creditCost) {
+      return sendJson(res, 402, {
+        error: 'Insufficient credits',
+        required: creditCost,
+        available: userWithCredits.credits,
+      });
+    }
+
+    const workspace = await findAccessibleWorkspace(workspaceId, userWithCredits._id);
+    if (!workspace) return sendJson(res, 404, { error: 'Workspace not found' });
+
+    try {
+      const generated = await createService.generatePost({
+        brandProfile: workspace.brandProfile,
+        platform,
+        topic,
+        tone: tone || workspace.brandProfile?.voice || 'professional',
+        type: type || 'social_post',
+      });
+
+      const content = await Content.create({
+        workspace: workspaceId,
+        createdBy: userWithCredits._id,
+        type: 'post',
+        platform,
+        content: generated.content,
+        hashtags: generated.hashtags,
+        emojis: generated.emojis,
+        metadata: { topic, tone, characterCount: generated.content.length },
+      });
+
+      workspace.stats.postsGenerated = (workspace.stats.postsGenerated || 0) + 1;
+      await workspace.save();
+      await userWithCredits.deductCredits(creditCost);
+
+      return sendJson(res, 201, { content });
+    } catch (err) {
+      console.error('[api] create/post failed:', err);
+      return sendJson(res, 502, { error: formatCreateError(err) });
+    }
+  }
+
+  if (req.method === 'PATCH') {
+    const contentId = pathOnly.replace('/api/create/', '');
+    const { content, status, hashtags, workspaceId } = body;
+    const update = {};
+    if (content !== undefined) update.content = content;
+    if (status !== undefined) update.status = status;
+    if (hashtags !== undefined) update.hashtags = hashtags;
+
+    const updated = await Content.findOneAndUpdate(
+      { _id: contentId, workspace: workspaceId, createdBy: user._id },
+      update,
+      { new: true },
+    );
+    if (!updated) return sendJson(res, 404, { error: 'Content not found' });
+    return sendJson(res, 200, { content: updated });
+  }
+
+  return sendJson(res, 404, { error: 'Not found' });
+};
+
 const handleDesignFast = async (req, res) => {
   const { connectDB } = require('../server/src/config/database');
   const {
@@ -570,6 +673,17 @@ module.exports = async (req, res) => {
       return await handleDiscover(req, res);
     } catch (err) {
       console.error('[api] discover bootstrap failed:', err);
+      return sendJson(res, err.status || 502, { error: err.message });
+    }
+  }
+
+  if (isCreateFastRequest(req)) {
+    try {
+      normalizeRequestUrl(req);
+      await parseRequestBody(req);
+      return await handleCreateFast(req, res);
+    } catch (err) {
+      console.error('[api] create fast failed:', err);
       return sendJson(res, err.status || 502, { error: err.message });
     }
   }
