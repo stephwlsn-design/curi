@@ -16,6 +16,7 @@ import {
 } from '../utils/characterCanvas'
 import {
   base64ToBlob,
+  compressImageForLipSync,
   createTalkingVideo,
   downloadVideoBlob,
   mediaUrlToDataUrl,
@@ -32,8 +33,10 @@ export default function TalkingCharacterStudio({
   applyLabel = 'Add to canvas',
 }) {
   const fileRef = useRef(null)
+  const videoPreviewRef = useRef(null)
   const [selectedId, setSelectedId] = useState(initialCharacter?.id || null)
   const [uploadPreview, setUploadPreview] = useState(initialImageUrl || null)
+  const [uploadFileName, setUploadFileName] = useState(null)
   const [category, setCategory] = useState('all')
   const [charSearch, setCharSearch] = useState('')
   const [script, setScript] = useState(initialScript || '')
@@ -46,6 +49,8 @@ export default function TalkingCharacterStudio({
   const [videoUrl, setVideoUrl] = useState(null)
   const [videoBlob, setVideoBlob] = useState(null)
   const [provider, setProvider] = useState(null)
+  const [videoSpeed, setVideoSpeed] = useState(1)
+  const [lipSyncStatus, setLipSyncStatus] = useState('')
   const [previewScale, setPreviewScale] = useState(1)
   const previewAnimRef = useRef(null)
 
@@ -68,6 +73,7 @@ export default function TalkingCharacterStudio({
   useEffect(() => {
     if (initialImageUrl) {
       setUploadPreview(initialImageUrl)
+      setUploadFileName('Canvas image')
       setSelectedId(null)
     }
   }, [initialImageUrl])
@@ -75,6 +81,12 @@ export default function TalkingCharacterStudio({
   useEffect(() => {
     if (initialScript) setScript(initialScript)
   }, [initialScript])
+
+  useEffect(() => {
+    if (videoPreviewRef.current) {
+      videoPreviewRef.current.playbackRate = videoSpeed
+    }
+  }, [videoSpeed, videoUrl])
 
   const stopPreviewAnim = useCallback(() => {
     if (previewAnimRef.current) {
@@ -106,6 +118,13 @@ export default function TalkingCharacterStudio({
     setProvider(null)
   }
 
+  const clearUpload = () => {
+    if (uploadPreview?.startsWith('blob:')) URL.revokeObjectURL(uploadPreview)
+    setUploadPreview(null)
+    setUploadFileName(null)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
   const handleUpload = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -113,11 +132,13 @@ export default function TalkingCharacterStudio({
       toast.error('Upload a PNG or JPG image')
       return
     }
+    if (uploadPreview?.startsWith('blob:')) URL.revokeObjectURL(uploadPreview)
     const url = URL.createObjectURL(file)
     setUploadPreview(url)
+    setUploadFileName(file.name)
     setSelectedId(null)
     resetOutputs()
-    toast.success('Custom character image ready')
+    toast.success(`Uploaded: ${file.name}`)
   }
 
   const synthesizeAudio = async () => {
@@ -185,8 +206,9 @@ export default function TalkingCharacterStudio({
     if (!script.trim()) return toast.error('Enter script text')
 
     setCreatingVideo(true)
+    setLipSyncStatus('Preparing image and audio…')
     const progressId = 'lipsync-progress'
-    toast.loading('Generating lip-sync video (mouth matches audio)…', { id: progressId })
+    toast.loading('Generating lip-sync video…', { id: progressId })
     try {
       let audioUrl = audioDataUrl
       if (!audioUrl) {
@@ -194,32 +216,36 @@ export default function TalkingCharacterStudio({
         if (!audioUrl) return
       }
 
-      const imageDataUrl = await mediaUrlToDataUrl(imageUrl)
-      const portrait = Boolean(uploadPreview || initialImageUrl)
+      const imageDataUrl = await compressImageForLipSync(imageUrl)
+      const portrait = Boolean(uploadPreview)
 
       try {
         const lipSync = await requestLipSyncVideo(API, {
           imageDataUrl,
           audioDataUrl: audioUrl,
           portrait,
+          onProgress: (msg) => {
+            setLipSyncStatus(msg)
+            toast.loading(msg, { id: progressId })
+          },
         })
         const local = await downloadVideoBlob(lipSync.videoUrl)
         if (videoUrl) URL.revokeObjectURL(videoUrl)
         setVideoUrl(local.videoUrl)
         setVideoBlob(local.videoBlob)
+        setLipSyncStatus('')
         toast.success('Lip-synced video ready — mouth matches speech', { id: progressId })
         return
       } catch (lipErr) {
         const status = lipErr.response?.status
         const hint = lipErr.response?.data?.hint
+        const error = lipErr.response?.data?.error || lipErr.message
+        setLipSyncStatus('')
         if (status === 503) {
-          toast.error(hint || 'Real lip-sync needs FAL_KEY on the server', { id: progressId })
-        } else if (!lipErr.response) {
-          toast.error(lipErr.message || 'Lip-sync failed', { id: progressId })
-          return
+          toast.loading('Lip-sync unavailable — using basic animation…', { id: progressId })
         } else {
-          console.warn('Lip-sync unavailable, using basic animation', lipErr)
-          toast.loading('Using basic animation (add FAL_KEY for real lip dubbing)…', { id: progressId })
+          toast.error(hint || error || 'Lip-sync failed', { id: progressId })
+          return
         }
       }
 
@@ -239,7 +265,8 @@ export default function TalkingCharacterStudio({
       toast.success('Talking video ready (basic animation)', { id: progressId })
     } catch (err) {
       console.error(err)
-      toast.error('Could not create talking video — try again', { id: progressId })
+      setLipSyncStatus('')
+      toast.error(err.response?.data?.error || err.message || 'Could not create talking video', { id: progressId })
     } finally {
       setCreatingVideo(false)
     }
@@ -259,11 +286,12 @@ export default function TalkingCharacterStudio({
         imageUrl: persistedImageUrl || imageUrl,
         videoUrl: persistedVideoUrl || videoUrl,
         audioDataUrl,
-        name: selectedCharacter?.name || 'Custom Character',
+        name: selectedCharacter?.name || uploadFileName || 'Custom Character',
         script: script.trim(),
         language,
         tonality,
         gender,
+        videoSpeed,
         defaultWidth: selectedCharacter?.defaultWidth || 0.5,
         speakTrigger: Date.now(),
       })
@@ -290,6 +318,36 @@ export default function TalkingCharacterStudio({
           Upload a portrait or pick a character, write a script, then create a lip-synced video where the mouth matches the audio.
         </p>
       </div>
+
+      {uploadPreview && (
+        <div className="rounded-xl border-2 border-curi-green/50 bg-curi-green/5 p-2 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <ImagePlus size={14} className="text-curi-green flex-shrink-0" />
+              <span className="text-[10px] font-bold text-curi-green truncate">
+                {uploadFileName || 'Uploaded portrait'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={clearUpload}
+              className="text-[10px] text-theme-muted/60 hover:text-red-400 flex-shrink-0"
+            >
+              Remove
+            </button>
+          </div>
+          <div className="aspect-[4/3] max-h-40 rounded-lg overflow-hidden bg-theme-subtle/10 border border-theme-border">
+            <img
+              src={uploadPreview}
+              alt="Uploaded portrait"
+              className="w-full h-full object-contain"
+            />
+          </div>
+          <p className="text-[10px] text-theme-muted/55 text-center">
+            This portrait will be used for lip-sync
+          </p>
+        </div>
+      )}
 
       <div>
         <div className="text-[10px] font-bold text-theme-muted/50 uppercase tracking-wider mb-1.5">
@@ -358,13 +416,8 @@ export default function TalkingCharacterStudio({
           Upload photo of a person
         </button>
         <p className="text-[10px] text-theme-muted/45 mt-1 text-center">
-          PNG, JPG, or WebP — turn any portrait into a talking video
+          PNG, JPG, or WebP — front-facing portraits work best
         </p>
-        {uploadPreview && (
-          <p className="text-[10px] text-curi-green mt-1 flex items-center gap-1">
-            <ImagePlus size={12} /> Custom image selected
-          </p>
-        )}
       </div>
 
       <div>
@@ -433,6 +486,29 @@ export default function TalkingCharacterStudio({
         </div>
       </div>
 
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-[10px] font-bold text-theme-muted/50 uppercase tracking-wider">
+            Video speed
+          </label>
+          <span className="text-[10px] font-bold text-curi-pink">{videoSpeed.toFixed(2)}×</span>
+        </div>
+        <input
+          type="range"
+          min="0.5"
+          max="2"
+          step="0.05"
+          value={videoSpeed}
+          onChange={(e) => setVideoSpeed(Number(e.target.value))}
+          className="w-full accent-curi-pink"
+        />
+        <div className="flex justify-between text-[9px] text-theme-muted/45 mt-0.5">
+          <span>0.5× slow</span>
+          <span>1× normal</span>
+          <span>2× fast</span>
+        </div>
+      </div>
+
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -454,6 +530,10 @@ export default function TalkingCharacterStudio({
         </button>
       </div>
 
+      {lipSyncStatus && creatingVideo && (
+        <p className="text-[10px] text-curi-blue animate-pulse">{lipSyncStatus}</p>
+      )}
+
       {provider && (
         <p className="text-[10px] text-theme-muted/50">
           Voice by {provider} · 1 AI credit
@@ -464,11 +544,13 @@ export default function TalkingCharacterStudio({
         <div className="card p-2 space-y-2">
           {videoUrl ? (
             <video
+              ref={videoPreviewRef}
               src={videoUrl}
               controls
               playsInline
               className="w-full rounded-lg bg-black/5 max-h-36"
               poster={imageUrl}
+              onLoadedMetadata={(e) => { e.currentTarget.playbackRate = videoSpeed }}
             />
           ) : imageUrl ? (
             <div className="relative aspect-square max-h-28 mx-auto rounded-lg overflow-hidden bg-gradient-to-br from-pink-100 to-blue-50">

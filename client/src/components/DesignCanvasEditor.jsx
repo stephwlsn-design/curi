@@ -408,6 +408,7 @@ export default forwardRef(function DesignCanvasEditor({
       language: payload.language || 'en',
       tonality: payload.tonality || 'friendly',
       gender: payload.gender || 'female',
+      videoSpeed: payload.videoSpeed || 1,
       speakTrigger: payload.speakTrigger || Date.now(),
       animated: false,
     })

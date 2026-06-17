@@ -156,6 +156,34 @@ export async function mediaUrlToDataUrl(url, maxBytes = 8 * 1024 * 1024) {
   })
 }
 
+/**
+ * Resize portrait before lip-sync upload (smaller payload, faster processing).
+ */
+export async function compressImageForLipSync(url, maxDim = 768) {
+  const dataUrl = url.startsWith('data:') ? url : await mediaUrlToDataUrl(url)
+  if (!dataUrl) return url
+
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      img.crossOrigin = 'anonymous'
+    }
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+      const w = Math.max(1, Math.round(img.width * scale))
+      const h = Math.max(1, Math.round(img.height * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0, w, h)
+      resolve(canvas.toDataURL('image/jpeg', 0.9))
+    }
+    img.onerror = () => reject(new Error('Could not read uploaded image'))
+    img.src = dataUrl
+  })
+}
+
 const pickBrowserVoice = (language, gender) => {
   const voices = window.speechSynthesis?.getVoices?.() || []
   if (!voices.length) return null
@@ -207,18 +235,21 @@ export async function downloadVideoBlob(remoteUrl) {
 /**
  * Real lip-sync via SadTalker (server). Falls back to simple bounce animation if unavailable.
  */
-export async function requestLipSyncVideo(API, { imageDataUrl, audioDataUrl, portrait = true }) {
+export async function requestLipSyncVideo(API, { imageDataUrl, audioDataUrl, portrait = true, onProgress }) {
+  onProgress?.('Uploading to lip-sync engine…')
   const { data } = await API.post('/design/character/lipsync', {
     imageDataUrl,
     audioDataUrl,
     portrait,
-  })
+  }, { timeout: 120000 })
 
   if (data.videoUrl) return data
 
   if (data.status === 'processing' && data.requestId) {
-    for (let attempt = 0; attempt < 45; attempt += 1) {
+    onProgress?.('Generating lip-sync (mouth matching audio)…')
+    for (let attempt = 0; attempt < 60; attempt += 1) {
       await sleep(3000)
+      onProgress?.(`Lip-sync in progress… (${Math.min(attempt + 1, 60) * 3}s)`)
       const poll = await API.get(`/design/character/lipsync/${data.requestId}`)
       if (poll.data?.videoUrl) return poll.data
       if (poll.data?.error) throw new Error(poll.data.error)
@@ -226,5 +257,5 @@ export async function requestLipSyncVideo(API, { imageDataUrl, audioDataUrl, por
     throw new Error('Lip-sync is still processing — wait a moment and try again')
   }
 
-  throw new Error(data.error || 'Lip-sync did not return a video')
+  throw new Error(data.error || data.hint || 'Lip-sync did not return a video')
 }

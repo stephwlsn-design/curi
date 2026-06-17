@@ -44,6 +44,7 @@ export default function TalkingCharacterLayer({
       audioRef.current = null
     }
     const audio = new Audio(el.audioDataUrl)
+    audio.playbackRate = el.videoSpeed || 1
     audioRef.current = audio
     runBounceAnim()
     audio.onended = () => stopAnim()
@@ -55,7 +56,7 @@ export default function TalkingCharacterLayer({
       stopAnim()
       return false
     }
-  }, [el.audioDataUrl, runBounceAnim, stopAnim])
+  }, [el.audioDataUrl, el.videoSpeed, runBounceAnim, stopAnim])
 
   const playSpeech = useCallback(async () => {
     if (el.videoUrl && videoRef.current) {
@@ -93,6 +94,12 @@ export default function TalkingCharacterLayer({
       return
     }
   }, [el, playAudio, runBounceAnim, stopAnim])
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = el.videoSpeed || 1
+    }
+  }, [el.videoSpeed, el.videoUrl])
 
   useEffect(() => {
     if (!el.speakTrigger) return undefined
@@ -145,6 +152,7 @@ export default function TalkingCharacterLayer({
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
+        onLoadedMetadata={(e) => { e.currentTarget.playbackRate = el.videoSpeed || 1 }}
         style={{
           ...base,
           height,

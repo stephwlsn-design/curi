@@ -94,6 +94,7 @@ export const applyTalkingCharacterToCanvas = (canvas, payload, position = 'cente
         language: payload.language || 'en',
         tonality: payload.tonality || 'friendly',
         gender: payload.gender || 'female',
+        videoSpeed: payload.videoSpeed || 1,
         speakTrigger: payload.speakTrigger || null,
         x: pos.x,
         y: pos.y,
