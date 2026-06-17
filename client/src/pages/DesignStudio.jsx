@@ -498,7 +498,7 @@ export default function DesignStudio() {
               }`}
             >
               <Icon size={18} />
-              <span className="text-sm font-bold leading-none">{label}</span>
+              <span className="text-[10px] font-bold leading-none">{label}</span>
             </button>
           ))}
         </div>
@@ -512,7 +512,7 @@ export default function DesignStudio() {
           <>
           <div className="p-3 border-b border-theme-border flex-shrink-0 space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-theme-muted/50 uppercase tracking-wider">Assets</span>
+              <span className="text-[10px] font-bold text-theme-muted/50 uppercase tracking-wider">Assets</span>
               <div className="flex items-center gap-0.5">
                 <button
                   type="button"

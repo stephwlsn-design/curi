@@ -59,8 +59,8 @@ export default function Layout() {
                 className="w-10 h-10 rounded-2xl object-cover shadow-clay-sm"
               />
               <div>
-                <div className="font-extrabold text-lg text-theme-text leading-none">Curi</div>
-                <div className="text-sm text-theme-muted/50 mt-0.5 font-medium">AI Marketing Platform</div>
+                <div className="font-extrabold text-theme-text leading-none">Curi</div>
+                <div className="text-xs text-theme-muted/50 mt-0.5 font-medium">AI Marketing Platform</div>
               </div>
             </Link>
             <ThemeToggle />
@@ -68,7 +68,7 @@ export default function Layout() {
         </div>
 
         <div className="px-4 py-3 border-b border-theme-border space-y-2">
-          <div className="flex items-center justify-between text-sm text-theme-muted/60 mb-1.5 font-semibold">
+          <div className="flex items-center justify-between text-xs text-theme-muted/60 mb-1.5 font-semibold">
             <span>AI Credits</span>
             <span className="text-curi-yellow font-bold">{user?.credits || 0}</span>
           </div>
@@ -91,12 +91,12 @@ export default function Layout() {
               return (
                 <div key={item.id} className="mb-1">
                   {showSection && item.section && (
-                    <div className="text-sm font-bold text-theme-muted/30 tracking-widest uppercase px-3 pt-4 pb-1.5">
+                    <div className="text-xs font-bold text-theme-muted/30 tracking-widest uppercase px-3 pt-4 pb-1.5">
                       {item.section}
                     </div>
                   )}
                   <div
-                    className={`px-3 py-2 text-base font-bold tracking-wide ${
+                    className={`px-3 py-2 text-sm font-bold tracking-wide ${
                       groupActive ? 'text-theme-text' : 'text-theme-muted/70'
                     }`}
                   >
@@ -128,7 +128,7 @@ export default function Layout() {
             return (
               <div key={item.path}>
                 {showSection && item.section && (
-                  <div className="text-sm font-bold text-theme-muted/30 tracking-widest uppercase px-3 pt-4 pb-1.5">
+                  <div className="text-xs font-bold text-theme-muted/30 tracking-widest uppercase px-3 pt-4 pb-1.5">
                     {item.section}
                   </div>
                 )}
@@ -153,8 +153,8 @@ export default function Layout() {
               {user?.name?.[0]?.toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-base font-bold text-theme-text truncate">{user?.name}</div>
-              <div className="text-sm text-theme-muted/50 capitalize font-medium">{user?.plan} plan</div>
+              <div className="text-sm font-bold text-theme-text truncate">{user?.name}</div>
+              <div className="text-xs text-theme-muted/50 capitalize font-medium">{user?.plan} plan</div>
             </div>
             <button
               onClick={logout}
