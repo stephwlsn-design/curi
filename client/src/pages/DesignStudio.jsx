@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { API, useAuth } from '../context/AuthContext'
 import DesignStepGuide, { DESIGN_STEPS } from '../components/DesignStepGuide'
+import DesignInspirationBar from '../components/DesignInspirationBar'
 import DesignTemplateGallery from '../components/DesignTemplateGallery'
 import DesignMediaPanel from '../components/DesignMediaPanel'
 import AnimatedCharactersPanel from '../components/AnimatedCharactersPanel'
@@ -13,6 +14,7 @@ import DesignAudioPanel from '../components/DesignAudioPanel'
 import DesignCanvasEditor from '../components/DesignCanvasEditor'
 import { useDesignCreation } from '../hooks/useDesignCreation'
 import { isDraftDesign } from '../utils/localDesign'
+import { buildDesignFromInspiration } from '../utils/inspirationCanvas'
 import { applyCharacterToCanvas, applyTalkingCharacterToCanvas } from '../utils/characterCanvas'
 import { applyAudioToCanvas } from '../utils/audioCanvas'
 import toast from 'react-hot-toast'
@@ -65,6 +67,8 @@ export default function DesignStudio() {
   const [brief, setBrief] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [generating, setGenerating] = useState(false)
+  const [extracting, setExtracting] = useState(false)
+  const [designIdea, setDesignIdea] = useState(null)
   const [loadingDesign, setLoadingDesign] = useState(false)
 
   const {
@@ -82,9 +86,15 @@ export default function DesignStudio() {
     brandColors: workspace?.brandProfile?.colors?.palette,
   })
 
+  useEffect(() => {
+    if (workspace?.brandProfile?.designIdea) {
+      setDesignIdea(workspace.brandProfile.designIdea)
+    }
+  }, [workspace?.brandProfile?.designIdea])
+
   const completedSteps = useMemo(() => {
     const done = []
-    if (design?.canvasLayout?.templateId || selectedTemplateId) done.push(1)
+    if (design?.canvasLayout?.templateId || selectedTemplateId || design?.canvasLayout?.designIdeaBased) done.push(1)
     const bg = design?.canvasLayout?.background
     if (bg?.type === 'image' || bg?.type === 'video' || design?.canvasLayout?.audio || design?.canvasLayout?.elements?.some(e => e.type === 'image' || e.type === 'character' || e.type === 'talking-character')) {
       done.push(2)
@@ -301,18 +311,63 @@ export default function DesignStudio() {
     setStep(3)
   }
 
+  const handleExtractInspiration = async (idea = designIdea) => {
+    if (!idea?.imageUrl && !idea?.notes) {
+      return toast.error('Upload an inspiration image or add notes first')
+    }
+    setExtracting(true)
+    try {
+      if (idea.analyzedSpec && idea.imageUrl) {
+        const created = buildDesignFromInspiration({
+          designIdea: idea,
+          brandColors: workspace?.brandProfile?.colors?.palette,
+          prompt: brief,
+        })
+        applyDesign(created)
+        setSelectedTemplateId(created.templateId)
+        setStep(3)
+        setPanel('text')
+        toast.success('Design elements extracted to canvas')
+        return
+      }
+
+      const { data } = await API.post('/design/from-inspiration', {
+        workspaceId,
+        designIdea: idea,
+        prompt: brief,
+        dimensionId: '1080x1080',
+      })
+      if (data.design) {
+        applyDesign(data.design)
+        if (data.designIdea) setDesignIdea(data.designIdea)
+        setSelectedTemplateId(data.design.templateId || data.design.canvasLayout?.templateId)
+        setStep(3)
+        setPanel('text')
+        toast.success('Design elements extracted to canvas')
+        fetchMe?.()
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not extract design from inspiration')
+    } finally {
+      setExtracting(false)
+    }
+  }
+
   const handleGenerate = async () => {
-    if (!brief.trim()) return toast.error('Describe your ideal design first')
+    if (!brief.trim() && !designIdea?.imageUrl) {
+      return toast.error('Describe your ideal design or upload inspiration first')
+    }
     setGenerating(true)
     try {
       const { data } = await API.post('/design/generate', {
         workspaceId,
-        prompt: brief,
+        prompt: brief || 'Design based on uploaded inspiration',
         creativeType: 'social_post',
         channels: ['instagram'],
         dimensionId: '1080x1080',
         variantCount: 1,
         style: 'modern',
+        designIdea,
       })
       const first = data.designs?.[0]
       if (first) {
@@ -374,6 +429,15 @@ export default function DesignStudio() {
         currentStep={step}
         onStepChange={handleStepChange}
         completedSteps={completedSteps}
+      />
+
+      <DesignInspirationBar
+        workspaceId={workspaceId}
+        value={designIdea}
+        onChange={setDesignIdea}
+        onExtract={handleExtractInspiration}
+        extracting={extracting}
+        brief={brief}
       />
 
       <div ref={splitRef} className={`flex flex-1 min-h-0 ${isResizing ? 'select-none cursor-col-resize' : ''}`}>
@@ -571,7 +635,7 @@ export default function DesignStudio() {
               </div>
             )}
 
-            {(templateLoading || generating) && (
+            {(templateLoading || generating || extracting) && (
               <p className="text-xs text-curi-pink font-medium mt-3 flex items-center gap-2">
                 <Loader2 size={14} className="animate-spin" /> Working…
               </p>

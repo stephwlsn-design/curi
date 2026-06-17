@@ -55,6 +55,111 @@ router.post('/idea', uploadDesignIdea.single('image'), async (req, res) => {
   res.json({ designIdea });
 });
 
+router.post('/from-inspiration', checkCredits(2), async (req, res) => {
+  const {
+    workspaceId,
+    designIdea: designIdeaInput,
+    prompt = '',
+    dimensionId = '1080x1080',
+    headline,
+    subheadline,
+    cta,
+  } = req.body;
+
+  const workspace = await findAccessibleWorkspace(workspaceId, req.user._id);
+  if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+
+  const rawIdea = designIdeaInput || workspace.brandProfile?.designIdea || {};
+  const designIdea = normalizeDesignIdea(rawIdea);
+
+  if (!designIdea.notes && !designIdea.hasImage && !rawIdea.imageUrl) {
+    return res.status(400).json({ error: 'Upload a design inspiration image or add creative notes first' });
+  }
+
+  try {
+    const ideaContext = await designService.resolveDesignIdeaContext({
+      ...rawIdea,
+      ...designIdea,
+      analyzedSpec: rawIdea.analyzedSpec,
+      analyzedDirection: rawIdea.analyzedDirection,
+    });
+
+    if (ideaContext?.spec || ideaContext?.direction) {
+      workspace.brandProfile = workspace.brandProfile || {};
+      workspace.brandProfile.designIdea = {
+        ...(workspace.brandProfile.designIdea || {}),
+        notes: rawIdea.notes || designIdea.notes,
+        filename: rawIdea.filename || designIdea.filename,
+        imageUrl: ideaContext.imageUrl || rawIdea.imageUrl || designIdea.imageUrl,
+        analyzedDirection: ideaContext.direction,
+        analyzedSpec: ideaContext.spec,
+        uploadedAt: workspace.brandProfile.designIdea?.uploadedAt || new Date(),
+      };
+      await workspace.save();
+    }
+
+    const brandColors = workspace.brandProfile?.colors?.palette
+      || ideaContext?.spec?.colorPalette
+      || ['#FF6B9D', '#4DA8EE', '#1A2B48'];
+
+    const design = {
+      headline: headline || prompt.split('\n')[0]?.slice(0, 80) || 'Your Headline',
+      subheadline: subheadline ?? prompt.slice(0, 120) ?? '',
+      cta: cta || 'Learn More',
+      layout: ideaContext?.spec?.layout || 'centered',
+      dimensions: { id: dimensionId },
+      colorPalette: ideaContext?.spec?.colorPalette || brandColors,
+      name: 'Inspired Design',
+      referenceImageUrl: ideaContext?.imageUrl,
+      designIdeaApplied: true,
+      compositionNotes: ideaContext?.direction
+        ? `Extracted from inspiration: ${ideaContext.direction.slice(0, 200)}`
+        : undefined,
+    };
+
+    const enriched = designService.applyDesignIdeaToDesign(design, ideaContext);
+    const canvasLayout = ideaContext?.imageUrl
+      ? buildCanvasWithDesignIdea(enriched, ideaContext, dimensionId)
+      : designToCanvas(enriched);
+
+    const saved = await Content.create({
+      workspace: workspaceId,
+      createdBy: req.user._id,
+      type: 'image',
+      platform: 'universal',
+      title: enriched.name,
+      content: enriched.headline,
+      metadata: {
+        ...enriched,
+        module: 'design',
+        canvasLayout,
+        designIdea: {
+          notes: rawIdea.notes || designIdea.notes,
+          imageUrl: ideaContext?.imageUrl || rawIdea.imageUrl,
+          referenceImageUrl: ideaContext?.imageUrl,
+        },
+        referenceImageUrl: ideaContext?.imageUrl,
+        inspirationExtracted: true,
+      },
+      status: 'draft',
+    });
+
+    workspace.stats.imagesGenerated = (workspace.stats.imagesGenerated || 0) + 1;
+    await workspace.save();
+    await req.user.deductCredits(req.creditCost);
+
+    res.status(201).json({
+      design: { ...(saved.metadata?.toObject?.() ?? saved.metadata ?? {}), _id: saved._id },
+      designIdea: workspace.brandProfile?.designIdea,
+    });
+  } catch (err) {
+    const msg = err.message?.includes('quota') || err.status === 429
+      ? 'AI quota exceeded — check your Gemini or OpenAI billing'
+      : err.message || 'Could not extract design from inspiration';
+    res.status(502).json({ error: msg });
+  }
+});
+
 router.post('/generate', checkCredits(5), async (req, res) => {
   const {
     workspaceId, prompt, creativeType = 'social_post', channels = ['instagram'],
