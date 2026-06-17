@@ -15,6 +15,20 @@ const normalizeMongoUri = (value) => {
   return uri;
 };
 
+const resetMongoCache = () => {
+  if (globalCache.mongoose) {
+    globalCache.mongoose.conn = null;
+    globalCache.mongoose.promise = null;
+  }
+};
+
+const withTimeout = (promise, ms, message) => Promise.race([
+  promise,
+  new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(message)), ms);
+  }),
+]);
+
 const connectDB = async () => {
   const raw = normalizeMongoUri(process.env.MONGODB_URI);
   const uri = raw || 'mongodb://localhost:27017/curi';
@@ -47,7 +61,7 @@ const connectDB = async () => {
         return conn;
       })
       .catch((err) => {
-        globalCache.mongoose.promise = null;
+        resetMongoCache();
         logger.error('MongoDB connection error:', err);
         if (err.message?.includes('authentication failed')) {
           throw new Error(
@@ -66,8 +80,23 @@ const connectDB = async () => {
       });
   }
 
-  globalCache.mongoose.conn = await globalCache.mongoose.promise;
-  return globalCache.mongoose.conn;
+  try {
+    globalCache.mongoose.conn = await withTimeout(
+      globalCache.mongoose.promise,
+      12000,
+      'MongoDB connection timed out',
+    );
+    return globalCache.mongoose.conn;
+  } catch (err) {
+    resetMongoCache();
+    if (err.message === 'MongoDB connection timed out') {
+      throw new Error(
+        'MongoDB connection timed out. Confirm your Atlas cluster is running (not paused), '
+        + 'credentials in MONGODB_URI are correct, and Network Access allows 0.0.0.0/0.',
+      );
+    }
+    throw err;
+  }
 };
 
 module.exports = { connectDB };
