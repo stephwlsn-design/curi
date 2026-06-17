@@ -66,6 +66,7 @@ const connectDB = async () => {
       autoIndex: !process.env.VERCEL,
       serverSelectionTimeoutMS: 10000,
       connectTimeoutMS: 10000,
+      bufferCommands: false,
     })
       .then((conn) => {
         logger.info(`MongoDB connected: ${conn.connection.host}`);
@@ -97,6 +98,10 @@ const connectDB = async () => {
       12000,
       'MongoDB connection timed out',
     );
+    if (globalCache.mongoose.conn.connection.readyState !== 1) {
+      resetMongoCache();
+      throw new Error('MongoDB connection did not become ready');
+    }
     return globalCache.mongoose.conn;
   } catch (err) {
     resetMongoCache();
