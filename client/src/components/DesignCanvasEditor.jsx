@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
-import { X, Save, LayoutTemplate, Plus, Trash2, Volume2, Play, Mic, Upload } from 'lucide-react'
+import { X, Save, LayoutTemplate, Plus, Trash2, Volume2, Play, Mic, Upload, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { API } from '../context/AuthContext'
 import DesignCanvasRenderer from './DesignCanvasRenderer'
@@ -26,6 +26,9 @@ export default forwardRef(function DesignCanvasEditor({
   hideAssetSidebar = false,
   hideClose = false,
   onOpenCharactersPanel,
+  onNext,
+  nextLabel = 'Next',
+  showNext = false,
 }, ref) {
   const containerRef = useRef(null)
   const [scale, setScale] = useState(0.45)
@@ -376,6 +379,11 @@ export default forwardRef(function DesignCanvasEditor({
           <button type="button" onClick={saveDesign} disabled={saving} className="btn-primary text-sm flex items-center gap-1.5">
             <Save size={16} /> {saving ? 'Saving...' : 'Save Design'}
           </button>
+          {showNext && onNext && (
+            <button type="button" onClick={onNext} className="btn-secondary text-sm flex items-center gap-1.5 border-curi-pink/40 text-curi-pink hover:bg-curi-pink/10">
+              {nextLabel} <ChevronRight size={16} />
+            </button>
+          )}
           {!hideClose && onClose && (
             <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-theme-subtle/10">
               <X size={20} />

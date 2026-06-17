@@ -811,6 +811,9 @@ export default function DesignStudio() {
               userTemplates={userTemplates}
               onSaved={handleDesignSaved}
               onOpenCharactersPanel={openCharactersPanel}
+              showNext={step < 5}
+              onNext={() => handleStepChange(step + 1)}
+              nextLabel={step === 4 ? 'Finalize' : 'Next'}
             />
           ) : (
             <div className="h-full flex flex-col items-center justify-center bg-theme-subtle/5 p-8 text-center">

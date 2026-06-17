@@ -407,9 +407,21 @@ const withTimeout = (promise, ms, message) => Promise.race([
   }),
 ]);
 
+const getContentType = (req) => String(req.headers['content-type'] || '').toLowerCase();
+
+/** Multer and other parsers need the raw body stream — do not read or JSON.parse it here. */
+const isStreamingBodyRequest = (req) => {
+  const ct = getContentType(req);
+  return ct.includes('multipart/form-data') || ct.includes('application/octet-stream');
+};
+
 const parseRequestBody = async (req) => {
   if (req._bodyParsed) return req.body;
   if (req.method === 'GET' || req.method === 'HEAD') {
+    req._bodyParsed = true;
+    return undefined;
+  }
+  if (isStreamingBodyRequest(req)) {
     req._bodyParsed = true;
     return undefined;
   }
@@ -442,7 +454,12 @@ const parseRequestBody = async (req) => {
   };
 
   const raw = await withTimeout(readStream(), 8000, 'Request body read timed out');
-  req.body = raw ? JSON.parse(raw) : {};
+  try {
+    req.body = raw ? JSON.parse(raw) : {};
+  } catch (err) {
+    const preview = String(raw || '').slice(0, 80).replace(/\s+/g, ' ');
+    throw new Error(`Invalid JSON request body: ${err.message}${preview ? ` (${preview}…)` : ''}`);
+  }
   req._bodyParsed = true;
   return req.body;
 };
@@ -690,7 +707,9 @@ module.exports = async (req, res) => {
 
   try {
     normalizeRequestUrl(req);
-    await parseRequestBody(req);
+    if (!isStreamingBodyRequest(req)) {
+      await parseRequestBody(req);
+    }
     if (!handler) {
       const { getApp } = require('../server/src/app');
       const app = await getApp();

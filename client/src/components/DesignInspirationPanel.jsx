@@ -49,7 +49,7 @@ export default function DesignInspirationPanel({
       if (file) toast.success('Inspiration uploaded — aesthetics extracted, text ignored')
       return data.designIdea
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Upload failed')
+      toast.error(err.response?.data?.error || err.message || 'Upload failed')
       return null
     } finally {
       setUploading(false)
