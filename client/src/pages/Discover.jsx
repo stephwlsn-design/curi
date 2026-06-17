@@ -8,6 +8,7 @@ import CoreWorkflowNav from '../components/CoreWorkflowNav'
 import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
+import LoadingMascot from '../components/LoadingMascot'
 
 export default function Discover() {
   const { workspaceId, setWorkspace, fetchMe, workspace } = useAuth()
@@ -27,7 +28,7 @@ export default function Discover() {
     if (!workspaceId) return toast.error('Workspace not loaded — please sign out and sign in again')
     setLoading(true)
     try {
-      const { data } = await API.post('/discover', { url: url.trim(), workspaceId })
+      const { data } = await API.post('/discover', { url: url.trim(), workspaceId }, { timeout: 55000 })
       if (!data?.brandProfile?.name) {
         return toast.error('No brand data returned — try a different URL')
       }
@@ -45,6 +46,7 @@ export default function Discover() {
         || err.response?.data?.errors?.[0]?.msg
         || (err.response?.status === 402 ? 'Not enough credits — you need 5 credits for Discover' : null)
         || (err.code === 'ERR_NETWORK' ? 'Cannot reach server — run npm run dev from the project root' : null)
+        || (err.code === 'ECONNABORTED' ? 'Analysis timed out — try again or use a different URL' : null)
         || 'Analysis failed'
       toast.error(msg)
     } finally { setLoading(false) }
@@ -81,8 +83,8 @@ export default function Discover() {
       </div>
 
       {loading && (
-        <div className="page-card text-center py-10">
-          <img src="/images/curi-mascot.png" alt="" className="w-16 h-16 mx-auto mb-4 animate-float object-contain" />
+        <div className="page-card text-center py-12">
+          <LoadingMascot size="xl" className="mb-6" />
           <div className="text-theme-text font-semibold text-lg mb-1">Analyzing your brand...</div>
           <div className="text-theme-muted/50 text-base">Extracting brand voice, colors, and marketing strategy</div>
           <div className="flex gap-2 justify-center mt-4 flex-wrap">

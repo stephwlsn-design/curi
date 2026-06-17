@@ -78,6 +78,82 @@ const isDesignFastRequest = (req) => {
   return false;
 };
 
+const isDiscoverRequest = (req) => {
+  const pathOnly = requestPath(req);
+  return req.method === 'POST' && (pathOnly === '/api/discover' || pathOnly === '/discover');
+};
+
+const DISCOVER_VOICES = ['professional', 'casual', 'witty', 'bold', 'authoritative', 'friendly'];
+
+const sanitizeDiscoverProfile = (profile, url) => {
+  const clean = { ...profile };
+  delete clean._source;
+  delete clean._aiNote;
+  if (clean.voice && !DISCOVER_VOICES.includes(clean.voice)) {
+    clean.voice = DISCOVER_VOICES.find((v) => v === clean.voice?.toLowerCase()) || 'professional';
+  }
+  clean.url = url;
+  clean.lastDiscoveredAt = new Date();
+  return clean;
+};
+
+const handleDiscover = async (req, res) => {
+  const { connectDB } = require('../server/src/config/database');
+  const discoverService = require('../server/src/services/discoverService');
+  const { findAccessibleWorkspace } = require('../server/src/utils/workspaceAccess');
+  const { mergeBrandProfile } = require('../server/src/utils/brandProfile');
+  const User = require('../server/src/models/User');
+
+  await connectDB();
+  let user = await authenticateRequest(req);
+  const body = req.body || {};
+  let { url, workspaceId } = body;
+
+  if (!url?.trim()) return sendJson(res, 400, { error: 'URL is required' });
+  if (!workspaceId) {
+    return sendJson(res, 400, { error: 'Workspace not loaded. Sign out and sign in again.' });
+  }
+
+  const creditCost = 5;
+  user = await User.findById(user._id);
+  if (!user) return sendJson(res, 401, { error: 'User not found' });
+  if (user.credits < creditCost) {
+    return sendJson(res, 402, {
+      error: 'Insufficient credits',
+      required: creditCost,
+      available: user.credits,
+    });
+  }
+
+  url = url.trim();
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+
+  const workspace = await findAccessibleWorkspace(workspaceId, user._id);
+  if (!workspace) {
+    return sendJson(res, 404, { error: 'Workspace not found. Sign out and sign in again.' });
+  }
+
+  try {
+    const result = await discoverService.analyzeWebsite(url);
+    const { _source, _aiNote, ...brandData } = result;
+    const brandProfile = sanitizeDiscoverProfile(brandData, url);
+
+    workspace.brandProfile = mergeBrandProfile(workspace.brandProfile, brandProfile);
+    await workspace.save();
+    await user.deductCredits(creditCost);
+
+    return sendJson(res, 200, {
+      brandProfile: workspace.brandProfile,
+      source: _source || 'ai',
+      note: _aiNote || null,
+    });
+  } catch (err) {
+    console.error('[api] discover failed:', err);
+    const message = discoverService.friendlyAIError(err) || err.message || 'Analysis failed';
+    return sendJson(res, 502, { error: message });
+  }
+};
+
 const handleDesignFast = async (req, res) => {
   const { connectDB } = require('../server/src/config/database');
   const {
@@ -483,6 +559,17 @@ module.exports = async (req, res) => {
       return await handleDesignFast(req, res);
     } catch (err) {
       console.error('[api] design fast failed:', err);
+      return sendJson(res, err.status || 502, { error: err.message });
+    }
+  }
+
+  if (isDiscoverRequest(req)) {
+    try {
+      normalizeRequestUrl(req);
+      await parseRequestBody(req);
+      return await handleDiscover(req, res);
+    } catch (err) {
+      console.error('[api] discover bootstrap failed:', err);
       return sendJson(res, err.status || 502, { error: err.message });
     }
   }

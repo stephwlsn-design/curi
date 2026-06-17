@@ -1,27 +1,21 @@
-const OpenAI = require('openai');
-const Anthropic = require('@anthropic-ai/sdk');
 const axios = require('axios');
 const logger = require('../utils/logger');
+const { generateJSON } = require('./llmService');
+const gemini = require('./geminiService');
 
 const isValidKey = (key, minLen = 20) =>
   key && key.length >= minLen && !key.includes('...') && !key.endsWith('...');
 
-let openaiClient = null;
-let anthropicClient = null;
+const AI_TIMEOUT_MS = process.env.VERCEL ? 18000 : 25000;
+const SCRAPE_TIMEOUT_MS = process.env.VERCEL ? 6000 : 8000;
+const GEMINI_TIMEOUT_MS = process.env.VERCEL ? 15000 : 30000;
 
-const getOpenAI = () => {
-  if (!openaiClient && isValidKey(process.env.OPENAI_API_KEY)) {
-    openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-  return openaiClient;
-};
-
-const getAnthropic = () => {
-  if (!anthropicClient && isValidKey(process.env.ANTHROPIC_API_KEY)) {
-    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  }
-  return anthropicClient;
-};
+const withTimeout = (promise, ms, message) => Promise.race([
+  promise,
+  new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(message)), ms);
+  }),
+]);
 
 const expandHex = (h) => {
   if (!h) return null;
@@ -176,57 +170,39 @@ const buildProfileFromScrape = (url, page) => ({
   _source: 'scrape',
 });
 
-const callOpenAI = async (prompt) => {
-  const openai = getOpenAI();
-  if (!openai) throw new Error('OpenAI not configured');
-  logger.info('Using OpenAI for brand analysis');
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [{ role: 'user', content: prompt }],
-    response_format: { type: 'json_object' },
-    max_tokens: 1500,
-  });
-  return response.choices[0].message.content;
-};
-
-const callAnthropic = async (prompt) => {
-  const anthropic = getAnthropic();
-  if (!anthropic) throw new Error('Anthropic not configured');
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 1500,
-    messages: [{ role: 'user', content: prompt }],
-  });
-  return response.content[0].text;
-};
+const hasAnyAIKey = () =>
+  gemini.isValidKey(process.env.GEMINI_API_KEY)
+  || isValidKey(process.env.OPENAI_API_KEY);
 
 const analyzeWithAI = async (prompt) => {
-  const hasAnthropic = isValidKey(process.env.ANTHROPIC_API_KEY);
-  const hasOpenAI = isValidKey(process.env.OPENAI_API_KEY);
-  const errors = [];
-
-  if (hasAnthropic) {
-    try {
-      return { text: await callAnthropic(prompt), source: 'anthropic' };
-    } catch (err) {
-      errors.push(`Anthropic: ${err.message?.slice(0, 80)}`);
-      const authFailed = err.status === 401 || err.message?.includes('x-api-key');
-      if (!authFailed || !hasOpenAI) logger.warn(`Anthropic failed: ${err.message}`);
-    }
+  if (!hasAnyAIKey()) {
+    const err = new Error('No valid AI API keys configured');
+    err.aiUnavailable = true;
+    throw err;
   }
 
-  if (hasOpenAI) {
-    try {
-      return { text: await callOpenAI(prompt), source: 'openai' };
-    } catch (err) {
-      errors.push(`OpenAI: ${err.message?.slice(0, 80)}`);
-      logger.warn(`OpenAI failed: ${err.message}`);
-    }
-  }
+  const runAI = gemini.isValidKey(process.env.GEMINI_API_KEY)
+    ? () => gemini.generateJSON({
+      system: 'You are a brand strategist. Return ONLY valid JSON matching the requested structure. No markdown.',
+      user: prompt,
+      temperature: 0.3,
+      timeoutMs: GEMINI_TIMEOUT_MS,
+    })
+    : () => generateJSON({
+      system: 'You are a brand strategist. Return ONLY valid JSON matching the requested structure. No markdown.',
+      user: prompt,
+      temperature: 0.3,
+      label: 'Discover',
+    });
 
-  const err = new Error(errors.join(' | ') || 'No valid AI API keys configured');
-  err.aiUnavailable = true;
-  throw err;
+  const profile = await withTimeout(
+    runAI(),
+    AI_TIMEOUT_MS,
+    'Brand analysis timed out',
+  );
+
+  const source = gemini.isValidKey(process.env.GEMINI_API_KEY) ? 'gemini' : 'openai';
+  return { profile, source };
 };
 
 const friendlyAIError = (err) => {
@@ -234,11 +210,17 @@ const friendlyAIError = (err) => {
     return null;
   }
   const msg = err.message || '';
+  if (msg.includes('timed out')) {
+    return 'Analysis timed out — try again or use a different URL';
+  }
+  if (msg.includes('GEMINI_API_KEY')) {
+    return 'Gemini API key not configured — set GEMINI_API_KEY in your environment';
+  }
   if (msg.includes('x-api-key') || msg.includes('authentication_error')) {
-    return 'Invalid Anthropic API key — check ANTHROPIC_API_KEY in server/.env (no truncated keys with ...)';
+    return 'Invalid API key — check GEMINI_API_KEY or OPENAI_API_KEY in server/.env';
   }
   if (msg.includes('quota') || err.status === 429) {
-    return 'OpenAI quota exceeded — add billing at platform.openai.com or fix your Anthropic key';
+    return 'AI quota exceeded — check your Gemini or OpenAI billing';
   }
   if (msg.includes('Incorrect API key') || msg.includes('invalid_api_key')) {
     return 'Invalid OpenAI API key — check OPENAI_API_KEY in server/.env';
@@ -251,7 +233,7 @@ const scrapeUrl = async (url) => {
   let html = '';
   try {
     const { data } = await axios.get(url, {
-      timeout: 10000,
+      timeout: SCRAPE_TIMEOUT_MS,
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CuriBot/1.0)' },
       maxRedirects: 5,
     });
@@ -306,9 +288,8 @@ Return this exact JSON structure:
 }`;
 
   try {
-    const { text, source } = await analyzeWithAI(prompt);
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    const profile = jsonMatch ? JSON.parse(jsonMatch[0]) : buildProfileFromScrape(normalizedUrl, page);
+    const { profile, source } = await analyzeWithAI(prompt);
+    if (!profile?.name) throw new Error('AI returned incomplete profile');
     profile.colors = mergeColorProfiles(profile.colors, page.colorProfile);
     profile._source = source;
     return profile;
@@ -323,15 +304,12 @@ Return this exact JSON structure:
 const roastWebsite = async (url) => {
   const page = await scrapeUrl(url.startsWith('http') ? url : `https://${url}`);
 
-  if (isValidKey(process.env.OPENAI_API_KEY)) {
+  if (hasAnyAIKey()) {
     try {
-      const openai = getOpenAI();
-      if (!openai) throw new Error('OpenAI not configured');
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{
-          role: 'user',
-          content: `You are a brutally honest but constructive marketing expert. Roast this website and return ONLY JSON:
+      return await withTimeout(
+        generateJSON({
+          system: 'You are a brutally honest but constructive marketing expert. Return ONLY valid JSON.',
+          user: `Roast this website:
 
 URL: ${url}
 Title: ${page.title}
@@ -352,10 +330,12 @@ Return exactly:
   "topWins": ["thing they do well 1", "thing they do well 2"],
   "topFixes": ["fix 1", "fix 2", "fix 3"]
 }`,
-        }],
-        response_format: { type: 'json_object' },
-      });
-      return JSON.parse(response.choices[0].message.content);
+          temperature: 0.7,
+          label: 'Discover roast',
+        }),
+        AI_TIMEOUT_MS,
+        'Roast timed out',
+      );
     } catch (err) {
       logger.warn(`Roast AI failed: ${err.message}`);
     }

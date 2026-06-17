@@ -23,7 +23,7 @@ const formatError = (err) => {
   return error;
 };
 
-const callGemini = async ({ prompt, model, temperature, key, imagePart = null }) => {
+const callGemini = async ({ prompt, model, temperature, key, imagePart = null, timeoutMs = 90000 }) => {
   const parts = [{ text: prompt }];
   if (imagePart) parts.push(imagePart);
 
@@ -36,7 +36,7 @@ const callGemini = async ({ prompt, model, temperature, key, imagePart = null })
         temperature,
       },
     },
-    { timeout: 90000 }
+    { timeout: timeoutMs }
   );
 
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -60,7 +60,7 @@ const imagePartFromPath = (imagePath) => {
   };
 };
 
-const generateJSON = async ({ system, user, model = DEFAULT_MODEL, temperature = 0.8, imagePath = null }) => {
+const generateJSON = async ({ system, user, model = DEFAULT_MODEL, temperature = 0.8, imagePath = null, timeoutMs = 90000 }) => {
   const key = process.env.GEMINI_API_KEY;
   if (!isValidKey(key)) {
     throw new Error('GEMINI_API_KEY not configured');
@@ -74,7 +74,7 @@ const generateJSON = async ({ system, user, model = DEFAULT_MODEL, temperature =
   for (const tryModel of models) {
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
       try {
-        return await callGemini({ prompt, model: tryModel, temperature, key, imagePart });
+        return await callGemini({ prompt, model: tryModel, temperature, key, imagePart, timeoutMs });
       } catch (err) {
         lastErr = formatError(err);
         const status = lastErr.status;

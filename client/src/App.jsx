@@ -23,12 +23,13 @@ import Drafts from './pages/Drafts'
 import Scheduled from './pages/Scheduled'
 import Settings from './pages/Settings'
 import Roast from './pages/Roast'
+import LoadingMascot from './components/LoadingMascot'
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth()
   if (loading) return (
     <div className="min-h-screen bg-theme-bg flex items-center justify-center">
-      <img src="/images/curi-mascot.png" alt="Loading" className="w-20 h-20 animate-float object-contain" />
+      <LoadingMascot size="xl" />
     </div>
   )
   return user ? children : <Navigate to="/auth" replace />
