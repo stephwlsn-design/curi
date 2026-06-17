@@ -42,7 +42,7 @@ router.post('/idea', uploadDesignIdea.single('image'), async (req, res) => {
       const ideaContext = await Promise.race([
         designService.resolveDesignIdeaContext(normalizeDesignIdea(designIdea)),
         new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Style analysis timed out')), 22000);
+          setTimeout(() => reject(new Error('Style analysis timed out')), 28000);
         }),
       ]);
       if (ideaContext) {

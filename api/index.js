@@ -434,7 +434,7 @@ const handleDesignIdea = async (req, res) => {
     try {
       const ideaContext = await withTimeout(
         designService.resolveDesignIdeaContext(normalizeDesignIdea(designIdea)),
-        22000,
+        28000,
         'Style analysis timed out',
       );
       if (ideaContext) {

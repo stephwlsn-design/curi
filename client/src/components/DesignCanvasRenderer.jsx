@@ -184,7 +184,7 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
           return (
             <div
               key={el.id}
-              style={{ ...base, width: 'auto', maxWidth: el.width * scale }}
+              style={{ ...base, width: 'auto', maxWidth: el.width * scale, fontFamily: el.fontFamily || '"Poppins", system-ui, sans-serif' }}
               onClick={interactive ? e => { e.stopPropagation(); onSelect?.(el.id) } : undefined}
               className="px-2 py-1 rounded-md bg-white/20 backdrop-blur-sm text-white font-bold uppercase tracking-wide"
               data-element-id={el.id}
@@ -209,8 +209,10 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
                 padding: `${8 * scale}px ${16 * scale}px`,
                 width: 'auto',
                 minWidth: el.width * scale,
+                fontFamily: el.fontFamily || '"Poppins", system-ui, sans-serif',
                 fontWeight: el.fontWeight || 700,
                 fontSize: (el.fontSize || 14) * scale,
+                letterSpacing: el.letterSpacing != null ? `${el.letterSpacing * scale}px` : undefined,
               }}
               onClick={interactive ? e => { e.stopPropagation(); onSelect?.(el.id) } : undefined}
               data-element-id={el.id}
@@ -226,10 +228,12 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
             style={{
               ...base,
               color: el.color || '#fff',
+              fontFamily: el.fontFamily || '"Poppins", system-ui, sans-serif',
               fontSize: (el.fontSize || 24) * scale,
               fontWeight: el.fontWeight || 600,
               textAlign: el.align || 'left',
               lineHeight: 1.15,
+              letterSpacing: el.letterSpacing != null ? `${el.letterSpacing * scale}px` : undefined,
               textShadow: '0 1px 8px rgba(0,0,0,0.2)',
             }}
             onClick={interactive ? e => { e.stopPropagation(); onSelect?.(el.id) } : undefined}

@@ -15,6 +15,7 @@ import {
   RESIZE_HANDLES, resizeHandleCursor, resizeHandleStyle,
 } from '../utils/designCanvas'
 import { isDraftDesign } from '../utils/localDesign'
+import { CANVAS_FONTS, FONT_WEIGHTS, fontFamilyToId, resolveCanvasFont } from '../constants/canvasFonts'
 
 export default forwardRef(function DesignCanvasEditor({
   design,
@@ -265,6 +266,7 @@ export default forwardRef(function DesignCanvasEditor({
         width: 400,
         fontSize: 28,
         fontWeight: 600,
+        fontFamily: resolveCanvasFont('poppins'),
         color: '#ffffff',
         align: 'left',
         visible: true,
@@ -359,6 +361,20 @@ export default forwardRef(function DesignCanvasEditor({
     addTextLayer,
     saveDesign,
     getCanvas: () => canvas,
+    applyFontStyle: (fontId, target = 'headline') => {
+      const family = resolveCanvasFont(fontId)
+      setCanvas((prev) => ({
+        ...prev,
+        elements: prev.elements.map((el) => {
+          if (target === 'all' && ['text', 'button', 'badge'].includes(el.type)) {
+            return { ...el, fontFamily: family }
+          }
+          if (el.id === target) return { ...el, fontFamily: family }
+          return el
+        }),
+      }))
+      toast.success(`Applied ${CANVAS_FONTS.find((f) => f.id === fontId)?.label || 'font'}`)
+    },
   }))
 
   const rootClass = embedded
@@ -702,6 +718,30 @@ export default forwardRef(function DesignCanvasEditor({
               {(selected.type === 'text' || selected.type === 'badge') && (
                 <>
                   <div>
+                    <label className="text-[10px] text-theme-muted/40 font-bold uppercase">Font Style</label>
+                    <select
+                      className="input text-sm mt-1"
+                      value={fontFamilyToId(selected.fontFamily)}
+                      onChange={(e) => updateElement(selected.id, { fontFamily: resolveCanvasFont(e.target.value) })}
+                    >
+                      {CANVAS_FONTS.map((font) => (
+                        <option key={font.id} value={font.id}>{font.label} — {font.category}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-theme-muted/40 font-bold uppercase">Font Weight</label>
+                    <select
+                      className="input text-sm mt-1"
+                      value={selected.fontWeight || 600}
+                      onChange={(e) => updateElement(selected.id, { fontWeight: Number(e.target.value) })}
+                    >
+                      {FONT_WEIGHTS.map((w) => (
+                        <option key={w.value} value={w.value}>{w.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label className="text-[10px] text-theme-muted/40 font-bold uppercase">Font Size</label>
                     <input type="number" className="input text-sm mt-1" value={selected.fontSize}
                       onChange={e => updateElement(selected.id, { fontSize: Number(e.target.value) })} />
@@ -726,12 +766,26 @@ export default forwardRef(function DesignCanvasEditor({
                 </>
               )}
               {selected.type === 'button' && (
-                <div>
-                  <label className="text-[10px] text-theme-muted/40 font-bold uppercase">Button Color</label>
+                <>
+                  <div>
+                    <label className="text-[10px] text-theme-muted/40 font-bold uppercase">Font Style</label>
+                    <select
+                      className="input text-sm mt-1"
+                      value={fontFamilyToId(selected.fontFamily)}
+                      onChange={(e) => updateElement(selected.id, { fontFamily: resolveCanvasFont(e.target.value) })}
+                    >
+                      {CANVAS_FONTS.map((font) => (
+                        <option key={font.id} value={font.id}>{font.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-theme-muted/40 font-bold uppercase">Button Color</label>
                   <input type="color" className="w-full h-9 mt-1 rounded-lg cursor-pointer"
                     value={selected.bgColor || '#ffffff'}
                     onChange={e => updateElement(selected.id, { bgColor: e.target.value })} />
-                </div>
+                  </div>
+                </>
               )}
               {!['headline', 'subheadline', 'cta', 'badge'].includes(selected.id) && (
                 <button type="button" onClick={deleteSelected} className="text-xs text-red-400 flex items-center gap-1 hover:underline">

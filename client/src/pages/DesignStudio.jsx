@@ -12,6 +12,7 @@ import DesignMediaPanel from '../components/DesignMediaPanel'
 import AnimatedCharactersPanel from '../components/AnimatedCharactersPanel'
 import DesignAudioPanel from '../components/DesignAudioPanel'
 import DesignCanvasEditor from '../components/DesignCanvasEditor'
+import { CANVAS_FONTS } from '../constants/canvasFonts'
 import { useDesignCreation } from '../hooks/useDesignCreation'
 import { isDraftDesign } from '../utils/localDesign'
 import { buildDesignFromInspiration, buildCarouselFromInspiration } from '../utils/inspirationCanvas'
@@ -709,6 +710,33 @@ export default function DesignStudio() {
                 <p className="text-xs text-theme-muted/60">
                   Select text on the canvas to edit headline, subheadline, and CTA. Or add a new text layer.
                 </p>
+                <div>
+                  <div className="text-[10px] font-bold text-theme-muted/50 uppercase tracking-wider mb-2">Font styles</div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {CANVAS_FONTS.map((font) => (
+                      <button
+                        key={font.id}
+                        type="button"
+                        disabled={!design}
+                        onClick={() => editorRef.current?.applyFontStyle(font.id, 'headline')}
+                        className="px-2 py-2 rounded-lg border border-theme-border text-left hover:border-curi-pink/40 hover:bg-curi-pink/5 disabled:opacity-40 transition-all"
+                        style={{ fontFamily: font.family }}
+                      >
+                        <span className="block text-sm font-bold text-theme-text leading-tight">{font.label}</span>
+                        <span className="block text-[9px] text-theme-muted/50">{font.category}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {design && (
+                    <button
+                      type="button"
+                      onClick={() => editorRef.current?.applyFontStyle('poppins', 'all')}
+                      className="btn-secondary w-full text-xs mt-2"
+                    >
+                      Apply Poppins to all text
+                    </button>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={() => editorRef.current?.addTextLayer()}
@@ -717,7 +745,7 @@ export default function DesignStudio() {
                   + Add text layer
                 </button>
                 <div className="card p-3 space-y-2 text-xs text-theme-muted/60">
-                  <p><strong className="text-theme-text">Tip:</strong> Click any text on the canvas to edit font, color, and position in the properties panel.</p>
+                  <p><strong className="text-theme-text">Tip:</strong> Click any text on the canvas to edit font, color, and position in the properties panel on the right.</p>
                 </div>
               </div>
             )}

@@ -279,10 +279,19 @@ export default function DesignInspirationPanel({
       )}
 
       {value?.analyzedDirection && (
-        <p className="text-xs text-theme-muted/50 leading-relaxed border-t border-theme-border pt-3">
-          <span className="font-bold text-theme-text">Style detected: </span>
-          {value.analyzedDirection}
-        </p>
+        <div className="text-xs text-theme-muted/50 leading-relaxed border-t border-theme-border pt-3 space-y-1">
+          <p>
+            <span className="font-bold text-theme-text">Style detected: </span>
+            {value.analyzedDirection}
+          </p>
+          {value?.analyzedSpec?.mood && (
+            <p><span className="font-bold text-theme-text">Mood:</span> {value.analyzedSpec.mood}</p>
+          )}
+          {value?.analyzedSpec?.fontHeadline && (
+            <p><span className="font-bold text-theme-text">Fonts:</span> {value.analyzedSpec.fontHeadline}{value.analyzedSpec.fontSubheadline ? ` / ${value.analyzedSpec.fontSubheadline}` : ''}</p>
+          )}
+          <p className="text-[10px] text-theme-muted/45">Re-upload the image to refresh style analysis with the latest engine.</p>
+        </div>
       )}
     </div>
   )

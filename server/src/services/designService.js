@@ -1,6 +1,7 @@
 const { generateJSON } = require('./llmService');
 const { CHANNELS, DIMENSIONS } = require('../constants/creative');
 const { normalizeDesignIdea } = require('../utils/designIdea');
+const { normalizeSpec } = require('../utils/inspirationTypography');
 
 const scoreDesign = (design) => ({
   engagement: design.engagementScore ?? Math.floor(70 + Math.random() * 25),
@@ -26,7 +27,11 @@ const resolveDesignIdeaContext = async (designIdea) => {
   const idea = normalizeDesignIdea(designIdea);
   if (!idea.notes && !idea.hasImage) return null;
 
-  if (designIdea?.analyzedSpec && designIdea.analyzedSpec.aestheticOnly && (designIdea?.analyzedDirection || !idea.hasImage)) {
+  if (
+    designIdea?.analyzedSpec?.aestheticOnly
+    && designIdea.analyzedSpec.backgroundMode
+    && (designIdea?.analyzedDirection || !idea.hasImage)
+  ) {
     return {
       direction: designIdea.analyzedDirection || idea.notes,
       imagePath: idea.imagePath,
@@ -40,58 +45,57 @@ const resolveDesignIdeaContext = async (designIdea) => {
   }
 
   const parsed = await generateJSON({
-    system: `You are a senior creative director reverse-engineering a reference design into reusable AESTHETIC specs only.
-Study the attached reference image precisely. Return ONLY valid JSON.
+    system: `You are a senior creative director reverse-engineering a reference design into reusable AESTHETIC specs.
+Study the attached reference image pixel-by-pixel. Return ONLY valid JSON.
 
 CRITICAL RULES:
 - IGNORE all text, headlines, body copy, logos with words, and CTAs visible in the reference.
 - Do NOT transcribe, quote, or reproduce any words from the image.
-- Extract ONLY visual aesthetics: color palette, gradients, composition rhythm, spacing, shapes, mood, and typography STYLE (weight, feel — not content).
-- Placements describe where NEW user copy should go — not where existing reference text is.`,
+- Sample DOMINANT colors directly from the image — use exact hex values from backgrounds, accents, and typography areas.
+- Match layout composition: where visual weight sits, whitespace, and hierarchy — not the reference text positions verbatim.
+- Pick Google Font names that match the visual typography style (e.g. "Playfair Display", "Montserrat", "Bebas Neue", "Poppins", "Oswald", "Caveat").
+- backgroundMode "reference-photo" when the reference is photo/graphic-heavy; "reference-blur" for abstract/texture refs; "gradient" for flat colour-only refs.`,
     user: `Analyze this reference design for aesthetic reproduction WITHOUT any of its text content.
 User notes: ${idea.notes || 'None'}
 
-Extract visual specs so new designs share the same LOOK (colors, layout style, typography mood) with completely different copy.
+Extract precise visual specs so a new design shares the same LOOK (colors, photo mood, layout rhythm, typography style) with completely different copy.
 
 Return JSON:
 {
   "direction": "2-3 sentences describing aesthetic style only — no text from the image",
-  "colorPalette": ["#hex1", "#hex2", "#hex3"],
+  "mood": "minimal|bold|playful|luxury|corporate|editorial|warm|cool",
+  "colorPalette": ["#dominant1", "#dominant2", "#accent", "#optional4"],
   "layout": "centered|split|grid|hero|minimal",
-  "textColor": "#hex",
+  "backgroundMode": "reference-photo|reference-blur|gradient",
+  "textColor": "#hex for headline on this background",
   "subtextColor": "#hex or rgba",
   "ctaBackground": "#hex",
   "ctaTextColor": "#hex",
-  "overlayOpacity": 0.12,
-  "textureOpacity": 0.2,
+  "overlayOpacity": 0.25,
+  "textureOpacity": 0.45,
+  "textureBlur": 14,
   "gradientAngle": 135,
-  "typography": "description of font style only",
+  "typography": "overall font style description",
+  "fontHeadline": "Google Font name for headlines",
+  "fontSubheadline": "Google Font name for subheadlines",
+  "fontCta": "Google Font name for buttons",
+  "headlineWeight": 700,
+  "subheadlineWeight": 400,
+  "ctaWeight": 700,
+  "letterSpacing": 0,
   "placements": {
     "headline": { "x": 0.08, "y": 0.32, "width": 0.84, "align": "center|left|right", "fontSize": 48 },
     "subheadline": { "x": 0.1, "y": 0.48, "width": 0.8, "align": "center", "fontSize": 22 },
     "cta": { "x": 0.32, "y": 0.72, "width": 0.36, "fontSize": 14 }
   }
 }`,
-    temperature: 0.3,
+    temperature: 0.15,
     label: 'Design Idea Analysis',
     imagePath: idea.imagePath,
-    timeoutMs: 22000,
+    timeoutMs: 28000,
   });
 
-  const spec = {
-    colorPalette: parsed.colorPalette || ['#FF6B9D', '#4DA8EE', '#1A2B48'],
-    layout: parsed.layout || 'centered',
-    textColor: parsed.textColor || '#ffffff',
-    subtextColor: parsed.subtextColor || 'rgba(255,255,255,0.85)',
-    ctaBackground: parsed.ctaBackground || '#ffffff',
-    ctaTextColor: parsed.ctaTextColor || '#1A2B48',
-    overlayOpacity: parsed.overlayOpacity ?? 0.12,
-    textureOpacity: parsed.textureOpacity ?? 0.2,
-    gradientAngle: parsed.gradientAngle ?? 135,
-    typography: parsed.typography || 'bold sans-serif',
-    placements: parsed.placements || null,
-    aestheticOnly: true,
-  };
+  const spec = normalizeSpec(parsed);
 
   const direction = [parsed.direction, idea.notes ? `User notes: ${idea.notes}` : ''].filter(Boolean).join('\n');
   return { direction, imagePath: idea.imagePath, imageUrl: idea.imageUrl, spec };
