@@ -10,8 +10,52 @@ let handler;
 let authHandler;
 
 const requestPath = (req) => {
-  const raw = req.url || req.path || '';
-  return raw.split('?')[0] || '/';
+  const rawUrl = req.url || req.path || '';
+  const queryPath = (() => {
+    try {
+      const url = new URL(rawUrl, 'http://vercel.local');
+      return url.searchParams.get('path');
+    } catch {
+      return null;
+    }
+  })();
+
+  if (queryPath) {
+    if (queryPath === 'health') return '/health';
+    return `/api/${queryPath}`;
+  }
+
+  const candidates = [
+    req.headers['x-vercel-original-path'],
+    req.headers['x-invoke-path'],
+    req.headers['x-forwarded-uri'],
+    rawUrl,
+  ].filter(Boolean);
+
+  for (const raw of candidates) {
+    const value = String(raw).split('?')[0];
+    if (!value || value === '/api') continue;
+    return value;
+  }
+
+  return '/api';
+};
+
+const normalizeRequestUrl = (req) => {
+  const pathOnly = requestPath(req);
+  if (pathOnly.startsWith('/api/')) {
+    req.url = pathOnly;
+  } else if (pathOnly === '/health') {
+    req.url = '/health';
+  }
+};
+
+const isAuthRequest = (req) => {
+  const pathOnly = requestPath(req);
+  if (pathOnly.startsWith('/api/auth') || pathOnly.startsWith('/auth')) return true;
+  // Vercel rewrites /api/* to /api — treat POST /api as auth when body looks like login/register
+  if (pathOnly === '/api' && req.method === 'POST') return true;
+  return false;
 };
 
 const sendJson = (res, status, body) => {
@@ -39,6 +83,7 @@ const ensureDemoUser = async () => {
 };
 
 const handleAuth = async (req, res) => {
+  normalizeRequestUrl(req);
   const { connectDB } = require('../server/src/config/database');
   await connectDB();
   await ensureDemoUser();
@@ -67,7 +112,7 @@ module.exports = async (req, res) => {
     }
   }
 
-  if (pathOnly.startsWith('/api/auth') || pathOnly.startsWith('/auth')) {
+  if (isAuthRequest(req)) {
     try {
       return await handleAuth(req, res);
     } catch (err) {
@@ -77,6 +122,7 @@ module.exports = async (req, res) => {
   }
 
   try {
+    normalizeRequestUrl(req);
     if (!handler) {
       const { getApp } = require('../server/src/app');
       const app = await getApp();
