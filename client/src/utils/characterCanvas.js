@@ -93,6 +93,8 @@ export const applyTalkingCharacterToCanvas = (canvas, payload, position = 'cente
         script: payload.script || '',
         language: payload.language || 'en',
         tonality: payload.tonality || 'friendly',
+        gender: payload.gender || 'female',
+        speakTrigger: payload.speakTrigger || null,
         x: pos.x,
         y: pos.y,
         width: elW,

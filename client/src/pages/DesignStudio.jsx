@@ -81,14 +81,19 @@ export default function DesignStudio() {
   const [carouselIndex, setCarouselIndex] = useState(0)
   const [loadingDesign, setLoadingDesign] = useState(false)
   const [characterPanelFocus, setCharacterPanelFocus] = useState(null)
+  const [characterTalkContext, setCharacterTalkContext] = useState(null)
 
-  const clearCharacterFocus = useCallback(() => setCharacterPanelFocus(null), [])
+  const clearCharacterFocus = useCallback(() => {
+    setCharacterPanelFocus(null)
+    setCharacterTalkContext(null)
+  }, [])
 
-  const openCharactersPanel = useCallback((focus = 'talk') => {
+  const openCharactersPanel = useCallback((focus = 'talk', context = null) => {
     setStep(3)
     setPanel('characters')
     setPanelCollapsed(false)
     setCharacterPanelFocus(focus)
+    setCharacterTalkContext(context)
   }, [])
 
   const {
@@ -722,6 +727,7 @@ export default function DesignStudio() {
                 onSelect={handleCharacter}
                 onTalkingCharacter={handleTalkingCharacter}
                 focusMode={characterPanelFocus}
+                talkContext={characterTalkContext}
                 onFocusHandled={clearCharacterFocus}
               />
             )}

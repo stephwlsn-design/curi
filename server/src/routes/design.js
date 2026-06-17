@@ -308,12 +308,12 @@ router.delete('/templates/:id', async (req, res) => {
 });
 
 router.post('/character/speak', checkCredits(1), async (req, res) => {
-  const { text, language = 'en', tonality = 'friendly' } = req.body;
+  const { text, language = 'en', tonality = 'friendly', gender = 'female' } = req.body;
   if (!text?.trim()) return res.status(400).json({ error: 'Script text is required' });
 
   try {
     const talkingCharacterService = require('../services/talkingCharacterService');
-    const result = await talkingCharacterService.synthesizeSpeech({ text, language, tonality });
+    const result = await talkingCharacterService.synthesizeSpeech({ text, language, tonality, gender });
     await req.user.deductCredits(req.creditCost);
     res.json(result);
   } catch (err) {

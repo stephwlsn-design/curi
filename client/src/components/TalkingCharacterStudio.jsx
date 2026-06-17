@@ -7,20 +7,19 @@ import { API } from '../context/AuthContext'
 import {
   TALKING_LANGUAGES,
   TALKING_TONALITIES,
+  TALKING_GENDERS,
 } from '../constants/talkingCharacter'
 import {
   ANIMATED_CHARACTERS,
+  CHARACTER_CATEGORIES,
   searchCharacters,
 } from '../utils/characterCanvas'
 import {
   base64ToBlob,
   createTalkingVideo,
+  mediaUrlToDataUrl,
   previewWithBrowserVoice,
 } from '../utils/talkingVideo'
-
-const SPEAKABLE_MASCOTS = ANIMATED_CHARACTERS.filter(
-  (c) => c.category === 'mascots' || c.speakable,
-)
 
 export default function TalkingCharacterStudio({
   workspaceId,
@@ -31,10 +30,13 @@ export default function TalkingCharacterStudio({
   applyLabel = 'Add to canvas',
 }) {
   const fileRef = useRef(null)
-  const [selectedId, setSelectedId] = useState(initialCharacter?.id || 'char-eco-mascot')
+  const [selectedId, setSelectedId] = useState(initialCharacter?.id || null)
   const [uploadPreview, setUploadPreview] = useState(initialImageUrl || null)
+  const [category, setCategory] = useState('all')
+  const [charSearch, setCharSearch] = useState('')
   const [script, setScript] = useState(initialScript || '')
   const [language, setLanguage] = useState('en')
+  const [gender, setGender] = useState('female')
   const [tonality, setTonality] = useState('friendly')
   const [generating, setGenerating] = useState(false)
   const [creatingVideo, setCreatingVideo] = useState(false)
@@ -42,13 +44,20 @@ export default function TalkingCharacterStudio({
   const [videoUrl, setVideoUrl] = useState(null)
   const [videoBlob, setVideoBlob] = useState(null)
   const [provider, setProvider] = useState(null)
+  const [previewScale, setPreviewScale] = useState(1)
+  const previewAnimRef = useRef(null)
 
-  const selectedMascot = useMemo(
-    () => SPEAKABLE_MASCOTS.find((c) => c.id === selectedId) || null,
+  const filteredCharacters = useMemo(
+    () => searchCharacters(charSearch, category),
+    [charSearch, category],
+  )
+
+  const selectedCharacter = useMemo(
+    () => ANIMATED_CHARACTERS.find((c) => c.id === selectedId) || null,
     [selectedId],
   )
 
-  const imageUrl = uploadPreview || selectedMascot?.assetUrl || selectedMascot?.previewUrl
+  const imageUrl = uploadPreview || selectedCharacter?.assetUrl || selectedCharacter?.previewUrl
 
   useEffect(() => {
     if (initialCharacter?.id) setSelectedId(initialCharacter.id)
@@ -65,7 +74,29 @@ export default function TalkingCharacterStudio({
     if (initialScript) setScript(initialScript)
   }, [initialScript])
 
+  const stopPreviewAnim = useCallback(() => {
+    if (previewAnimRef.current) {
+      cancelAnimationFrame(previewAnimRef.current)
+      previewAnimRef.current = null
+    }
+    setPreviewScale(1)
+  }, [])
+
+  const startPreviewAnim = useCallback(() => {
+    stopPreviewAnim()
+    const start = performance.now()
+    const tick = (now) => {
+      const t = (now - start) / 1000
+      setPreviewScale(1 + Math.abs(Math.sin(t * 14)) * 0.14)
+      previewAnimRef.current = requestAnimationFrame(tick)
+    }
+    previewAnimRef.current = requestAnimationFrame(tick)
+  }, [stopPreviewAnim])
+
+  useEffect(() => () => stopPreviewAnim(), [stopPreviewAnim])
+
   const resetOutputs = () => {
+    stopPreviewAnim()
     if (videoUrl) URL.revokeObjectURL(videoUrl)
     setAudioDataUrl(null)
     setVideoUrl(null)
@@ -99,6 +130,7 @@ export default function TalkingCharacterStudio({
         text: script.trim(),
         language,
         tonality,
+        gender,
       })
       const mime = data.mimeType || 'audio/mpeg'
       const dataUrl = `data:${mime};base64,${data.audioBase64}`
@@ -125,18 +157,29 @@ export default function TalkingCharacterStudio({
       const dataUrl = audioDataUrl || await synthesizeAudio()
       if (dataUrl) {
         const audio = new Audio(dataUrl)
+        startPreviewAnim()
+        audio.onended = () => stopPreviewAnim()
+        audio.onerror = () => stopPreviewAnim()
         await audio.play()
         return
       }
-      previewWithBrowserVoice({ text: script.trim(), language: lang, tonality })
+      startPreviewAnim()
+      previewWithBrowserVoice({ text: script.trim(), language: lang, tonality, gender })
+      const checkEnd = setInterval(() => {
+        if (!window.speechSynthesis.speaking) {
+          clearInterval(checkEnd)
+          stopPreviewAnim()
+        }
+      }, 200)
       toast.success('Browser voice preview')
     } catch {
+      stopPreviewAnim()
       toast.error('Could not preview voice')
     }
   }
 
   const buildTalkingVideo = async () => {
-    if (!imageUrl) return toast.error('Select a mascot or upload an image')
+    if (!imageUrl) return toast.error('Select a character or upload an image')
     if (!script.trim()) return toast.error('Enter script text')
 
     setCreatingVideo(true)
@@ -169,24 +212,33 @@ export default function TalkingCharacterStudio({
     }
   }
 
-  const addToCanvas = () => {
+  const addToCanvas = async () => {
     if (!imageUrl) return toast.error('Choose a character image')
     if (!audioDataUrl && !videoUrl) {
       toast.error('Generate voice or video first')
       return
     }
-    onAddToCanvas?.({
-      characterId: selectedMascot?.id,
-      imageUrl,
-      videoUrl,
-      audioDataUrl,
-      name: selectedMascot?.name || 'Custom Character',
-      script: script.trim(),
-      language,
-      tonality,
-      defaultWidth: selectedMascot?.defaultWidth || 0.5,
-    })
-    toast.success('Talking character added to canvas')
+    try {
+      const persistedImageUrl = await mediaUrlToDataUrl(imageUrl)
+      const persistedVideoUrl = videoUrl ? await mediaUrlToDataUrl(videoUrl) : null
+      onAddToCanvas?.({
+        characterId: selectedCharacter?.id,
+        imageUrl: persistedImageUrl || imageUrl,
+        videoUrl: persistedVideoUrl || videoUrl,
+        audioDataUrl,
+        name: selectedCharacter?.name || 'Custom Character',
+        script: script.trim(),
+        language,
+        tonality,
+        gender,
+        defaultWidth: selectedCharacter?.defaultWidth || 0.5,
+        speakTrigger: Date.now(),
+      })
+      toast.success('Talking character added to canvas')
+    } catch (err) {
+      console.error(err)
+      toast.error('Could not prepare character for canvas')
+    }
   }
 
   const downloadVideo = useCallback(() => {
@@ -202,7 +254,7 @@ export default function TalkingCharacterStudio({
       <div>
         <div className="text-xs font-bold text-theme-text">Talking Character Studio</div>
         <p className="text-[10px] text-theme-muted/55 mt-0.5 leading-snug">
-          Make mascots speak your script in any language, or upload your own image for a talking video.
+          Make any character speak your script in any language, or upload your own image for a talking video.
         </p>
       </div>
 
@@ -210,8 +262,31 @@ export default function TalkingCharacterStudio({
         <div className="text-[10px] font-bold text-theme-muted/50 uppercase tracking-wider mb-1.5">
           Character
         </div>
-        <div className="grid grid-cols-4 gap-1.5 max-h-28 overflow-y-auto mb-2">
-          {SPEAKABLE_MASCOTS.slice(0, 12).map((c) => (
+        <input
+          type="search"
+          value={charSearch}
+          onChange={(e) => setCharSearch(e.target.value)}
+          placeholder="Search all characters…"
+          className="input w-full text-xs py-1.5 mb-2"
+        />
+        <div className="flex flex-wrap gap-1 mb-2 max-h-14 overflow-y-auto">
+          {CHARACTER_CATEGORIES.map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setCategory(cat.id)}
+              className={`px-2 py-0.5 rounded-full text-[9px] font-bold transition-all ${
+                category === cat.id
+                  ? 'bg-curi-pink text-white'
+                  : 'bg-theme-subtle/5 text-theme-muted/60 hover:text-theme-text'
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-4 gap-1.5 max-h-36 overflow-y-auto mb-2">
+          {filteredCharacters.map((c) => (
             <button
               key={c.id}
               type="button"
@@ -231,6 +306,9 @@ export default function TalkingCharacterStudio({
             </button>
           ))}
         </div>
+        {filteredCharacters.length === 0 && (
+          <p className="text-[10px] text-theme-muted/50 text-center mb-2">No characters match</p>
+        )}
         <input
           ref={fileRef}
           type="file"
@@ -271,7 +349,7 @@ export default function TalkingCharacterStudio({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <div>
           <label className="text-[10px] font-bold text-theme-muted/50 uppercase tracking-wider">
             Language
@@ -288,12 +366,32 @@ export default function TalkingCharacterStudio({
         </div>
         <div>
           <label className="text-[10px] font-bold text-theme-muted/50 uppercase tracking-wider">
+            Voice gender
+          </label>
+          <select
+            className="input w-full text-xs mt-1 py-1.5"
+            value={gender}
+            onChange={(e) => {
+              setGender(e.target.value)
+              resetOutputs()
+            }}
+          >
+            {TALKING_GENDERS.map((g) => (
+              <option key={g.id} value={g.id}>{g.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-theme-muted/50 uppercase tracking-wider">
             Tonality
           </label>
           <select
             className="input w-full text-xs mt-1 py-1.5"
             value={tonality}
-            onChange={(e) => setTonality(e.target.value)}
+            onChange={(e) => {
+              setTonality(e.target.value)
+              resetOutputs()
+            }}
           >
             {TALKING_TONALITIES.map((t) => (
               <option key={t.id} value={t.id}>{t.label}</option>
@@ -341,11 +439,25 @@ export default function TalkingCharacterStudio({
             />
           ) : imageUrl ? (
             <div className="relative aspect-square max-h-28 mx-auto rounded-lg overflow-hidden bg-gradient-to-br from-pink-100 to-blue-50">
-              <img src={imageUrl} alt="" className="w-full h-full object-contain p-2" />
+              <img
+                src={imageUrl}
+                alt=""
+                className="w-full h-full object-contain p-2 transition-transform duration-75"
+                style={{
+                  transform: `scale(${previewScale})`,
+                  transformOrigin: 'center bottom',
+                }}
+              />
               {audioDataUrl && (
                 <button
                   type="button"
-                  onClick={() => new Audio(audioDataUrl).play()}
+                  onClick={() => {
+                    startPreviewAnim()
+                    const audio = new Audio(audioDataUrl)
+                    audio.onended = () => stopPreviewAnim()
+                    audio.onerror = () => stopPreviewAnim()
+                    audio.play()
+                  }}
                   className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition-opacity"
                 >
                   <Play size={28} className="text-white" />

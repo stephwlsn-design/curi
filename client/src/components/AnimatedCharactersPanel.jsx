@@ -14,6 +14,7 @@ export default function AnimatedCharactersPanel({
   onSelect,
   onTalkingCharacter,
   focusMode = null,
+  talkContext = null,
   onFocusHandled,
 }) {
   const [mode, setMode] = useState('browse')
@@ -75,7 +76,9 @@ export default function AnimatedCharactersPanel({
         </p>
         <TalkingCharacterStudio
           workspaceId={workspaceId}
-          initialCharacter={talkTarget}
+          initialCharacter={talkContext?.character || talkTarget}
+          initialImageUrl={talkContext?.imageUrl || null}
+          initialScript={talkContext?.script || ''}
           onAddToCanvas={onTalkingCharacter}
         />
       </div>

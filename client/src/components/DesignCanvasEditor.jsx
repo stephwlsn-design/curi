@@ -32,6 +32,7 @@ export default forwardRef(function DesignCanvasEditor({
   showNext = false,
 }, ref) {
   const containerRef = useRef(null)
+  const canvasFocusRef = useRef(null)
   const [scale, setScale] = useState(0.45)
   const [canvas, setCanvas] = useState(() => {
     const base = design.canvasLayout || designToCanvas(design)
@@ -72,6 +73,7 @@ export default forwardRef(function DesignCanvasEditor({
     if (e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
+    canvasFocusRef.current?.focus({ preventScroll: true })
     setSelectedId(elId)
     const el = canvas.elements.find(x => x.id === elId)
     if (!el) return
@@ -275,7 +277,7 @@ export default forwardRef(function DesignCanvasEditor({
     setSelectedId(id)
   }
 
-  const deleteSelected = () => {
+  const deleteSelected = useCallback(() => {
     if (!selectedId || ['headline', 'subheadline', 'cta', 'badge'].includes(selectedId)) {
       return toast.error('Core layers cannot be removed')
     }
@@ -284,7 +286,82 @@ export default forwardRef(function DesignCanvasEditor({
       elements: prev.elements.filter(e => e.id !== selectedId),
     }))
     setSelectedId(null)
+  }, [selectedId])
+
+  const getSpeakableLayerContext = useCallback(() => {
+    if (!selected) return null
+    if (!['character', 'talking-character', 'image'].includes(selected.type)) return null
+    const imageUrl = selected.url || selected.posterUrl || selected.previewUrl
+    if (!imageUrl) return null
+    return {
+      character: selected.characterId
+        ? ANIMATED_CHARACTERS.find((c) => c.id === selected.characterId) || null
+        : null,
+      imageUrl,
+      script: selected.script || '',
+    }
+  }, [selected])
+
+  const isFormField = (target) => {
+    if (!target) return false
+    const tag = target.tagName
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
   }
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (isFormField(e.target)) return
+
+      if (e.key === 'Escape') {
+        if (selectedId) {
+          e.preventDefault()
+          setSelectedId(null)
+        }
+        return
+      }
+
+      if (!selectedId) return
+
+      const el = canvas.elements.find((item) => item.id === selectedId)
+      if (!el) return
+
+      const bounds = getElementBounds(el)
+      const step = e.shiftKey ? 10 : 1
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        updateElement(selectedId, { x: Math.max(0, el.x - step) })
+        return
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        updateElement(selectedId, { x: Math.min(canvas.width - bounds.width, el.x + step) })
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        updateElement(selectedId, { y: Math.max(0, el.y - step) })
+        return
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        updateElement(selectedId, { y: Math.min(canvas.height - bounds.height, el.y + step) })
+        return
+      }
+
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !['headline', 'subheadline', 'cta', 'badge'].includes(selectedId)) {
+        e.preventDefault()
+        setCanvas((prev) => ({
+          ...prev,
+          elements: prev.elements.filter((item) => item.id !== selectedId),
+        }))
+        setSelectedId(null)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [selectedId, canvas.elements, canvas.width, canvas.height, updateElement])
 
   const applyPexelsPhoto = (item, useAs = 'background') => {
     setCanvas((prev) => applyPexelsPhotoToCanvas(prev, item.url, useAs))
@@ -330,16 +407,24 @@ export default forwardRef(function DesignCanvasEditor({
       script: payload.script || '',
       language: payload.language || 'en',
       tonality: payload.tonality || 'friendly',
+      gender: payload.gender || 'female',
+      speakTrigger: payload.speakTrigger || Date.now(),
       animated: false,
     })
     toast.success('Character updated with voice & video')
   }
 
-  const selectedCharacter = selected?.type === 'character' || selected?.type === 'talking-character'
+  const selectedCharacter = selected?.characterId
     ? ANIMATED_CHARACTERS.find((c) => c.id === selected.characterId) || null
     : null
 
-  const isCharacterLayer = selected?.type === 'character' || selected?.type === 'talking-character'
+  const isSpeakableLayer = selected?.type === 'character'
+    || selected?.type === 'talking-character'
+    || selected?.type === 'image'
+
+  const selectedLayerImageUrl = selected
+    ? (selected.url || selected.posterUrl || selected.previewUrl || null)
+    : null
 
   const applyAudio = (audio) => {
     setCanvas((prev) => applyAudioToCanvas(prev, audio))
@@ -508,8 +593,11 @@ export default forwardRef(function DesignCanvasEditor({
         <div ref={containerRef} className="flex-1 flex items-center justify-center p-6 bg-theme-subtle/5 overflow-auto">
           <div className="relative shadow-2xl rounded-lg overflow-hidden ring-1 ring-black/10">
             <div
-              className="relative"
+              ref={canvasFocusRef}
+              tabIndex={0}
+              className="relative outline-none focus-visible:ring-2 focus-visible:ring-curi-pink/40 rounded-lg"
               onPointerDown={(e) => {
+                canvasFocusRef.current?.focus({ preventScroll: true })
                 if (e.target === e.currentTarget) setSelectedId(null)
               }}
             >
@@ -551,7 +639,7 @@ export default forwardRef(function DesignCanvasEditor({
                       zIndex: 20,
                     }}
                   >
-                    {isCharacterLayer && (
+                    {isSpeakableLayer && (
                       <div
                         className="absolute left-1/2 -translate-x-1/2 flex gap-1.5 z-40 pointer-events-auto"
                         style={{ top: -40 }}
@@ -560,7 +648,7 @@ export default forwardRef(function DesignCanvasEditor({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation()
-                            onOpenCharactersPanel?.('talk')
+                            onOpenCharactersPanel?.('talk', getSpeakableLayerContext())
                           }}
                           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-curi-blue text-white text-[10px] font-bold shadow-clay-sm hover:opacity-90"
                         >
@@ -570,7 +658,7 @@ export default forwardRef(function DesignCanvasEditor({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation()
-                            onOpenCharactersPanel?.('upload')
+                            onOpenCharactersPanel?.('upload', getSpeakableLayerContext())
                           }}
                           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-theme-surface border border-theme-border text-theme-text text-[10px] font-bold shadow-clay-sm hover:border-curi-pink/40"
                         >
@@ -618,7 +706,7 @@ export default forwardRef(function DesignCanvasEditor({
         </div>
 
         {/* Properties panel */}
-        <div className={`${isCharacterLayer ? 'w-80' : 'w-64'} border-l border-theme-border p-4 overflow-y-auto flex-shrink-0 space-y-4 transition-all`}>
+        <div className={`${isSpeakableLayer ? 'w-80' : 'w-64'} border-l border-theme-border p-4 overflow-y-auto flex-shrink-0 space-y-4 transition-all`}>
           <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">Layers</div>
           <div className="space-y-1">
             {canvas.elements.map(el => (
@@ -793,7 +881,7 @@ export default forwardRef(function DesignCanvasEditor({
                 </button>
               )}
 
-              {isCharacterLayer && (
+              {isSpeakableLayer && selectedLayerImageUrl && (
                 <div className="space-y-2 pt-2 border-t border-theme-border">
                   <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider flex items-center gap-1.5">
                     <Mic size={12} className="text-curi-blue" />
@@ -805,7 +893,7 @@ export default forwardRef(function DesignCanvasEditor({
                   <TalkingCharacterStudio
                     workspaceId={workspaceId}
                     initialCharacter={selectedCharacter}
-                    initialImageUrl={selected.url || selected.posterUrl}
+                    initialImageUrl={selectedLayerImageUrl}
                     initialScript={selected.script || ''}
                     applyLabel={selected.type === 'talking-character' ? 'Update voice & video' : 'Apply to this character'}
                     onAddToCanvas={applyTalkToSelected}

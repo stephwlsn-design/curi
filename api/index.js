@@ -310,6 +310,7 @@ const handleDesignFast = async (req, res) => {
         text: body.text,
         language: body.language || 'en',
         tonality: body.tonality || 'friendly',
+        gender: body.gender || 'female',
       });
       if (userWithCredits?.credits > 0) {
         await userWithCredits.deductCredits(1);

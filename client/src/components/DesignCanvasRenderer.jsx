@@ -1,3 +1,5 @@
+import TalkingCharacterLayer from './TalkingCharacterLayer'
+
 export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, onSelect, interactive = false }) {
   if (!canvas) return null
 
@@ -112,58 +114,14 @@ export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, on
         }
 
         if (el.type === 'talking-character') {
-          if (el.videoUrl) {
-            return (
-              <video
-                key={el.id}
-                src={el.videoUrl}
-                poster={el.posterUrl || el.url}
-                controls={interactive}
-                playsInline
-                loop
-                muted={false}
-                draggable={false}
-                style={{
-                  ...base,
-                  height: (el.height || el.width) * scale,
-                  objectFit: 'contain',
-                  borderRadius: 8 * scale,
-                }}
-                onClick={interactive ? (e) => { e.stopPropagation(); onSelect?.(el.id) } : undefined}
-              />
-            )
-          }
           return (
-            <div
+            <TalkingCharacterLayer
               key={el.id}
-              style={{
-                ...base,
-                height: (el.height || el.width) * scale,
-              }}
-              onClick={interactive ? (e) => {
-                e.stopPropagation()
-                onSelect?.(el.id)
-                if (el.audioDataUrl) {
-                  const audio = new Audio(el.audioDataUrl)
-                  audio.play().catch(() => {})
-                }
-              } : undefined}
-            >
-              <img
-                src={el.url}
-                alt={el.name || ''}
-                draggable={false}
-                className="w-full h-full object-contain"
-              />
-              {el.audioDataUrl && (
-                <div
-                  className="absolute bottom-1 right-1 rounded-full bg-curi-green/90 text-white p-1 pointer-events-none"
-                  style={{ width: 20 * scale, height: 20 * scale }}
-                >
-                  <span style={{ fontSize: 10 * scale }}>▶</span>
-                </div>
-              )}
-            </div>
+              el={el}
+              scale={scale}
+              interactive={interactive}
+              onSelect={onSelect}
+            />
           )
         }
 

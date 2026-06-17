@@ -2,15 +2,36 @@ const OpenAI = require('openai');
 const logger = require('../utils/logger');
 
 const TONALITIES = ['warm', 'professional', 'energetic', 'calm', 'friendly', 'bold', 'playful'];
+const GENDERS = ['female', 'male', 'neutral'];
 
-const OPENAI_VOICE_MAP = {
-  warm: 'nova',
-  professional: 'onyx',
-  energetic: 'fable',
-  calm: 'shimmer',
-  friendly: 'alloy',
-  bold: 'echo',
-  playful: 'nova',
+const OPENAI_VOICE_BY_GENDER = {
+  female: {
+    warm: 'nova',
+    professional: 'shimmer',
+    energetic: 'nova',
+    calm: 'shimmer',
+    friendly: 'nova',
+    bold: 'shimmer',
+    playful: 'nova',
+  },
+  male: {
+    warm: 'onyx',
+    professional: 'echo',
+    energetic: 'fable',
+    calm: 'onyx',
+    friendly: 'echo',
+    bold: 'onyx',
+    playful: 'fable',
+  },
+  neutral: {
+    warm: 'alloy',
+    professional: 'alloy',
+    energetic: 'fable',
+    calm: 'alloy',
+    friendly: 'alloy',
+    bold: 'echo',
+    playful: 'nova',
+  },
 };
 
 const OPENAI_SPEED_MAP = {
@@ -34,14 +55,17 @@ const ELEVENLABS_VOICE_MAP = {
 };
 
 const TONALITY_NAME_HINTS = {
-  warm: ['Warm', 'George', 'Jessica', 'Bella'],
-  professional: ['Professional', 'Matilda', 'Adam', 'Brian'],
-  energetic: ['Energetic', 'Charlie', 'Liam', 'Laura'],
-  calm: ['Relaxed', 'River', 'Will', 'Calm'],
-  friendly: ['Casual', 'Roger', 'Chris', 'Friendly'],
-  bold: ['Firm', 'Adam', 'Harry', 'Deep'],
-  playful: ['Playful', 'Laura', 'Jessica', 'Quirky'],
+  warm: ['Warm', 'George', 'Jessica', 'Bella', 'Charlotte'],
+  professional: ['Professional', 'Matilda', 'Adam', 'Brian', 'Daniel'],
+  energetic: ['Energetic', 'Charlie', 'Liam', 'Laura', 'Eric'],
+  calm: ['Relaxed', 'River', 'Will', 'Calm', 'Emily'],
+  friendly: ['Casual', 'Roger', 'Chris', 'Friendly', 'Sarah'],
+  bold: ['Firm', 'Adam', 'Harry', 'Deep', 'James'],
+  playful: ['Playful', 'Laura', 'Jessica', 'Quirky', 'Nicole'],
 };
+
+const FEMALE_NAME_HINTS = ['Jessica', 'Bella', 'Charlotte', 'Matilda', 'Laura', 'Sarah', 'Emily', 'Nicole', 'Rachel', 'Domi'];
+const MALE_NAME_HINTS = ['George', 'Adam', 'Brian', 'Daniel', 'Charlie', 'Liam', 'Roger', 'Chris', 'Harry', 'James', 'Eric', 'Will'];
 
 const ELEVENLABS_STABILITY = {
   warm: 0.45,
@@ -101,24 +125,34 @@ const fetchPremadeVoices = async (apiKey) => {
   return premadeVoiceCache;
 };
 
-const resolveVoiceId = async (apiKey, tonality) => {
+const resolveVoiceId = async (apiKey, tonality, gender = 'female') => {
   const fallback = ELEVENLABS_VOICE_MAP[tonality] || ELEVENLABS_VOICE_MAP.friendly;
   const voices = await fetchPremadeVoices(apiKey);
   if (!voices?.length) return fallback;
 
+  let pool = voices;
+  if (gender === 'female') {
+    pool = voices.filter((v) => v.labels?.gender === 'female'
+      || FEMALE_NAME_HINTS.some((hint) => v.name?.includes(hint)));
+  } else if (gender === 'male') {
+    pool = voices.filter((v) => v.labels?.gender === 'male'
+      || MALE_NAME_HINTS.some((hint) => v.name?.includes(hint)));
+  }
+  if (!pool.length) pool = voices;
+
   const hints = TONALITY_NAME_HINTS[tonality] || TONALITY_NAME_HINTS.friendly;
   for (const hint of hints) {
-    const match = voices.find((v) => v.name?.includes(hint));
+    const match = pool.find((v) => v.name?.includes(hint));
     if (match) return match.voice_id;
   }
-  return voices[0].voice_id || fallback;
+  return pool[0].voice_id || fallback;
 };
 
-async function synthesizeWithElevenLabs({ text, tonality, language }) {
+async function synthesizeWithElevenLabs({ text, tonality, language, gender }) {
   const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
   if (!isValidKey(apiKey)) return null;
 
-  const voiceId = await resolveVoiceId(apiKey, tonality);
+  const voiceId = await resolveVoiceId(apiKey, tonality, gender);
   const stability = ELEVENLABS_STABILITY[tonality] ?? 0.5;
 
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
@@ -157,11 +191,13 @@ async function synthesizeWithElevenLabs({ text, tonality, language }) {
   };
 }
 
-async function synthesizeWithOpenAI({ text, tonality }) {
+async function synthesizeWithOpenAI({ text, tonality, gender = 'female' }) {
   const openai = getOpenAI();
   if (!openai) return null;
 
-  const voice = OPENAI_VOICE_MAP[tonality] || OPENAI_VOICE_MAP.friendly;
+  const genderKey = GENDERS.includes(gender) ? gender : 'female';
+  const voiceMap = OPENAI_VOICE_BY_GENDER[genderKey] || OPENAI_VOICE_BY_GENDER.female;
+  const voice = voiceMap[tonality] || voiceMap.friendly;
   const speed = OPENAI_SPEED_MAP[tonality] ?? 1.0;
 
   try {
@@ -186,7 +222,7 @@ async function synthesizeWithOpenAI({ text, tonality }) {
   }
 }
 
-async function synthesizeSpeech({ text, language = 'en', tonality = 'friendly' }) {
+async function synthesizeSpeech({ text, language = 'en', tonality = 'friendly', gender = 'female' }) {
   const trimmed = String(text || '').trim();
   if (!trimmed) {
     const err = new Error('Script text is required');
@@ -195,11 +231,12 @@ async function synthesizeSpeech({ text, language = 'en', tonality = 'friendly' }
   }
 
   const tone = TONALITIES.includes(tonality) ? tonality : 'friendly';
+  const voiceGender = GENDERS.includes(gender) ? gender : 'female';
   lastElevenLabsHint = null;
 
-  let result = await synthesizeWithElevenLabs({ text: trimmed, tonality: tone, language });
+  let result = await synthesizeWithElevenLabs({ text: trimmed, tonality: tone, language, gender: voiceGender });
   if (!result) {
-    result = await synthesizeWithOpenAI({ text: trimmed, tonality: tone });
+    result = await synthesizeWithOpenAI({ text: trimmed, tonality: tone, gender: voiceGender });
   }
 
   if (!result) {
@@ -218,11 +255,13 @@ async function synthesizeSpeech({ text, language = 'en', tonality = 'friendly' }
     ...result,
     language,
     tonality: tone,
+    gender: voiceGender,
     characterCount: trimmed.length,
   };
 }
 
 module.exports = {
   TONALITIES,
+  GENDERS,
   synthesizeSpeech,
 };

@@ -1,14 +1,39 @@
 import {
   BROWSER_VOICE_PITCH,
   BROWSER_VOICE_RATE,
+  BROWSER_GENDER_PITCH,
 } from '../constants/talkingCharacter'
 
 const loadImage = (src) => new Promise((resolve, reject) => {
   const img = new Image()
-  img.crossOrigin = 'anonymous'
+  if (src.startsWith('http://') || src.startsWith('https://')) {
+    img.crossOrigin = 'anonymous'
+  }
   img.onload = () => resolve(img)
-  img.onerror = reject
+  img.onerror = () => reject(new Error('Could not load character image'))
   img.src = src
+})
+
+const waitForAudio = (audio) => new Promise((resolve, reject) => {
+  if (audio.readyState >= 3) {
+    resolve()
+    return
+  }
+  const onReady = () => {
+    cleanup()
+    resolve()
+  }
+  const onError = () => {
+    cleanup()
+    reject(new Error('Could not load speech audio'))
+  }
+  const cleanup = () => {
+    audio.removeEventListener('canplaythrough', onReady)
+    audio.removeEventListener('error', onError)
+  }
+  audio.addEventListener('canplaythrough', onReady, { once: true })
+  audio.addEventListener('error', onError, { once: true })
+  audio.load()
 })
 
 const pickRecorderMime = () => {
@@ -35,12 +60,12 @@ export async function createTalkingVideo({
   const audioUrl = URL.createObjectURL(audioBlob)
   const audio = new Audio(audioUrl)
 
-  await new Promise((resolve, reject) => {
-    audio.onloadedmetadata = resolve
-    audio.onerror = reject
-  })
+  await waitForAudio(audio)
 
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+  if (audioCtx.state === 'suspended') {
+    await audioCtx.resume()
+  }
   const source = audioCtx.createMediaElementSource(audio)
   const analyser = audioCtx.createAnalyser()
   analyser.fftSize = 256
@@ -59,7 +84,7 @@ export async function createTalkingVideo({
 
   const dataArray = new Uint8Array(analyser.frequencyBinCount)
 
-  const drawFrame = (scale = 1) => {
+  const drawFrame = (scale = 1, jawDrop = 0) => {
     ctx.fillStyle = backgroundColor
     ctx.fillRect(0, 0, width, height)
 
@@ -67,7 +92,7 @@ export async function createTalkingVideo({
     const dw = baseW * scale
     const dh = (img.height / img.width) * dw
     const dx = (width - dw) / 2
-    const dy = (height - dh) / 2
+    const dy = (height - dh) / 2 + jawDrop * 0.35
     ctx.drawImage(img, dx, dy, dw, dh)
   }
 
@@ -90,15 +115,16 @@ export async function createTalkingVideo({
       if (audio.ended) {
         cancelAnimationFrame(rafId)
         drawFrame(1)
-        setTimeout(() => recorder.stop(), 250)
+        setTimeout(() => recorder.stop(), 350)
         return
       }
       analyser.getByteFrequencyData(dataArray)
       let sum = 0
       for (let i = 0; i < dataArray.length; i += 1) sum += dataArray[i]
       const avg = sum / dataArray.length
-      const scale = 1 + Math.min(avg / 140, 1) * 0.1
-      drawFrame(scale)
+      const scale = 1 + Math.min(avg / 100, 1) * 0.18
+      const jawDrop = Math.min(avg / 120, 1) * 12
+      drawFrame(scale, jawDrop)
       rafId = requestAnimationFrame(animate)
     }
 
@@ -117,7 +143,38 @@ export function base64ToBlob(base64, mimeType) {
   return new Blob([bytes], { type: mimeType })
 }
 
-export function previewWithBrowserVoice({ text, language, tonality }) {
+export async function mediaUrlToDataUrl(url, maxBytes = 8 * 1024 * 1024) {
+  if (!url) return null
+  if (url.startsWith('data:')) return url
+  const blob = await fetch(url).then((r) => r.blob())
+  if (blob.size > maxBytes) return url
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+const pickBrowserVoice = (language, gender) => {
+  const voices = window.speechSynthesis?.getVoices?.() || []
+  if (!voices.length) return null
+  const lang = language?.includes('-') ? language : `${language || 'en'}-US`
+  const langPrefix = lang.split('-')[0]
+  const langMatches = voices.filter((v) => v.lang?.startsWith(langPrefix))
+  const pool = langMatches.length ? langMatches : voices
+
+  if (gender === 'male') {
+    return pool.find((v) => /male|david|james|daniel|mark|guy|ryan|thomas/i.test(`${v.name} ${v.voiceURI}`))
+      || pool.find((v) => !/female|samantha|victoria|zira|susan|karen/i.test(`${v.name} ${v.voiceURI}`))
+  }
+  if (gender === 'female') {
+    return pool.find((v) => /female|samantha|victoria|zira|susan|karen|aria|jenny/i.test(`${v.name} ${v.voiceURI}`))
+  }
+  return pool[0]
+}
+
+export function previewWithBrowserVoice({ text, language, tonality, gender = 'female' }) {
   if (!window.speechSynthesis) {
     throw new Error('Browser speech is not supported in this environment')
   }
@@ -126,6 +183,10 @@ export function previewWithBrowserVoice({ text, language, tonality }) {
   const lang = language?.includes('-') ? language : `${language || 'en'}-US`
   utterance.lang = lang
   utterance.rate = BROWSER_VOICE_RATE[tonality] ?? 1
-  utterance.pitch = BROWSER_VOICE_PITCH[tonality] ?? 1
+  const genderPitch = BROWSER_GENDER_PITCH[gender] ?? 1
+  const tonePitch = BROWSER_VOICE_PITCH[tonality] ?? 1
+  utterance.pitch = genderPitch * tonePitch
+  const voice = pickBrowserVoice(lang, gender)
+  if (voice) utterance.voice = voice
   window.speechSynthesis.speak(utterance)
 }

@@ -1,3 +1,9 @@
+export const TALKING_GENDERS = [
+  { id: 'female', label: 'Female' },
+  { id: 'male', label: 'Male' },
+  { id: 'neutral', label: 'Neutral' },
+]
+
 export const TALKING_LANGUAGES = [
   { id: 'en', label: 'English', bcp47: 'en-US' },
   { id: 'es', label: 'Spanish', bcp47: 'es-ES' },
@@ -34,6 +40,12 @@ export const BROWSER_VOICE_PITCH = {
   friendly: 1.0,
   bold: 0.92,
   playful: 1.2,
+}
+
+export const BROWSER_GENDER_PITCH = {
+  female: 1.08,
+  male: 0.88,
+  neutral: 1.0,
 }
 
 export const BROWSER_VOICE_RATE = {
