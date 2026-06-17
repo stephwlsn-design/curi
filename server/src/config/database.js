@@ -37,6 +37,13 @@ const connectDB = async () => {
     throw new Error('MONGODB_URI environment variable is required on Vercel');
   }
 
+  if (/<\s*password\s*>/i.test(uri)) {
+    throw new Error(
+      'MONGODB_URI still contains the <password> placeholder. '
+      + 'Replace it with your Atlas database user password.',
+    );
+  }
+
   if (!uri.startsWith('mongodb://') && !uri.startsWith('mongodb+srv://')) {
     throw new Error(
       'MONGODB_URI must start with mongodb:// or mongodb+srv://. '
