@@ -78,6 +78,8 @@ export default function DesignStudio() {
   const [carouselIndex, setCarouselIndex] = useState(0)
   const [characterPanelFocus, setCharacterPanelFocus] = useState(null)
 
+  const clearCharacterFocus = useCallback(() => setCharacterPanelFocus(null), [])
+
   const openCharactersPanel = useCallback((focus = 'talk') => {
     setStep(3)
     setPanel('characters')
@@ -489,7 +491,7 @@ export default function DesignStudio() {
         completedSteps={completedSteps}
       />
 
-      <div ref={splitRef} className={`flex flex-1 min-h-0 ${isResizing ? 'select-none cursor-col-resize' : ''}`}>
+      <div ref={splitRef} className={`relative flex flex-1 min-h-0 ${isResizing ? 'select-none cursor-col-resize' : ''}`}>
         {/* Icon rail */}
         <div className="w-16 flex-shrink-0 border-r border-theme-border bg-theme-surface flex flex-col items-center py-3 gap-1">
           {PANELS.map(({ id, label, icon: Icon }) => (
@@ -515,6 +517,17 @@ export default function DesignStudio() {
           className="flex-shrink-0 bg-theme-surface flex flex-col min-h-0 overflow-hidden border-r border-theme-border"
           style={{ width: effectivePanelWidth, transition: isResizing ? 'none' : 'width 0.15s ease' }}
         >
+          {panelCollapsed && (
+            <div className="absolute left-16 top-1/2 -translate-y-1/2 z-30 ml-2">
+              <button
+                type="button"
+                onClick={() => setPanelCollapsed(false)}
+                className="btn-secondary text-xs py-2 px-3 shadow-clay-sm whitespace-nowrap"
+              >
+                Show assets panel
+              </button>
+            </div>
+          )}
           {!panelCollapsed && (
           <>
           <div className="p-3 border-b border-theme-border flex-shrink-0 space-y-2">
@@ -654,7 +667,7 @@ export default function DesignStudio() {
                 onSelect={handleCharacter}
                 onTalkingCharacter={handleTalkingCharacter}
                 focusMode={characterPanelFocus}
-                onFocusHandled={() => setCharacterPanelFocus(null)}
+                onFocusHandled={clearCharacterFocus}
               />
             )}
 

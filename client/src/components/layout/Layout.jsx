@@ -1,29 +1,12 @@
-import { Outlet, useLocation, useNavigate, Link, NavLink } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { motion, AnimatePresence } from 'framer-motion'
 import ThemeToggle from '../ThemeToggle'
 import SaveDraftButton from '../SaveDraftButton'
+import SidebarCoreSteps from './SidebarCoreSteps'
 
-const DESIGN_CHILDREN = [
-  { path: '/design/templates', label: 'Templates' },
-  { path: '/design/canvas', label: 'Canvas' },
-]
-
-const NAV = [
+const SECONDARY_NAV = [
   { path: '/dashboard', label: 'Dashboard', section: null },
-  { path: '/discover', label: 'Curi Discover', section: 'CORE' },
-  { path: '/create', label: 'Curi Create', section: 'CORE' },
-  {
-    id: 'design',
-    label: 'Curi Design',
-    section: 'CORE',
-    children: DESIGN_CHILDREN,
-  },
-  { path: '/video', label: 'Curi Video', section: 'CORE' },
-  { path: '/mail', label: 'Curi Mail', section: 'CORE' },
-  { path: '/launch', label: 'Curi Launch', section: 'CORE' },
-  { path: '/autonomous', label: 'Autonomous Engine', section: 'CORE', badge: 'NEW' },
-  { path: '/approvals', label: 'Approvals', section: 'CORE' },
   { path: '/drafts', label: 'Drafts', section: 'CORE' },
   { path: '/scheduled', label: 'Scheduled Posts', section: 'CORE' },
   { path: '/calendar', label: 'Curi Calendar', section: 'GROWTH' },
@@ -33,8 +16,6 @@ const NAV = [
   { path: '/analytics', label: 'Analytics', section: 'INSIGHTS' },
   { path: '/settings', label: 'Settings', section: 'INSIGHTS' },
 ]
-
-const isDesignPath = (pathname) => pathname === '/design' || pathname.startsWith('/design/')
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -49,7 +30,7 @@ export default function Layout() {
       <div className="blob-bg w-48 h-48 bg-curi-blue bottom-[10%] right-[5%] animate-float-delayed" />
       <div className="blob-bg w-32 h-32 bg-curi-yellow top-[40%] left-[30%] animate-float" />
 
-      <aside className="w-64 flex-shrink-0 bg-theme-surface border-r border-theme-border flex flex-col relative z-10">
+      <aside className="w-72 flex-shrink-0 bg-theme-surface border-r border-theme-border flex flex-col relative z-10">
         <div className="p-5 border-b border-theme-border">
           <div className="flex items-center justify-between gap-3">
             <Link to="/" className="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity">
@@ -81,55 +62,21 @@ export default function Layout() {
           <SaveDraftButton compact className="w-full justify-center" />
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
-          {NAV.map(item => {
+        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+          <SidebarCoreSteps />
+
+          <div className="border-t border-theme-border/60 my-3" />
+
+          {SECONDARY_NAV.map((item) => {
             const showSection = item.section !== lastSection
             if (showSection) lastSection = item.section
-
-            if (item.children) {
-              const groupActive = isDesignPath(location.pathname)
-              return (
-                <div key={item.id} className="mb-1">
-                  {showSection && item.section && (
-                    <div className="text-xs font-bold text-theme-muted/30 tracking-widest uppercase px-3 pt-4 pb-1.5">
-                      {item.section}
-                    </div>
-                  )}
-                  <div
-                    className={`px-3 py-2 text-sm font-bold tracking-wide ${
-                      groupActive ? 'text-theme-text' : 'text-theme-muted/70'
-                    }`}
-                  >
-                    {item.label}
-                  </div>
-                  <div className="ml-2 pl-2 border-l-2 border-theme-border/60 space-y-0.5">
-                    {item.children.map(child => {
-                      const active = child.path === '/design/templates'
-                        ? location.pathname.startsWith('/design/templates')
-                          || (location.pathname.startsWith('/design/studio') && new URLSearchParams(location.search).get('panel') === 'templates')
-                        : location.pathname.startsWith('/design/canvas')
-                          || location.pathname.startsWith('/design/studio')
-                      return (
-                      <NavLink
-                        key={child.path}
-                        to={child.path}
-                        className={`sidebar-sublink block text-left ${active ? 'active' : ''}`}
-                      >
-                        {child.label}
-                      </NavLink>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            }
 
             const active = location.pathname === item.path
             return (
               <div key={item.path}>
                 {showSection && item.section && (
-                  <div className="text-xs font-bold text-theme-muted/30 tracking-widest uppercase px-3 pt-4 pb-1.5">
-                    {item.section}
+                  <div className="text-xs font-bold text-theme-muted/30 tracking-widest uppercase px-3 pt-3 pb-1.5">
+                    {item.section === 'CORE' ? 'MORE' : item.section}
                   </div>
                 )}
                 <button
@@ -138,9 +85,6 @@ export default function Layout() {
                   className={`sidebar-link w-full ${active ? 'active' : ''}`}
                 >
                   <span className="flex-1 text-left">{item.label}</span>
-                  {item.badge && (
-                    <span className="badge bg-curi-blue/15 text-curi-blue text-xs">{item.badge}</span>
-                  )}
                 </button>
               </div>
             )

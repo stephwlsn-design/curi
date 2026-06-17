@@ -24,6 +24,7 @@ import Scheduled from './pages/Scheduled'
 import Settings from './pages/Settings'
 import Roast from './pages/Roast'
 import LoadingMascot from './components/LoadingMascot'
+import ErrorBoundary from './components/ErrorBoundary'
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth()
@@ -37,6 +38,7 @@ const ProtectedRoute = ({ children }) => {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/auth" element={<Auth />} />
@@ -67,5 +69,6 @@ export default function App() {
         <Route path="/settings" element={<Settings />} />
       </Route>
     </Routes>
+    </ErrorBoundary>
   )
 }
