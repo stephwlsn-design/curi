@@ -7,6 +7,7 @@ module.paths.unshift(
 );
 
 let handler;
+let authHandler;
 
 const requestPath = (req) => {
   const raw = req.url || req.path || '';
@@ -31,6 +32,29 @@ const handleHealth = async (res) => {
   });
 };
 
+const ensureDemoUser = async () => {
+  if (process.env.SEED_DEMO_USER !== 'true') return;
+  const { seedTestUser } = require('../server/src/utils/seedTestUser');
+  await seedTestUser();
+};
+
+const handleAuth = async (req, res) => {
+  const { connectDB } = require('../server/src/config/database');
+  await connectDB();
+  await ensureDemoUser();
+
+  if (!authHandler) {
+    const express = require('express');
+    const app = express();
+    app.set('trust proxy', 1);
+    app.use(express.json({ limit: '1mb' }));
+    app.use('/api/auth', require('../server/src/routes/auth'));
+    authHandler = serverless(app);
+  }
+
+  return authHandler(req, res);
+};
+
 module.exports = async (req, res) => {
   const pathOnly = requestPath(req);
 
@@ -39,6 +63,15 @@ module.exports = async (req, res) => {
       return await handleHealth(res);
     } catch (err) {
       console.error('[api] health failed:', err);
+      return sendJson(res, 503, { status: 'error', error: err.message });
+    }
+  }
+
+  if (pathOnly.startsWith('/api/auth')) {
+    try {
+      return await handleAuth(req, res);
+    } catch (err) {
+      console.error('[api] auth failed:', err);
       return sendJson(res, 503, { status: 'error', error: err.message });
     }
   }
