@@ -294,8 +294,15 @@ const handleAutonomousFast = async (req, res) => {
   const body = req.body || {};
 
   if (pathOnly === '/api/autonomous/generate' && req.method === 'POST') {
+    if (!body.workspaceId) {
+      return sendJson(res, 400, { error: 'Workspace not loaded. Sign out and sign in again.' });
+    }
     try {
-      const { run, message } = await createAutonomousRun({ user, body });
+      const { run, message } = await withTimeout(
+        createAutonomousRun({ user, body }),
+        25_000,
+        'Failed to start campaign — please try again',
+      );
       return sendJson(res, 202, { run, message });
     } catch (err) {
       return sendJson(res, err.status || 500, {

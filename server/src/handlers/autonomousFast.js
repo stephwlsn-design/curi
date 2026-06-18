@@ -5,6 +5,17 @@ const { findAccessibleWorkspace } = require('../utils/workspaceAccess');
 
 const User = require('../models/User');
 
+const sanitizeDesignIdea = (idea) => {
+  if (!idea) return null;
+  return {
+    notes: idea.notes || undefined,
+    filename: idea.filename || undefined,
+    imageUrl: idea.imageUrl || undefined,
+    analyzedDirection: idea.analyzedDirection || undefined,
+    uploadedAt: idea.uploadedAt || undefined,
+  };
+};
+
 const fetchRunPayload = async (run) => {
   const runId = String(run._id);
   const runFilter = {
@@ -24,15 +35,21 @@ const fetchRunPayload = async (run) => {
 
 const createAutonomousRun = async ({ user, body }) => {
   const { workspaceId, days = 30, channels = [], designIdea } = body;
-  const workspace = await findAccessibleWorkspace(workspaceId, user._id);
+  if (!workspaceId) {
+    const err = new Error('Workspace not loaded');
+    err.status = 400;
+    throw err;
+  }
+  const creditCost = 100;
+  const [workspace, userWithCredits] = await Promise.all([
+    findAccessibleWorkspace(workspaceId, user._id),
+    User.findById(user._id),
+  ]);
   if (!workspace) {
     const err = new Error('Workspace not found');
     err.status = 404;
     throw err;
   }
-
-  const creditCost = 100;
-  const userWithCredits = await User.findById(user._id);
   if (!userWithCredits) {
     const err = new Error('User not found');
     err.status = 401;
@@ -57,7 +74,7 @@ const createAutonomousRun = async ({ user, body }) => {
     },
   );
 
-  const runDesignIdea = designIdea || workspace.brandProfile?.designIdea || null;
+  const runDesignIdea = sanitizeDesignIdea(designIdea || workspace.brandProfile?.designIdea || null);
   const run = await AutonomousRun.create({
     workspace: workspaceId,
     createdBy: user._id,

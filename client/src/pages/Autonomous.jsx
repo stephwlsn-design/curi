@@ -68,6 +68,17 @@ const makePlaceholderRun = (days) => ({
   steps: WORKFLOW_STEPS.map((name) => ({ name, status: 'pending' })),
 })
 
+const sanitizeDesignIdea = (idea) => {
+  if (!idea) return null
+  return {
+    notes: idea.notes || '',
+    filename: idea.filename,
+    imageUrl: idea.imageUrl,
+    analyzedDirection: idea.analyzedDirection,
+    uploadedAt: idea.uploadedAt,
+  }
+}
+
 export default function Autonomous() {
   const { workspaceId, workspace, setWorkspace, fetchMe } = useAuth()
   const navigate = useNavigate()
@@ -269,6 +280,26 @@ export default function Autonomous() {
   }, [])
 
   useEffect(() => {
+    if (run?._id !== 'pending' || !loading) return undefined
+    const watchdog = setTimeout(async () => {
+      try {
+        const runs = await fetchHistory()
+        const active = runs?.find((x) => x.status === 'running' || x.status === 'queued')
+        if (active) {
+          setRun(active)
+          toast('Campaign found — resuming pipeline…', { icon: '⏳' })
+          pollRun(active._id)
+          return
+        }
+      } catch { /* ignore */ }
+      toast.error('Engine failed to start — check credits and try again')
+      setLoading(false)
+      setRun(null)
+    }, 35000)
+    return () => clearTimeout(watchdog)
+  }, [run?._id, loading, fetchHistory, pollRun])
+
+  useEffect(() => {
     if (!workspaceId) return
     API.get(`/autonomous/topics?workspaceId=${workspaceId}`).then(r => setTopics(r.data.topics || [])).catch(() => {})
     API.get(`/design/templates?workspaceId=${workspaceId}`).then(r => setUserTemplates(r.data.templates || [])).catch(() => {})
@@ -311,6 +342,7 @@ export default function Autonomous() {
   }
 
   const generate = async () => {
+    if (!workspaceId) return toast.error('Workspace not loaded — sign out and sign in again')
     if (!brandReady && !onboarding.companyName) {
       return toast.error('Complete brand setup first')
     }
@@ -328,9 +360,15 @@ export default function Autonomous() {
         const competitors = Array.isArray(onboarding.competitors)
           ? onboarding.competitors
           : String(onboarding.competitors || '').split(',').map(s => s.trim()).filter(Boolean)
-        await API.post('/workspace/onboarding', { ...onboarding, competitors }).catch(() => {})
+        API.post('/workspace/onboarding', { ...onboarding, competitors }, { timeout: 12000 }).catch(() => {})
       }
-      const { data } = await API.post('/autonomous/generate', { workspaceId, days, channels, designIdea }, { timeout: 30000 })
+      const { data } = await API.post('/autonomous/generate', {
+        workspaceId,
+        days,
+        channels,
+        designIdea: sanitizeDesignIdea(designIdea),
+      }, { timeout: 45000 })
+      if (!data?.run?._id) throw new Error('No run returned from server')
       setRun(data.run)
       toast.success('Autonomous engine started')
       fetchMe?.()
@@ -348,8 +386,9 @@ export default function Autonomous() {
           return
         }
       }
-      toast.error(err.response?.data?.details?.join(', ') || err.response?.data?.error || 'Failed to start')
+      toast.error(err.response?.data?.details?.join(', ') || err.response?.data?.error || err.message || 'Failed to start')
       setLoading(false)
+      setRun(null)
     }
   }
 
