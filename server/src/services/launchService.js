@@ -33,11 +33,29 @@ const generateCampaign = async ({ campaignId, workspaceId, goal, timeline, budge
     });
 
     campaign.content = contentIds;
-    campaign.status = 'draft';
+    campaign.status = 'review';
     campaign.strategy = strategy;
     await campaign.save();
 
-    logger.info(`Campaign ${campaignId} generated with ${contentIds.length} content pieces`);
+    if (contentIds.length) {
+      const base = new Date();
+      await Promise.all(contentIds.map((id, index) => {
+        const scheduledAt = new Date(base);
+        scheduledAt.setDate(scheduledAt.getDate() + index + 1);
+        scheduledAt.setHours(9, 0, 0, 0);
+        return Content.findByIdAndUpdate(id, {
+          $set: {
+            status: 'review',
+            'metadata.module': 'launch',
+            'metadata.campaignId': String(campaignId),
+            'metadata.campaignGoal': goal,
+            'metadata.suggestedScheduledAt': scheduledAt,
+          },
+        });
+      }));
+    }
+
+    logger.info(`Campaign ${campaignId} generated with ${contentIds.length} content pieces queued for approval`);
   } catch (err) {
     logger.error(`Campaign generation failed: ${err.message}`);
     await Campaign.findByIdAndUpdate(campaignId, { status: 'draft' });

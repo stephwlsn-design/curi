@@ -1,6 +1,7 @@
 const AutonomousRun = require('../models/AutonomousRun');
 const Content = require('../models/Content');
 const { PIPELINE_STEPS, advanceAutonomousPipeline } = require('../services/autonomousEngineService');
+const { runIdFilter } = require('../services/approvalService');
 const { findAccessibleWorkspace } = require('../utils/workspaceAccess');
 
 const User = require('../models/User');
@@ -39,7 +40,7 @@ const fetchRunPayload = async (run) => {
   const runFilter = {
     workspace: run.workspace,
     'metadata.module': 'autonomous',
-    $or: [{ 'metadata.runId': runId }, { 'metadata.runId': run._id }],
+    ...runIdFilter(runId),
   };
   const creatives = await Content.find({ ...runFilter, type: { $in: ['image', 'video'] } }).sort({ createdAt: 1 });
   const posts = await Content.find({ ...runFilter, type: 'post' }).sort({ createdAt: 1 });

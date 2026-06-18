@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { API, useAuth } from '../context/AuthContext'
 import { useCoreWorkflow } from '../context/CoreWorkflowContext'
 import { useDraftModule } from '../context/DraftContext'
@@ -26,6 +27,7 @@ const DELIVERABLES = [
 
 export default function Launch() {
   const { workspaceId, fetchMe } = useAuth()
+  const navigate = useNavigate()
   const { workflow } = useCoreWorkflow()
   const [goal, setGoal] = useState('')
   const [timeline, setTimeline] = useState(30)
@@ -53,8 +55,8 @@ export default function Launch() {
       setCampaign(data.campaign)
       if (data.campaign.status === 'generating') {
         setTimeout(() => pollCampaign(id), 3000)
-      } else if (data.campaign.status === 'draft') {
-        toast.success(`Campaign ready with ${data.campaign.content?.length || 0} posts`)
+      } else if (data.campaign.status === 'draft' || data.campaign.status === 'review') {
+        toast.success(`Campaign ready — ${data.campaign.content?.length || 0} posts in approval queue`)
         setLoading(false)
         fetchMe?.()
       } else {
@@ -80,9 +82,21 @@ export default function Launch() {
     }
   }
 
+  const sendToApprovals = async () => {
+    if (!campaign?._id) return
+    try {
+      const { data } = await API.post(`/launch/campaign/${campaign._id}/submit-for-approval`)
+      setCampaign(data.campaign)
+      toast.success(data.message || 'Sent to approval queue')
+      navigate('/approvals')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not send to approvals')
+    }
+  }
+
   const progress = campaign?.status === 'generating'
     ? Math.min(90, 10 + (campaign.content?.length || 0) * 4)
-    : campaign?.status === 'draft' ? 100 : 5
+    : (campaign?.status === 'draft' || campaign?.status === 'review') ? 100 : 5
 
   return (
     <PageShell>
@@ -142,15 +156,15 @@ export default function Launch() {
         </div>
       ) : (
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
-          <div className={`page-card border ${campaign.status === 'draft' ? 'bg-gradient-to-r from-curi-green/10 to-curi-blue/10 border-curi-green/20' : 'bg-gradient-to-r from-curi-pink/10 to-curi-blue/10 border-curi-pink/20'}`}>
+          <div className={`page-card border ${campaign.status === 'review' || campaign.status === 'draft' ? 'bg-gradient-to-r from-curi-green/10 to-curi-blue/10 border-curi-green/20' : 'bg-gradient-to-r from-curi-pink/10 to-curi-blue/10 border-curi-pink/20'}`}>
             <div className="mb-2">
               <div className="font-bold text-theme-text text-lg">
-                {campaign.status === 'draft' ? 'Campaign ready' : 'Campaign generation in progress'}
+                {campaign.status === 'generating' ? 'Campaign generation in progress' : 'Campaign ready for approval'}
               </div>
               <div className="text-theme-muted/60 text-base mt-1">
-                {campaign.status === 'draft'
-                  ? `${campaign.content?.length || 0} posts generated with strategy document`
-                  : 'Your content is being generated. This takes 2–3 minutes.'}
+                {campaign.status === 'generating'
+                  ? 'Your content is being generated. This takes 2–3 minutes.'
+                  : `${campaign.content?.length || 0} posts queued for review in Approvals`}
               </div>
             </div>
             <div className="mt-4 h-2 bg-theme-subtle/10 rounded-full overflow-hidden">
@@ -181,7 +195,18 @@ export default function Launch() {
             </div>
           )}
 
-          <button className="btn-secondary w-full py-3 text-base" onClick={() => { setCampaign(null); setLoading(false) }}>Start Another Campaign</button>
+          {(campaign.status === 'review' || campaign.status === 'draft') && campaign.content?.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => navigate('/approvals')} className="btn-primary flex-1 py-3 text-base">
+                Review in Approvals
+              </button>
+              <button type="button" onClick={sendToApprovals} className="btn-secondary py-3 text-base px-5">
+                Re-queue
+              </button>
+            </div>
+          )}
+
+          <button type="button" className="btn-secondary w-full py-3 text-base" onClick={() => { setCampaign(null); setLoading(false) }}>Start Another Campaign</button>
         </motion.div>
       )}
     </PageShell>

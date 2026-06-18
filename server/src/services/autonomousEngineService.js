@@ -12,7 +12,7 @@ const { scoreCreative } = require('./scoringService');
 const { recordInteraction, getTopPreferences } = require('./learningService');
 const UserPreferences = require('../models/UserPreferences');
 const CalendarEntry = require('../models/CalendarEntry');
-const { designToCanvas, buildCanvasWithDesignIdea } = require('../utils/designCanvas');
+const { runIdFilter } = require('./approvalService');
 const { applyDesignIdeaToDesign } = require('./designService');
 const { buildStoredDesignIdeaContext, normalizeDesignIdea } = require('../utils/designIdea');
 const { composeAutonomousPost, extractBriefKeywords } = require('../utils/campaignContent');
@@ -658,14 +658,14 @@ const advanceAutonomousPipeline = async (runId) => {
           await Content.updateMany(
             {
               workspace: run.workspace,
-              'metadata.runId': ctx.runIdStr,
+              ...runIdFilter(ctx.runIdStr),
               status: { $in: ['draft', 'approved', 'scheduled'] },
             },
             { $set: { status: 'review' } },
           );
           const reviewCount = await Content.countDocuments({
             workspace: run.workspace,
-            'metadata.runId': ctx.runIdStr,
+            ...runIdFilter(ctx.runIdStr),
             status: 'review',
           });
           run.stats.approved = 0;
@@ -674,7 +674,7 @@ const advanceAutonomousPipeline = async (runId) => {
           stepDone = true;
           break;
         }
-        const allContent = await Content.find({ workspace: run.workspace, 'metadata.runId': ctx.runIdStr });
+        const allContent = await Content.find({ workspace: run.workspace, ...runIdFilter(ctx.runIdStr) });
         let approvedCount = 0;
         for (const item of allContent) {
           const score = scoreCreative({
@@ -724,7 +724,7 @@ const advanceAutonomousPipeline = async (runId) => {
           await Content.updateMany(
             {
               workspace: run.workspace,
-              'metadata.runId': ctx.runIdStr,
+              ...runIdFilter(ctx.runIdStr),
               type: { $in: ['image', 'video'] },
             },
             { $set: { status: 'review' } },
@@ -843,66 +843,8 @@ const runAutonomousPipeline = async ({ runId }) => {
 };
 
 const submitRunForApproval = async (runId, userId) => {
-  const run = await AutonomousRun.findOne({ _id: runId, createdBy: userId });
-  if (!run) {
-    const err = new Error('Run not found');
-    err.status = 404;
-    throw err;
-  }
-
-  const runIdStr = String(run._id);
-  const entries = await CalendarEntry.find({ autonomousRun: run._id }).sort({ day: 1 });
-  let positioned = 0;
-
-  for (const entry of entries) {
-    if (!entry.content) continue;
-    const scheduledAt = predictPublishTime(entry.platform, entry.day, entry.publishTime);
-    await Content.findByIdAndUpdate(entry.content, {
-      $set: {
-        status: 'review',
-        'metadata.suggestedScheduledAt': scheduledAt,
-        'metadata.suggestedPlatform': entry.platform,
-        'metadata.campaignDay': entry.day,
-      },
-    });
-    positioned += 1;
-  }
-
-  await Content.updateMany(
-    {
-      workspace: run.workspace,
-      'metadata.runId': runIdStr,
-      status: { $nin: ['published', 'review'] },
-    },
-    { $set: { status: 'review' } },
-  );
-
-  const reviewCount = await Content.countDocuments({
-    workspace: run.workspace,
-    'metadata.runId': runIdStr,
-    status: 'review',
-  });
-
-  const scoringStep = run.steps?.find((s) => s.name === 'Creative Scoring');
-  if (scoringStep && scoringStep.status !== 'completed') {
-    scoringStep.status = 'completed';
-    scoringStep.completedAt = new Date();
-    scoringStep.summary = `${reviewCount} assets queued for approval`;
-  }
-
-  const approvalStep = run.steps?.find((s) => s.name === 'Approval & Scheduling');
-  if (approvalStep && approvalStep.status !== 'completed') {
-    approvalStep.status = 'completed';
-    approvalStep.completedAt = new Date();
-    approvalStep.summary = `${positioned || reviewCount} items positioned for approval & scheduling`;
-  }
-
-  run.stats.approved = 0;
-  run.stats.scheduled = 0;
-  run.markModified('steps');
-  await run.save();
-
-  return { reviewCount, positioned, run };
+  const { submitAutonomousRunForApproval } = require('./approvalService');
+  return submitAutonomousRunForApproval({ runId, userId });
 };
 
 module.exports = {

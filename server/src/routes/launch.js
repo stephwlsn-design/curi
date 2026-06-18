@@ -26,6 +26,23 @@ router.get('/campaign/:id', async (req, res) => {
   res.json({ campaign });
 });
 
+router.post('/campaign/:id/submit-for-approval', async (req, res) => {
+  const { submitLaunchCampaignForApproval } = require('../services/approvalService');
+  try {
+    const { reviewCount, campaign } = await submitLaunchCampaignForApproval({
+      campaignId: req.params.id,
+      userId: req.user._id,
+    });
+    res.json({
+      campaign,
+      reviewCount,
+      message: `${reviewCount} post${reviewCount === 1 ? '' : 's'} sent to approval queue`,
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 router.get('/campaigns', async (req, res) => {
   const { workspaceId } = req.query;
   const campaigns = await Campaign.find({ workspace: workspaceId }).sort({ createdAt: -1 }).limit(20);

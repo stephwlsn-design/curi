@@ -1,74 +1,76 @@
 const express = require('express');
 const router = express.Router();
-const Content = require('../models/Content');
-const { findAccessibleWorkspace } = require('../utils/workspaceAccess');
-
-const verifyContent = async (contentId, workspaceId, userId) => {
-  const workspace = await findAccessibleWorkspace(workspaceId, userId);
-  if (!workspace) return null;
-  return Content.findOne({ _id: contentId, workspace: workspaceId });
-};
+const {
+  getQueue,
+  submitForReview,
+  approveContent,
+  rejectContent,
+  scheduleContent,
+} = require('../services/approvalService');
 
 router.get('/queue', async (req, res) => {
   const { workspaceId, status = 'review' } = req.query;
-  const workspace = await findAccessibleWorkspace(workspaceId, req.user._id);
-  if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
-
-  const filter = { workspace: workspaceId };
-  if (status !== 'all') filter.status = status;
-
-  const items = await Content.find(filter)
-    .sort({ createdAt: -1 }).limit(50);
-  res.json({ items });
+  try {
+    const payload = await getQueue({ workspaceId, userId: req.user._id, status });
+    res.json(payload);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
 });
 
 router.post('/submit/:id', async (req, res) => {
-  const item = await verifyContent(req.params.id, req.body.workspaceId, req.user._id);
-  if (!item) return res.status(404).json({ error: 'Content not found' });
-
-  item.status = 'review';
-  await item.save();
-  res.json({ item });
+  try {
+    const item = await submitForReview({
+      contentId: req.params.id,
+      workspaceId: req.body.workspaceId,
+      userId: req.user._id,
+    });
+    res.json({ item });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
 });
 
 router.post('/approve/:id', async (req, res) => {
-  const item = await verifyContent(req.params.id, req.body.workspaceId, req.user._id);
-  if (!item) return res.status(404).json({ error: 'Content not found' });
-
-  item.status = 'approved';
-  item.approvedBy = req.user._id;
-  item.approvedAt = new Date();
-  await item.save();
-  res.json({ item });
+  try {
+    const item = await approveContent({
+      contentId: req.params.id,
+      workspaceId: req.body.workspaceId,
+      userId: req.user._id,
+      schedule: req.body.schedule !== false,
+    });
+    res.json({ item });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
 });
 
 router.post('/reject/:id', async (req, res) => {
-  const { reason, workspaceId } = req.body;
-  const item = await verifyContent(req.params.id, workspaceId, req.user._id);
-  if (!item) return res.status(404).json({ error: 'Content not found' });
-
-  item.status = 'draft';
-  item.metadata = { ...(item.metadata?.toObject?.() ?? item.metadata ?? {}), rejectionReason: reason };
-  item.markModified('metadata');
-  await item.save();
-  res.json({ item });
+  try {
+    const item = await rejectContent({
+      contentId: req.params.id,
+      workspaceId: req.body.workspaceId,
+      userId: req.user._id,
+      reason: req.body.reason,
+    });
+    res.json({ item });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
 });
 
 router.post('/publish/:id', async (req, res) => {
-  const item = await Content.findOne({
-    _id: req.params.id,
-    workspace: req.body.workspaceId,
-    status: 'approved',
-  });
-  if (!item) return res.status(404).json({ error: 'Approved content not found' });
-
-  const workspace = await findAccessibleWorkspace(req.body.workspaceId, req.user._id);
-  if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
-
-  item.status = 'scheduled';
-  item.scheduledAt = req.body.scheduledAt ? new Date(req.body.scheduledAt) : new Date();
-  await item.save();
-  res.json({ item });
+  try {
+    const item = await scheduleContent({
+      contentId: req.params.id,
+      workspaceId: req.body.workspaceId,
+      userId: req.user._id,
+      scheduledAt: req.body.scheduledAt,
+    });
+    res.json({ item });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

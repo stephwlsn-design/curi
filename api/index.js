@@ -185,6 +185,20 @@ const isWorkspaceFastRequest = (req) => {
   return false;
 };
 
+const isApprovalsFastRequest = (req) => {
+  const pathOnly = requestPath(req);
+  if (pathOnly === '/api/approvals/queue' && req.method === 'GET') return true;
+  if (req.method === 'POST' && /^\/api\/approvals\/(approve|reject|submit|publish)\/[^/]+$/.test(pathOnly)) return true;
+  return false;
+};
+
+const isLaunchFastRequest = (req) => {
+  const pathOnly = requestPath(req);
+  if (/^\/api\/launch\/campaign\/[^/]+$/.test(pathOnly) && req.method === 'GET') return true;
+  if (/^\/api\/launch\/campaign\/[^/]+\/submit-for-approval$/.test(pathOnly) && req.method === 'POST') return true;
+  return false;
+};
+
 const isAutonomousFastRequest = (req) => {
   const pathOnly = requestPath(req);
   if (pathOnly === '/api/autonomous/generate' && req.method === 'POST') return true;
@@ -1187,6 +1201,118 @@ module.exports = async (req, res) => {
       return await handleWorkspaceFast(req, res);
     } catch (err) {
       console.error('[api] workspace fast failed:', err);
+      return sendJson(res, err.status || 502, { error: err.message });
+    }
+  }
+
+  if (isApprovalsFastRequest(req)) {
+    try {
+      normalizeRequestUrl(req);
+      if (req.method !== 'GET') await parseRequestBody(req);
+      const user = await authenticateRequest(req);
+      const {
+        getApprovalQueue,
+        submitContentForReview,
+        approveQueueItem,
+        rejectQueueItem,
+        publishQueueItem,
+      } = require('../server/src/handlers/approvalsFast');
+      const pathOnly = requestPath(req);
+      const q = req.query || {};
+
+      if (pathOnly === '/api/approvals/queue' && req.method === 'GET') {
+        const payload = await getApprovalQueue({
+          user,
+          workspaceId: q.workspaceId,
+          status: q.status || 'review',
+        });
+        return sendJson(res, 200, payload);
+      }
+
+      const submitMatch = pathOnly.match(/^\/api\/approvals\/submit\/([^/]+)$/);
+      if (submitMatch && req.method === 'POST') {
+        const payload = await submitContentForReview({
+          user,
+          contentId: submitMatch[1],
+          workspaceId: req.body?.workspaceId,
+        });
+        return sendJson(res, 200, payload);
+      }
+
+      const approveMatch = pathOnly.match(/^\/api\/approvals\/approve\/([^/]+)$/);
+      if (approveMatch && req.method === 'POST') {
+        const payload = await approveQueueItem({
+          user,
+          contentId: approveMatch[1],
+          workspaceId: req.body?.workspaceId,
+          schedule: req.body?.schedule,
+        });
+        return sendJson(res, 200, payload);
+      }
+
+      const rejectMatch = pathOnly.match(/^\/api\/approvals\/reject\/([^/]+)$/);
+      if (rejectMatch && req.method === 'POST') {
+        const payload = await rejectQueueItem({
+          user,
+          contentId: rejectMatch[1],
+          workspaceId: req.body?.workspaceId,
+          reason: req.body?.reason,
+        });
+        return sendJson(res, 200, payload);
+      }
+
+      const publishMatch = pathOnly.match(/^\/api\/approvals\/publish\/([^/]+)$/);
+      if (publishMatch && req.method === 'POST') {
+        const payload = await publishQueueItem({
+          user,
+          contentId: publishMatch[1],
+          workspaceId: req.body?.workspaceId,
+          scheduledAt: req.body?.scheduledAt,
+        });
+        return sendJson(res, 200, payload);
+      }
+
+      return sendJson(res, 404, { error: 'Not found' });
+    } catch (err) {
+      console.error('[api] approvals fast failed:', err);
+      return sendJson(res, err.status || 502, { error: err.message || 'Approvals request failed' });
+    }
+  }
+
+  if (isLaunchFastRequest(req)) {
+    try {
+      normalizeRequestUrl(req);
+      if (req.method === 'POST') await parseRequestBody(req);
+      const user = await authenticateRequest(req);
+      const pathOnly = requestPath(req);
+      const Campaign = require('../server/src/models/Campaign');
+      const { connectDB } = require('../server/src/config/database');
+      await connectDB();
+
+      const submitMatch = pathOnly.match(/^\/api\/launch\/campaign\/([^/]+)\/submit-for-approval$/);
+      if (submitMatch && req.method === 'POST') {
+        const { submitLaunchCampaignForApproval } = require('../server/src/services/approvalService');
+        const { reviewCount, campaign } = await submitLaunchCampaignForApproval({
+          campaignId: submitMatch[1],
+          userId: user._id,
+        });
+        return sendJson(res, 200, {
+          campaign,
+          reviewCount,
+          message: `${reviewCount} post${reviewCount === 1 ? '' : 's'} sent to approval queue`,
+        });
+      }
+
+      const getMatch = pathOnly.match(/^\/api\/launch\/campaign\/([^/]+)$/);
+      if (getMatch && req.method === 'GET') {
+        const campaign = await Campaign.findOne({ _id: getMatch[1], createdBy: user._id }).populate('content');
+        if (!campaign) return sendJson(res, 404, { error: 'Campaign not found' });
+        return sendJson(res, 200, { campaign });
+      }
+
+      return sendJson(res, 404, { error: 'Not found' });
+    } catch (err) {
+      console.error('[api] launch fast failed:', err);
       return sendJson(res, err.status || 502, { error: err.message });
     }
   }
