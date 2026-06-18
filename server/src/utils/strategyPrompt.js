@@ -48,8 +48,12 @@ const CHANNEL_GUIDANCE = {
   facebook: 'Community updates, events, longer captions, local/social proof',
 };
 
-const buildBrandBrief = (brandProfile = {}, onboarding = {}) => {
+const buildBrandBrief = (brandProfile = {}, onboarding = {}, compact = false) => {
   const name = brandProfile.name || onboarding.companyName || 'the brand';
+  if (compact) {
+    return `Brand: ${name} | Industry: ${brandProfile.industry || 'General'} | Voice: ${brandProfile.voice || onboarding.brandVoice || 'professional'} | Audience: ${brandProfile.audience || onboarding.targetAudience || 'professionals'} | Value: ${(brandProfile.valueProposition || '').slice(0, 120)} | Keywords: ${(brandProfile.keywords || []).slice(0, 6).join(', ')}`;
+  }
+
   const palette = brandProfile.colors?.palette?.length
     ? brandProfile.colors.palette.join(', ')
     : [brandProfile.colors?.primary, brandProfile.colors?.secondary, brandProfile.colors?.accent]
@@ -81,8 +85,24 @@ const buildStrategyPrompt = ({
   preferences,
   designIdea,
   maxEntries,
+  compact = false,
 }) => {
+  if (compact) {
+    const system = `You are a content strategist. Return ONLY valid JSON. Formats: post, carousel, story, video, reel. Channels: ${channels.join(', ')}.`;
+    const user = `Create a ${days}-day plan for ${brandProfile?.name || onboarding?.companyName || 'this brand'}.
+${buildBrandBrief(brandProfile, onboarding, true)}
+Channels: ${channels.join(', ')}. Topics: ${topics.slice(0, 10).map((t) => t.topic).join(', ')}.
+Generate exactly ${maxEntries} items spread across days 1-${days}. Each item must be brand-specific.
+Return JSON: {"name":"...","campaignGoal":"...","narrative":"...","contentPillars":["..."],"phases":[{"name":"...","dayRange":"1-7","focus":"..."}],"channelStrategy":"...","clusters":[],"items":[{"day":1,"topic":"...","angle":"...","goal":"awareness","pillar":"...","channel":"linkedin","format":"carousel","publishTime":"09:00","priority":1}]}`;
+    return { system, user };
+  }
+
   const duration = getDurationPlan(days);
+  const palette = brandProfile.colors?.palette?.length
+    ? brandProfile.colors.palette.join(', ')
+    : [brandProfile.colors?.primary, brandProfile.colors?.secondary, brandProfile.colors?.accent]
+      .filter(Boolean).join(', ');
+
   const phaseBlock = duration.phases
     .map((p) => `- **${p.name}** — ${p.focus}`)
     .join('\n');

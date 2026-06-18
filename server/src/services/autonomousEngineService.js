@@ -3,7 +3,7 @@ const Workspace = require('../models/Workspace');
 const Content = require('../models/Content');
 const PublishJob = require('../models/PublishJob');
 const Topic = require('../models/Topic');
-const topicDiscoveryService = require('./topicDiscoveryService');
+const { fallbackTopicsFromBrand } = require('./topicDiscoveryService');
 const strategyService = require('./strategyService');
 const createService = require('./createService');
 const designService = require('./designService');
@@ -32,7 +32,7 @@ const DESIGN_CAP = 3;
 const VIDEO_CAP = 2;
 const BATCH_PAUSE_MS = process.env.VERCEL ? 600 : 3500;
 const ITEMS_PER_TICK = process.env.VERCEL ? 1 : 99;
-const LOCK_TTL_MS = process.env.VERCEL ? 30_000 : 85_000;
+const LOCK_TTL_MS = process.env.VERCEL ? 15_000 : 85_000;
 const AUTONOMOUS_MAX_ENTRIES = 8;
 const MIN_TOPICS_TO_REUSE = 5;
 
@@ -304,10 +304,15 @@ const advanceAutonomousPipeline = async (runId) => {
         let topics = await Topic.find({ workspace: run.workspace, status: 'active' })
           .sort({ relevance: -1 }).limit(20);
         if (topics.length < MIN_TOPICS_TO_REUSE) {
-          topics = await topicDiscoveryService.discoverTopics({
-            workspaceId: run.workspace,
-            brandProfile: ctx.brandProfile,
-          });
+          if (process.env.VERCEL) {
+            topics = await fallbackTopicsFromBrand(run.workspace, ctx.brandProfile);
+          } else {
+            const topicDiscoveryService = require('./topicDiscoveryService');
+            topics = await topicDiscoveryService.discoverTopics({
+              workspaceId: run.workspace,
+              brandProfile: ctx.brandProfile,
+            });
+          }
         }
         run.stats.topicsFound = topics.length;
         await run.save();

@@ -8,108 +8,79 @@ const Strategy = require('../models/Strategy');
 const CalendarEntry = require('../models/CalendarEntry');
 const PublishJob = require('../models/PublishJob');
 const Content = require('../models/Content');
-const { PIPELINE_STEPS, advanceAutonomousPipeline } = require('../services/autonomousEngineService');
+const {
+  fetchRunPayload,
+  createAutonomousRun,
+  advanceAutonomousRun,
+  getAutonomousRun,
+  getAutonomousHistory,
+} = require('../handlers/autonomousFast');
 const { enqueueAutonomousRun, enqueueTopicDiscovery } = require('../workers');
 const UserPreferences = require('../models/UserPreferences');
 const { getTopPreferences } = require('../services/learningService');
 const { uploadUserDesigns } = require('../middleware/upload');
 const { createUploadedDesign } = require('../services/designUploadService');
 
-const fetchRunPayload = async (run) => {
-  const runId = String(run._id);
-  const runFilter = {
-    workspace: run.workspace,
-    'metadata.module': 'autonomous',
-    $or: [{ 'metadata.runId': runId }, { 'metadata.runId': run._id }],
-  };
-  const creatives = await Content.find({ ...runFilter, type: { $in: ['image', 'video'] } }).sort({ createdAt: 1 });
-  const posts = await Content.find({ ...runFilter, type: 'post' }).sort({ createdAt: 1 });
-  return {
-    run,
-    posts,
-    designs: creatives.filter((c) => c.type === 'image'),
-    videos: creatives.filter((c) => c.type === 'video'),
-  };
-};
-
 router.post('/generate', checkCredits(100), async (req, res) => {
-  const { workspaceId, days = 30, channels = [], designIdea } = req.body;
-
-  const workspace = await findAccessibleWorkspace(workspaceId, req.user._id);
-  if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
-
-  const runDesignIdea = designIdea || workspace.brandProfile?.designIdea || null;
-
-  const run = await AutonomousRun.create({
-    workspace: workspaceId,
-    createdBy: req.user._id,
-    days,
-    channels,
-    designIdea: runDesignIdea,
-    status: 'queued',
-    steps: PIPELINE_STEPS.map(name => ({ name, status: 'pending' })),
-  });
-
-  await req.user.deductCredits(req.creditCost);
-  if (process.env.VERCEL) {
-    // Vercel: client polling advances the pipeline step-by-step
-    enqueueAutonomousRun(run._id).catch(() => {});
-  } else {
-    enqueueAutonomousRun(run._id);
+  try {
+    const { run, message } = await createAutonomousRun({ user: req.user, body: req.body });
+    if (!process.env.VERCEL) {
+      enqueueAutonomousRun(run._id);
+    } else {
+      enqueueAutonomousRun(run._id).catch(() => {});
+    }
+    res.status(202).json({ run, message });
+  } catch (err) {
+    res.status(err.status || 500).json({
+      error: err.message,
+      ...(err.details || {}),
+    });
   }
-
-  res.status(202).json({ run, message: `Autonomous ${days}-day campaign started` });
 });
 
 router.post('/run/:id/advance', async (req, res) => {
-  const run = await AutonomousRun.findOne({
-    _id: req.params.id,
-    createdBy: req.user._id,
-  });
-  if (!run) return res.status(404).json({ error: 'Run not found' });
-  if (!['queued', 'running'].includes(run.status)) {
-    const payload = await fetchRunPayload(await AutonomousRun.findById(run._id).populate('strategy'));
-    return res.json({ ...payload, message: 'Pipeline not active' });
-  }
   try {
-    const updated = await advanceAutonomousPipeline(run._id);
-    const fresh = await AutonomousRun.findById(updated?._id || run._id).populate('strategy');
-    const payload = await fetchRunPayload(fresh);
+    const payload = await advanceAutonomousRun({
+      user: req.user,
+      runId: req.params.id,
+      forceUnlock: Boolean(req.body?.forceUnlock),
+    });
     return res.json(payload);
   } catch (err) {
-    const failed = await AutonomousRun.findById(run._id).populate('strategy');
-    const payload = await fetchRunPayload(failed);
-    return res.status(502).json({ error: err.message, ...payload });
+    if (err.status === 404) return res.status(404).json({ error: err.message });
+    try {
+      const AutonomousRun = require('../models/AutonomousRun');
+      const failed = await AutonomousRun.findById(req.params.id).populate('strategy');
+      if (failed) {
+        const payload = await fetchRunPayload(failed);
+        return res.status(502).json({ error: err.message, ...payload });
+      }
+    } catch { /* ignore */ }
+    return res.status(502).json({ error: err.message });
   }
 });
 
 router.get('/run/:id', async (req, res) => {
-  const run = await AutonomousRun.findOne({
-    _id: req.params.id,
-    createdBy: req.user._id,
-  }).populate('strategy');
-
-  if (!run) return res.status(404).json({ error: 'Run not found' });
-
-  res.json(await fetchRunPayload(run));
+  try {
+    const payload = await getAutonomousRun({ user: req.user, runId: req.params.id });
+    res.json(payload);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
 });
 
 router.get('/history', async (req, res) => {
-  const { workspaceId, page = 1, limit = 20 } = req.query;
-  const workspace = await findAccessibleWorkspace(workspaceId, req.user._id);
-  if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
-
-  const filter = { workspace: workspaceId, createdBy: req.user._id };
-  const skip = (Number(page) - 1) * Number(limit);
-  const [runs, total] = await Promise.all([
-    AutonomousRun.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)).lean(),
-    AutonomousRun.countDocuments(filter),
-  ]);
-
-  res.json({
-    runs,
-    pagination: { total, page: Number(page), pages: Math.ceil(total / Number(limit)) },
-  });
+  try {
+    const payload = await getAutonomousHistory({
+      user: req.user,
+      workspaceId: req.query.workspaceId,
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    res.json(payload);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
 });
 
 router.get('/runs', async (req, res) => {

@@ -173,6 +173,15 @@ const isCreateFastRequest = (req) => {
   return false;
 };
 
+const isAutonomousFastRequest = (req) => {
+  const pathOnly = requestPath(req);
+  if (pathOnly === '/api/autonomous/generate' && req.method === 'POST') return true;
+  if (pathOnly === '/api/autonomous/history' && req.method === 'GET') return true;
+  if (/^\/api\/autonomous\/run\/[^/]+\/advance$/.test(pathOnly) && req.method === 'POST') return true;
+  if (/^\/api\/autonomous\/run\/[^/]+$/.test(pathOnly) && req.method === 'GET') return true;
+  return false;
+};
+
 const formatCreateError = (err) => {
   const msg = err.message || '';
   if (msg.includes('timed out')) return 'Generation timed out — try again';
@@ -264,6 +273,84 @@ const handleCreateFast = async (req, res) => {
     );
     if (!updated) return sendJson(res, 404, { error: 'Content not found' });
     return sendJson(res, 200, { content: updated });
+  }
+
+  return sendJson(res, 404, { error: 'Not found' });
+};
+
+const handleAutonomousFast = async (req, res) => {
+  const { connectDB } = require('../server/src/config/database');
+  const {
+    createAutonomousRun,
+    advanceAutonomousRun,
+    getAutonomousRun,
+    getAutonomousHistory,
+  } = require('../server/src/handlers/autonomousFast');
+
+  await connectDB();
+  const user = await authenticateRequest(req);
+  const pathOnly = requestPath(req);
+  const q = getQueryParams(req);
+  const body = req.body || {};
+
+  if (pathOnly === '/api/autonomous/generate' && req.method === 'POST') {
+    try {
+      const { run, message } = await createAutonomousRun({ user, body });
+      return sendJson(res, 202, { run, message });
+    } catch (err) {
+      return sendJson(res, err.status || 500, {
+        error: err.message,
+        ...(err.details || {}),
+      });
+    }
+  }
+
+  const advanceMatch = pathOnly.match(/^\/api\/autonomous\/run\/([^/]+)\/advance$/);
+  if (advanceMatch && req.method === 'POST') {
+    try {
+      const payload = await withTimeout(
+        advanceAutonomousRun({
+          user,
+          runId: advanceMatch[1],
+          forceUnlock: Boolean(body.forceUnlock),
+        }),
+        52_000,
+        'Pipeline step timed out — will resume on next poll',
+      );
+      return sendJson(res, 200, payload);
+    } catch (err) {
+      if (err.status === 404) return sendJson(res, 404, { error: err.message });
+      try {
+        const partial = await getAutonomousRun({ user, runId: advanceMatch[1] });
+        return sendJson(res, 200, { ...partial, warning: err.message });
+      } catch {
+        return sendJson(res, 502, { error: err.message });
+      }
+    }
+  }
+
+  const runMatch = pathOnly.match(/^\/api\/autonomous\/run\/([^/]+)$/);
+  if (runMatch && req.method === 'GET') {
+    try {
+      const payload = await getAutonomousRun({ user, runId: runMatch[1] });
+      return sendJson(res, 200, payload);
+    } catch (err) {
+      return sendJson(res, err.status || 500, { error: err.message });
+    }
+  }
+
+  if (pathOnly === '/api/autonomous/history' && req.method === 'GET') {
+    try {
+      const payload = await getAutonomousHistory({
+        user,
+        workspaceId: q.workspaceId,
+        page: q.page,
+        limit: q.limit,
+      });
+      return sendJson(res, 200, payload);
+    } catch (err) {
+      return sendJson(res, err.status || 500, { error: err.message });
+    }
   }
 
   return sendJson(res, 404, { error: 'Not found' });
@@ -988,6 +1075,17 @@ module.exports = async (req, res) => {
       return await handleCreateFast(req, res);
     } catch (err) {
       console.error('[api] create fast failed:', err);
+      return sendJson(res, err.status || 502, { error: err.message });
+    }
+  }
+
+  if (isAutonomousFastRequest(req)) {
+    try {
+      normalizeRequestUrl(req);
+      await parseRequestBody(req);
+      return await handleAutonomousFast(req, res);
+    } catch (err) {
+      console.error('[api] autonomous fast failed:', err);
       return sendJson(res, err.status || 502, { error: err.message });
     }
   }

@@ -120,6 +120,7 @@ const generateStrategy = async ({
     preferences,
     designIdea,
     maxEntries: entryCount,
+    compact: Boolean(process.env.VERCEL),
   });
 
   let parsed;

@@ -60,6 +60,14 @@ const statusBadge = (status) => {
   return 'bg-theme-subtle/10 text-theme-muted/40'
 }
 
+const makePlaceholderRun = (days) => ({
+  _id: 'pending',
+  status: 'queued',
+  progress: 0,
+  days,
+  steps: WORKFLOW_STEPS.map((name) => ({ name, status: 'pending' })),
+})
+
 export default function Autonomous() {
   const { workspaceId, workspace, setWorkspace, fetchMe } = useAuth()
   const navigate = useNavigate()
@@ -83,6 +91,10 @@ export default function Autonomous() {
   })
   const [discovering, setDiscovering] = useState(false)
   const pollRef = useRef(null)
+  const pollRunIdRef = useRef(null)
+  const lastProgressRef = useRef({ progress: -1, at: Date.now() })
+  const stuckRetriesRef = useRef(0)
+  const progressPanelRef = useRef(null)
 
   useDraftModule('autonomous', () => ({
     days, channels, designIdea, onboarding,
@@ -148,29 +160,76 @@ export default function Autonomous() {
     }
   }, [workspaceId])
 
-  const pollRun = useCallback((runId) => {
-    if (pollRef.current) clearTimeout(pollRef.current)
-
-    const tick = async () => {
-      try {
-        const { data } = await API.post(`/autonomous/run/${runId}/advance`, {}, { timeout: 120000 })
+  const refreshRunState = useCallback(async (runId) => {
+    if (!runId || runId === 'pending') return null
+    try {
+      const { data } = await API.get(`/autonomous/run/${runId}`, { timeout: 20000 })
+      if (data.run) {
         setRun(data.run)
         setPosts(data.posts || [])
         setDesigns((data.designs || []).map(toDesignPreview))
         setVideos((data.videos || []).map(toVideoPreview))
+      }
+      return data
+    } catch {
+      return null
+    }
+  }, [])
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) clearTimeout(pollRef.current)
+    pollRef.current = null
+    pollRunIdRef.current = null
+    setLoading(false)
+  }, [])
+
+  const pollRun = useCallback((runId, { forceUnlock: initialForceUnlock = false } = {}) => {
+    if (pollRef.current) clearTimeout(pollRef.current)
+    pollRunIdRef.current = runId
+    let useForceUnlock = initialForceUnlock
+    if (!useForceUnlock) {
+      lastProgressRef.current = { progress: -1, at: Date.now() }
+      stuckRetriesRef.current = 0
+    }
+
+    const tick = async () => {
+      if (pollRunIdRef.current !== runId) return
+      try {
+        const { data } = await API.post(
+          `/autonomous/run/${runId}/advance`,
+          { forceUnlock: useForceUnlock },
+          { timeout: 55000 },
+        )
+        useForceUnlock = false
+        stuckRetriesRef.current = 0
+        setRun(data.run)
+        setPosts(data.posts || [])
+        setDesigns((data.designs || []).map(toDesignPreview))
+        setVideos((data.videos || []).map(toVideoPreview))
+
+        const progress = data.run?.progress ?? 0
+        if (progress !== lastProgressRef.current.progress) {
+          lastProgressRef.current = { progress, at: Date.now() }
+        } else if (Date.now() - lastProgressRef.current.at > 45000 && stuckRetriesRef.current < 3) {
+          stuckRetriesRef.current += 1
+          lastProgressRef.current.at = Date.now()
+          toast('Pipeline may be stuck — retrying with unlock…', { icon: '⏳' })
+          pollRef.current = setTimeout(() => pollRun(runId, { forceUnlock: true }), 500)
+          return
+        }
 
         if (data.run?.status === 'completed') {
           const cal = await API.get(`/autonomous/calendar?workspaceId=${workspaceId}&runId=${runId}`)
           setEntries(cal.data.entries || [])
           await fetchHistory()
           toast.success(`${data.run.days}-day campaign saved to history`)
-          setLoading(false)
+          stopPolling()
           return
         }
         if (data.run?.status === 'failed') {
           await fetchHistory()
           toast.error(data.run.error || data.error || 'Pipeline failed')
-          setLoading(false)
+          stopPolling()
           return
         }
 
@@ -179,23 +238,31 @@ export default function Autonomous() {
 
         pollRef.current = setTimeout(tick, 2000)
       } catch (err) {
+        const isTimeout = err.code === 'ECONNABORTED' || err.response?.status === 504
         if (err.response?.data?.run) {
           setRun(err.response.data.run)
           setPosts(err.response.data.posts || [])
           setDesigns((err.response.data.designs || []).map(toDesignPreview))
-          setVideos((err.response.data.videos || []).map(toDesignPreview))
+          setVideos((err.response.data.videos || []).map(toVideoPreview))
           if (err.response.data.run.status === 'failed') {
             toast.error(err.response.data.run.error || err.response?.data?.error || 'Pipeline failed')
-            setLoading(false)
+            stopPolling()
             return
           }
+        } else {
+          await refreshRunState(runId)
+        }
+        if (isTimeout && stuckRetriesRef.current < 5) {
+          stuckRetriesRef.current += 1
+          pollRef.current = setTimeout(() => pollRun(runId, { forceUnlock: true }), 3000)
+          return
         }
         pollRef.current = setTimeout(tick, 3500)
       }
     }
 
     tick()
-  }, [workspaceId, fetchHistory])
+  }, [workspaceId, fetchHistory, stopPolling, refreshRunState])
 
   useEffect(() => () => {
     if (pollRef.current) clearTimeout(pollRef.current)
@@ -208,6 +275,7 @@ export default function Autonomous() {
     fetchHistory().then(runs => {
       const active = runs.find(x => x.status === 'running' || x.status === 'queued')
       if (active) {
+        setRun(active)
         setLoading(true)
         pollRun(active._id)
         return
@@ -247,18 +315,39 @@ export default function Autonomous() {
       return toast.error('Complete brand setup first')
     }
     setLoading(true)
-    setRun(null)
+    setRun(makePlaceholderRun(days))
     setEntries([])
     setPosts([])
     setDesigns([])
     setVideos([])
+    requestAnimationFrame(() => {
+      progressPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
     try {
-      const { data } = await API.post('/autonomous/generate', { workspaceId, days, channels, designIdea })
+      if (onboarding.companyName && !workspace?.onboarding?.complete) {
+        const competitors = Array.isArray(onboarding.competitors)
+          ? onboarding.competitors
+          : String(onboarding.competitors || '').split(',').map(s => s.trim()).filter(Boolean)
+        await API.post('/workspace/onboarding', { ...onboarding, competitors }).catch(() => {})
+      }
+      const { data } = await API.post('/autonomous/generate', { workspaceId, days, channels, designIdea }, { timeout: 30000 })
       setRun(data.run)
       toast.success('Autonomous engine started')
       fetchMe?.()
       pollRun(data.run._id)
     } catch (err) {
+      const isTimeout = !err.response || err.code === 'ECONNABORTED' || err.response?.status === 504
+      if (isTimeout) {
+        const runs = await fetchHistory()
+        const active = runs?.find(x => x.status === 'running' || x.status === 'queued')
+        if (active) {
+          setRun(active)
+          toast('Request timed out but campaign started — resuming…', { icon: '⏳' })
+          fetchMe?.()
+          pollRun(active._id)
+          return
+        }
+      }
       toast.error(err.response?.data?.details?.join(', ') || err.response?.data?.error || 'Failed to start')
       setLoading(false)
     }
@@ -452,16 +541,23 @@ export default function Autonomous() {
             </p>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-sm text-theme-muted/50 font-medium">100 credits</span>
-              <button onClick={generate} disabled={loading} className="btn-primary text-base px-10 py-3">
-                {loading ? 'Engine Running...' : `Generate Next ${days} Days`}
-              </button>
+              <div className="flex items-center gap-3">
+                {loading && (
+                  <button type="button" onClick={stopPolling} className="btn-secondary text-sm px-4 py-2">
+                    Cancel
+                  </button>
+                )}
+                <button onClick={generate} disabled={loading} className="btn-primary text-base px-10 py-3">
+                  {loading ? 'Engine Running...' : `Generate Next ${days} Days`}
+                </button>
+              </div>
             </div>
           </div>
 
-          {(run || entries.length > 0) && (
+          {(run && run._id !== 'pending' || entries.length > 0) && (
             <BulkDesignUpload
               workspaceId={workspaceId}
-              runId={run?._id}
+              runId={run?._id !== 'pending' ? run?._id : undefined}
               entries={entries}
               onComplete={() => {
                 if (run?._id) loadRunResults(run._id)
@@ -470,10 +566,30 @@ export default function Autonomous() {
           )}
 
           <AnimatePresence>
-            {run && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="page-card">
+            {(loading || run) && (
+              <motion.div
+                ref={progressPanelRef}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="page-card"
+              >
+                {run?._id === 'pending' ? (
+                  <>
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="font-bold text-theme-text capitalize">queued — starting…</span>
+                      <span className="badge bg-curi-blue/15 text-curi-blue">{days}-Day Campaign</span>
+                    </div>
+                    <div className="h-2 bg-theme-subtle/10 rounded-full overflow-hidden mb-4">
+                      <div className="h-full bg-curi-gradient rounded-full animate-pulse w-1/4" />
+                    </div>
+                    <p className="text-sm text-theme-muted/60">
+                      Connecting to the autonomous engine and reserving credits…
+                    </p>
+                  </>
+                ) : run ? (
+                  <>
                 <div className="flex justify-between items-center mb-3">
-                  <span className="font-bold text-theme-text capitalize">{run.status} — {run.progress}%</span>
+                  <span className="font-bold text-theme-text capitalize">{run.status} — {run.progress ?? 0}%</span>
                   <span className="badge bg-curi-blue/15 text-curi-blue">{runLabel(run)}</span>
                 </div>
                 <div className="h-2 bg-theme-subtle/10 rounded-full overflow-hidden mb-4">
@@ -555,6 +671,10 @@ export default function Autonomous() {
                     <button onClick={() => navigate('/design')} className="btn-secondary text-sm">Open Design Library</button>
                     <button onClick={() => navigate('/calendar')} className="btn-secondary text-sm">View Calendar</button>
                   </div>
+                )}
+                  </>
+                ) : (
+                  <p className="text-sm text-theme-muted/60">Preparing campaign…</p>
                 )}
               </motion.div>
             )}

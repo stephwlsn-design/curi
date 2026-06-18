@@ -4,7 +4,7 @@ const { generateJSON } = require('./llmService');
 
 const { buildBrandBrief } = require('../utils/strategyPrompt');
 
-const brandCtx = (bp) => buildBrandBrief(bp);
+const brandCtx = (bp) => buildBrandBrief(bp, {}, Boolean(process.env.VERCEL));
 
 const fallbackTopicsFromBrand = async (workspaceId, brandProfile) => {
   const seeds = [
