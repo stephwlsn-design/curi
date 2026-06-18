@@ -24,7 +24,7 @@ const fallbackTopicsFromBrand = async (workspaceId, brandProfile) => {
     saved.push(await Topic.create({
       workspace: workspaceId,
       topic: unique[i],
-      source: 'fallback',
+      source: 'internal',
       relevance: 90 - i * 3,
     }));
   }
