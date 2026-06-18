@@ -26,10 +26,17 @@ const callOpenAI = async ({ system, user, temperature = 0.8, model = 'gpt-4o-min
   return json ? JSON.parse(text) : text;
 };
 
-const generateJSON = async ({ system, user, temperature = 0.8, label = 'LLM', imagePath = null, timeoutMs }) => {
+const generateJSON = async ({
+  system, user, temperature = 0.8, label = 'LLM', imagePath = null, timeoutMs, once = false,
+}) => {
   const budget = timeoutMs ?? (process.env.VERCEL ? 22_000 : 90_000);
   if (useGemini()) {
-    logger.info(`${label}: using Gemini${imagePath ? ' (with reference image)' : ''}`);
+    logger.info(`${label}: using Gemini${imagePath ? ' (with reference image)' : ''}${once ? ' (single attempt)' : ''}`);
+    if (once) {
+      return gemini.generateJSONOnce({
+        system, user, temperature, imagePath, timeoutMs: budget,
+      });
+    }
     return gemini.generateJSON({ system, user, temperature, imagePath, timeoutMs: budget });
   }
 

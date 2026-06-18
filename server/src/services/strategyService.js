@@ -1,12 +1,14 @@
 const Strategy = require('../models/Strategy');
 const CalendarEntry = require('../models/CalendarEntry');
 const { generateJSON } = require('./llmService');
-const { buildStrategyPrompt, getDurationPlan } = require('../utils/strategyPrompt');
+const gemini = require('./geminiService');
+const { buildStrategyPrompt, buildPlanBriefOnlyPrompt, getDurationPlan } = require('../utils/strategyPrompt');
 const {
   extractBriefKeywords,
   buildPlannedTopic,
   buildPlannedAngle,
   buildPlanNarrative,
+  buildItemsFromPlanBrief,
 } = require('../utils/campaignContent');
 const logger = require('../utils/logger');
 
@@ -113,12 +115,13 @@ const buildFallbackPlan = (brandProfile, days, entryCount, contentPrompt = '', d
 
 const channelsLabel = (channels = []) => (channels.length ? channels.join(', ') : 'selected channels');
 
-const extractPlanBrief = (parsed, days) => ({
+const extractPlanBrief = (parsed, days, contentPrompt = '') => ({
   campaignGoal: parsed.campaignGoal || `Build consistent ${days}-day brand presence`,
   narrative: parsed.narrative || '',
   contentPillars: parsed.contentPillars || [],
   phases: parsed.phases || [],
   channelStrategy: parsed.channelStrategy || '',
+  userBrief: contentPrompt?.trim() || parsed.userBrief || '',
 });
 
 const persistStrategy = async ({
@@ -141,7 +144,7 @@ const persistStrategy = async ({
       pillar: item.pillar,
     })),
     clusters: parsed.clusters || [],
-    planBrief: extractPlanBrief(parsed, days),
+    planBrief: extractPlanBrief(parsed, days, parsed.userBrief),
     status: 'active',
     autonomousRun: runId,
   });
@@ -183,11 +186,49 @@ const generateStrategy = async ({
   const fallbackStrategy = () => {
     const items = buildFallbackItems({ topics, days, channels, entryCount, brandProfile, contentPrompt, designIdea });
     const parsed = buildFallbackPlan(brandProfile, days, entryCount, contentPrompt, designIdea, channels);
+    parsed.userBrief = contentPrompt?.trim() || '';
     return persistStrategy({ workspaceId, userId, days, runId, parsed, items });
   };
 
-  // Vercel: instant prompt-aware fallback — LLM strategy calls stall the pipeline at ~22%.
+  const hasBrief = Boolean(contentPrompt?.trim() || designIdea?.notes || designIdea?.analyzedDirection);
+  const canUseAiBrief = gemini.isValidKey(process.env.GEMINI_API_KEY);
+
+  // Vercel: fast AI plan-brief (no 30-item JSON) then deterministic calendar build.
   if (process.env.VERCEL) {
+    if (hasBrief && canUseAiBrief) {
+      const { system, user } = buildPlanBriefOnlyPrompt({
+        brandProfile,
+        onboarding,
+        topics,
+        days,
+        channels,
+        designIdea,
+        contentPrompt,
+      });
+      try {
+        const parsed = await generateJSON({
+          label: 'Strategy plan brief',
+          system,
+          user,
+          temperature: 0.72,
+          once: true,
+          timeoutMs: 20_000,
+        });
+        parsed.userBrief = contentPrompt?.trim() || '';
+        const items = buildItemsFromPlanBrief({
+          planBrief: parsed,
+          topics,
+          days,
+          channels,
+          entryCount,
+          brandProfile,
+        });
+        logger.info(`Strategy: AI plan brief OK — ${items.length} items from ${parsed.themeTopics?.length || 0} themes`);
+        return persistStrategy({ workspaceId, userId, days, runId, parsed, items });
+      } catch (err) {
+        logger.warn(`Strategy AI plan brief failed on Vercel, using fallback: ${err.message?.slice(0, 100)}`);
+      }
+    }
     return fallbackStrategy();
   }
 
@@ -216,9 +257,11 @@ const generateStrategy = async ({
   } catch (err) {
     logger.warn(`Strategy AI failed, using topic-based fallback: ${err.message?.slice(0, 100)}`);
     const items = buildFallbackItems({ topics, days, channels, entryCount, brandProfile, contentPrompt, designIdea });
+    const fallbackParsed = buildFallbackPlan(brandProfile, days, entryCount, contentPrompt, designIdea, channels);
+    fallbackParsed.userBrief = contentPrompt?.trim() || '';
     return persistStrategy({
       workspaceId, userId, days, runId,
-      parsed: buildFallbackPlan(brandProfile, days, entryCount, contentPrompt, designIdea, channels),
+      parsed: fallbackParsed,
       items,
     });
   }
@@ -236,6 +279,7 @@ const generateStrategy = async ({
     format: normalizeFormat(item.format),
   }));
 
+  parsed.userBrief = contentPrompt?.trim() || '';
   return persistStrategy({ workspaceId, userId, days, runId, parsed, items });
 };
 

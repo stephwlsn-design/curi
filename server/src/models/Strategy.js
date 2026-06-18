@@ -18,6 +18,7 @@ const planBriefSchema = new mongoose.Schema({
   contentPillars: [String],
   phases: [{ name: String, dayRange: String, focus: String }],
   channelStrategy: String,
+  userBrief: String,
 }, { _id: false });
 
 const strategySchema = new mongoose.Schema({

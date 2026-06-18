@@ -1,3 +1,5 @@
+const { getDurationPlan } = require('./strategyPrompt');
+
 const STOP_WORDS = new Set([
   'about', 'after', 'also', 'and', 'are', 'based', 'been', 'being', 'both', 'but', 'can',
   'content', 'could', 'focus', 'for', 'from', 'have', 'help', 'into', 'just', 'more', 'our',
@@ -58,6 +60,78 @@ const buildPlannedAngle = ({
   const base = `${hooks[goal] || hooks.education} · ${pillar} · ${platform}`;
   if (kw) return `${base} · tie to: ${kw.replace(/^focus on\s+/i, '').slice(0, 40)}`.slice(0, 180);
   return base.slice(0, 180);
+};
+
+const phaseForDay = (phases, day, days) => {
+  if (!phases?.length) return null;
+  for (const phase of phases) {
+    const range = phase.dayRange || phase.name || '';
+    const match = range.match(/(\d+)\s*[-–]\s*(\d+)/);
+    if (match) {
+      const lo = Number(match[1]);
+      const hi = Number(match[2]);
+      if (day >= lo && day <= hi) return phase;
+    }
+  }
+  const third = Math.ceil(days / 3);
+  if (day <= third) return phases[0];
+  if (day <= third * 2) return phases[Math.min(1, phases.length - 1)];
+  return phases[phases.length - 1];
+};
+
+const buildItemsFromPlanBrief = ({
+  planBrief,
+  topics,
+  days,
+  channels,
+  entryCount,
+  brandProfile,
+}) => {
+  const FORMATS = ['post', 'carousel', 'story', 'video', 'reel'];
+  const goals = ['awareness', 'education', 'engagement', 'conversion', 'trust'];
+  const count = entryCount || days;
+  const themeTopics = (planBrief?.themeTopics || []).filter(Boolean);
+  const pillars = planBrief?.contentPillars?.length
+    ? planBrief.contentPillars
+    : ['Education', 'Social proof', 'Product value', 'Thought leadership', 'Community'];
+  const phases = planBrief?.phases?.length
+    ? planBrief.phases
+    : getDurationPlan(days).phases;
+  const discovered = topics.length ? topics : [{ topic: `${brandProfile?.name || 'Brand'} update` }];
+  const topicPool = [
+    ...themeTopics.map((t) => ({ topic: String(t).trim() })),
+    ...discovered,
+  ].filter((t) => t.topic?.length > 3);
+  const audience = brandProfile?.audience || 'your audience';
+
+  return Array.from({ length: count }, (_, i) => {
+    const day = spreadDay(i, count, days);
+    const pillar = pillars[i % pillars.length];
+    const goal = goals[i % goals.length];
+    const channel = channels[i % channels.length] || 'linkedin';
+    const poolItem = topicPool[i % topicPool.length];
+    const phase = phaseForDay(phases, day, days);
+    const topic = String(poolItem.topic).slice(0, 140);
+    const angle = phase
+      ? `${phase.focus} · ${pillar} for ${audience} on ${channel}`
+      : `${pillar} content for ${audience} on ${channel}`;
+    return {
+      day,
+      topic,
+      angle: angle.slice(0, 180),
+      goal,
+      pillar,
+      channel,
+      format: FORMATS[i % FORMATS.length],
+      publishTime: ['09:00', '11:00', '12:00', '14:00', '17:00'][i % 5],
+      priority: i + 1,
+    };
+  });
+};
+
+const spreadDay = (index, total, days) => {
+  if (total <= 1) return 1;
+  return Math.max(1, Math.min(days, Math.round(((index + 1) / total) * days)));
 };
 
 const buildPlanNarrative = ({ brandProfile, days, entryCount, brief, visual, channels = [] }) => {
@@ -122,6 +196,7 @@ module.exports = {
   buildPlannedTopic,
   buildPlannedAngle,
   buildPlanNarrative,
+  buildItemsFromPlanBrief,
   composeAutonomousPost,
   subjectFromTopic,
 };

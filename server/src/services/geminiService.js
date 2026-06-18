@@ -92,6 +92,19 @@ const generateJSON = async ({ system, user, model = DEFAULT_MODEL, temperature =
   throw lastErr || new Error('Gemini request failed');
 };
 
+/** Single model, no retries — for Vercel pipeline steps with tight timeouts. */
+const generateJSONOnce = async ({
+  system, user, model = DEFAULT_MODEL, temperature = 0.8, imagePath = null, timeoutMs = 14_000,
+}) => {
+  const key = process.env.GEMINI_API_KEY;
+  if (!isValidKey(key)) {
+    throw new Error('GEMINI_API_KEY not configured');
+  }
+  const prompt = system ? `${system}\n\n${user}` : user;
+  const imagePart = imagePath ? imagePartFromPath(imagePath) : null;
+  return callGemini({ prompt, model, temperature, key, imagePart, timeoutMs });
+};
+
 const generateText = async ({ system, user, model = DEFAULT_MODEL, temperature = 0.8 }) => {
   const result = await generateJSON({
     system: system ? `${system}\nRespond with JSON: { "text": "your response" }` : undefined,
@@ -102,4 +115,6 @@ const generateText = async ({ system, user, model = DEFAULT_MODEL, temperature =
   return result.text || result.content || JSON.stringify(result);
 };
 
-module.exports = { generateJSON, generateText, isValidKey, DEFAULT_MODEL, sleep };
+module.exports = {
+  generateJSON, generateJSONOnce, generateText, isValidKey, DEFAULT_MODEL, sleep, callGemini,
+};

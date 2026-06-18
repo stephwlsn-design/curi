@@ -193,8 +193,44 @@ Generate exactly ${maxEntries} items in the items array.`;
   return { system, user };
 };
 
+const buildPlanBriefOnlyPrompt = ({
+  brandProfile,
+  onboarding,
+  topics,
+  days,
+  channels,
+  designIdea,
+  contentPrompt = '',
+}) => {
+  const designBlock = designIdea?.notes || designIdea?.analyzedDirection
+    ? `\nVisual direction: ${designIdea.analyzedDirection || designIdea.notes}`
+    : '';
+  const brief = contentPrompt?.trim();
+  const system = `You are a senior content strategist. Return ONLY valid JSON. Build a custom plan from the user's campaign brief — every pillar and theme topic must reflect their direction, not generic marketing filler.`;
+  const user = `Create a ${days}-day content plan BRIEF for ${brandProfile?.name || onboarding?.companyName || 'this brand'}.
+
+${buildBrandBrief(brandProfile, onboarding, true)}
+${brief ? `\nUSER CAMPAIGN BRIEF (this is the primary driver — shape the entire plan around it):\n${brief}` : ''}
+${designBlock}
+Channels: ${channels.join(', ')}.
+Discovered topics (combine with brief): ${topics.slice(0, 8).map((t) => t.topic).join(', ') || 'none'}.
+
+Return JSON only:
+{
+  "name": "Campaign name reflecting the brief",
+  "campaignGoal": "One sentence goal tied to the user brief",
+  "narrative": "2-3 sentences on how the ${days}-day arc executes the brief",
+  "contentPillars": ["3-5 pillars derived from the brief"],
+  "phases": [{"name": "Phase name", "dayRange": "1-7", "focus": "Phase focus aligned to brief"}],
+  "channelStrategy": "How channels serve this brief",
+  "themeTopics": ["12-15 unique, specific post topic headlines inspired by the brief — each different, no generic filler"]
+}`;
+  return { system, user };
+};
+
 module.exports = {
   buildStrategyPrompt,
+  buildPlanBriefOnlyPrompt,
   buildBrandBrief,
   getDurationPlan,
   CHANNEL_GUIDANCE,
