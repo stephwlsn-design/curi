@@ -101,6 +101,7 @@ export default function Autonomous() {
     valueProposition: '', marketingSummary: '',
   })
   const [discovering, setDiscovering] = useState(false)
+  const [manualAdvancing, setManualAdvancing] = useState(false)
   const pollRef = useRef(null)
   const pollRunIdRef = useRef(null)
   const lastProgressRef = useRef({ progress: -1, at: Date.now() })
@@ -193,6 +194,45 @@ export default function Autonomous() {
     pollRunIdRef.current = null
     setLoading(false)
   }, [])
+
+  const applyRunPayload = useCallback((data) => {
+    if (data.run) setRun(data.run)
+    setPosts(data.posts || [])
+    setDesigns((data.designs || []).map(toDesignPreview))
+    setVideos((data.videos || []).map(toVideoPreview))
+  }, [])
+
+  const advanceStepManually = async () => {
+    if (!run?._id || run._id === 'pending') return
+    setManualAdvancing(true)
+    try {
+      const { data } = await API.post(
+        `/autonomous/run/${run._id}/advance`,
+        { forceUnlock: true },
+        { timeout: 55000 },
+      )
+      applyRunPayload(data)
+      const cal = await API.get(`/autonomous/calendar?workspaceId=${workspaceId}&runId=${run._id}`).catch(() => ({ data: { entries: [] } }))
+      if (cal.data.entries?.length) setEntries(cal.data.entries)
+      if (data.warning) toast(data.warning, { icon: '⏳' })
+      if (data.run?.status === 'completed') {
+        await fetchHistory()
+        toast.success(`${data.run.days}-day campaign saved to history`)
+        stopPolling()
+      } else if (data.run?.status === 'failed') {
+        toast.error(data.run.error || 'Pipeline failed')
+        stopPolling()
+      } else if (!loading) {
+        setLoading(true)
+        pollRun(run._id)
+      }
+    } catch (err) {
+      await refreshRunState(run._id)
+      toast.error(err.response?.data?.error || err.message || 'Could not advance step')
+    } finally {
+      setManualAdvancing(false)
+    }
+  }
 
   const pollRun = useCallback((runId, { forceUnlock: initialForceUnlock = false } = {}) => {
     if (pollRef.current) clearTimeout(pollRef.current)
@@ -642,6 +682,48 @@ export default function Autonomous() {
                       : ''}
                   </p>
                 )}
+                {run.steps?.length > 0 && (
+                  <div className="mb-4 space-y-1.5">
+                    <div className="section-label">Pipeline steps</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {WORKFLOW_STEPS.map((step) => {
+                        const s = run.steps.find((x) => x.name === step)
+                        const st = s?.status || 'pending'
+                        return (
+                          <div
+                            key={step}
+                            className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs ${
+                              st === 'completed' ? 'bg-curi-green/10 text-curi-green'
+                              : st === 'running' ? 'bg-curi-pink/10 text-curi-pink'
+                              : st === 'failed' ? 'bg-red-500/10 text-red-400'
+                              : 'bg-theme-subtle/5 text-theme-muted/45'
+                            }`}
+                          >
+                            <span className="font-bold truncate">{step}</span>
+                            <span className="capitalize flex-shrink-0">{st}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                {entries.length > 0 && (
+                  <p className="text-sm text-curi-blue font-semibold mb-3">
+                    {entries.length} calendar entries in your {run.days}-day plan
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {run.status !== 'completed' && run.status !== 'failed' && run._id !== 'pending' && (
+                    <button
+                      type="button"
+                      onClick={advanceStepManually}
+                      disabled={manualAdvancing}
+                      className="btn-primary text-sm px-5 py-2"
+                    >
+                      {manualAdvancing ? 'Advancing…' : 'Next Step →'}
+                    </button>
+                  )}
+                </div>
                 {run.strategy?.planBrief && (
                   <div className="mb-4 p-4 rounded-xl bg-theme-subtle/5 border border-theme-border space-y-3">
                     <div className="section-label">Custom content plan</div>

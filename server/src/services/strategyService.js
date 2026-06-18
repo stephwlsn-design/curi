@@ -1,7 +1,7 @@
 const Strategy = require('../models/Strategy');
 const CalendarEntry = require('../models/CalendarEntry');
 const { generateJSON } = require('./llmService');
-const { buildStrategyPrompt } = require('../utils/strategyPrompt');
+const { buildStrategyPrompt, getDurationPlan } = require('../utils/strategyPrompt');
 const logger = require('../utils/logger');
 
 const FORMATS = ['post', 'carousel', 'story', 'video', 'reel'];
@@ -29,18 +29,35 @@ const spreadDay = (index, total, days) => {
 
 const buildFallbackItems = ({ topics, days, channels, entryCount, brandProfile }) => {
   const pool = topics.length ? topics : [{ topic: `${brandProfile?.name || 'Brand'} update` }];
-  const pillars = ['Education', 'Social proof', 'Product value', 'Thought leadership'];
-  return Array.from({ length: entryCount }, (_, i) => ({
-    day: spreadDay(i, entryCount, days),
+  const pillars = ['Education', 'Social proof', 'Product value', 'Thought leadership', 'Community'];
+  const goals = ['awareness', 'education', 'engagement', 'conversion', 'trust'];
+  const count = entryCount || days;
+  const brand = brandProfile?.name || 'the brand';
+  const audience = brandProfile?.audience || 'your audience';
+  return Array.from({ length: count }, (_, i) => ({
+    day: spreadDay(i, count, days),
     topic: pool[i % pool.length].topic,
-    angle: `Tailored for ${brandProfile?.audience || 'your audience'}`,
-    goal: ['awareness', 'education', 'engagement', 'conversion'][i % 4],
+    angle: `${brand} take for ${audience} — ${pillars[i % pillars.length].toLowerCase()} focus`,
+    goal: goals[i % goals.length],
     pillar: pillars[i % pillars.length],
     channel: channels[i % channels.length] || 'linkedin',
     format: FORMATS[i % FORMATS.length],
-    publishTime: '09:00',
+    publishTime: ['09:00', '11:00', '12:00', '14:00', '17:00'][i % 5],
     priority: i + 1,
   }));
+};
+
+const buildFallbackPlan = (brandProfile, days, entryCount) => {
+  const duration = getDurationPlan(days);
+  return {
+    name: `${days}-Day ${brandProfile?.name || 'Brand'} Content Plan`,
+    campaignGoal: `Build consistent ${days}-day visibility and engagement for ${brandProfile?.name || 'the brand'}`,
+    narrative: `A phased ${days}-day arc: ${duration.phases.map((p) => p.focus).slice(0, 2).join('; ')}.`,
+    contentPillars: ['Education', 'Social proof', 'Product value', 'Thought leadership', 'Community'],
+    phases: duration.phases.map((p) => ({ name: p.name, dayRange: p.name.match(/\d+–\d+|\d+-\d+/)?.[0] || '', focus: p.focus })),
+    channelStrategy: `Rotate content across selected channels with one planned touchpoint per campaign day (${entryCount} entries across ${days} days).`,
+    clusters: [],
+  };
 };
 
 const extractPlanBrief = (parsed, days) => ({
@@ -76,23 +93,23 @@ const persistStrategy = async ({
     autonomousRun: runId,
   });
 
-  const entries = [];
-  for (const item of strategy.items) {
-    const planningNote = [item.topic, item.angle].filter(Boolean).join(' — ');
-    const entry = await CalendarEntry.create({
-      workspace: workspaceId,
-      day: item.day,
-      platform: normalizeChannel(item.channel),
-      type: normalizeFormat(item.format),
-      topic: item.topic,
-      caption: planningNote,
-      publishTime: item.publishTime || '09:00',
-      strategy: strategy._id,
-      autonomousRun: runId,
-      status: 'planned',
-    });
-    entries.push(entry);
-  }
+  const entries = await CalendarEntry.insertMany(
+    strategy.items.map((item) => {
+      const planningNote = [item.topic, item.angle].filter(Boolean).join(' — ');
+      return {
+        workspace: workspaceId,
+        day: item.day,
+        platform: normalizeChannel(item.channel),
+        type: normalizeFormat(item.format),
+        topic: item.topic,
+        caption: planningNote,
+        publishTime: item.publishTime || '09:00',
+        strategy: strategy._id,
+        autonomousRun: runId,
+        status: 'planned',
+      };
+    }),
+  );
 
   return { strategy, entries };
 };
@@ -111,6 +128,13 @@ const generateStrategy = async ({
   maxEntries = null,
 }) => {
   const entryCount = maxEntries || Math.min(days, 30);
+
+  if (process.env.VERCEL) {
+    const items = buildFallbackItems({ topics, days, channels, entryCount, brandProfile });
+    const parsed = buildFallbackPlan(brandProfile, days, entryCount);
+    return persistStrategy({ workspaceId, userId, days, runId, parsed, items });
+  }
+
   const { system, user } = buildStrategyPrompt({
     brandProfile,
     onboarding,

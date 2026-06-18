@@ -104,6 +104,14 @@ const advanceAutonomousRun = async ({ user, runId, forceUnlock = false }) => {
 
   if (forceUnlock) {
     await AutonomousRun.findByIdAndUpdate(runId, { $unset: { processingLockAt: 1 } });
+  } else {
+    const stale = await AutonomousRun.findById(runId).lean();
+    if (stale?.processingLockAt) {
+      const age = Date.now() - new Date(stale.processingLockAt).getTime();
+      if (age > 8_000) {
+        await AutonomousRun.findByIdAndUpdate(runId, { $unset: { processingLockAt: 1 } });
+      }
+    }
   }
 
   let updated = await advanceAutonomousPipeline(runId);

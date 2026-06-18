@@ -33,8 +33,11 @@ const VIDEO_CAP = 2;
 const BATCH_PAUSE_MS = process.env.VERCEL ? 0 : 3500;
 const ITEMS_PER_TICK = process.env.VERCEL ? 1 : 99;
 const LOCK_TTL_MS = process.env.VERCEL ? 10_000 : 85_000;
-const AUTONOMOUS_MAX_ENTRIES = 8;
+const AUTONOMOUS_MAX_ENTRIES = process.env.VERCEL ? 30 : 8;
 const MIN_TOPICS_TO_REUSE = process.env.VERCEL ? 3 : 5;
+const STEPS_PER_TICK = process.env.VERCEL ? 4 : 1;
+const STALE_STEP_MS = process.env.VERCEL ? 8_000 : 30_000;
+const SLOW_STEPS = new Set(['Content Generation', 'Creative Generation', 'Video Generation', 'Approval & Scheduling']);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -167,6 +170,50 @@ const releasePipelineLock = async (runId) => {
   await AutonomousRun.findByIdAndUpdate(runId, { $unset: { processingLockAt: 1 } });
 };
 
+const buildInMemoryTopics = (brandProfile = {}) => {
+  const seeds = [
+    ...(brandProfile.keywords || []),
+    brandProfile.industry && `${brandProfile.industry} trends`,
+    brandProfile.name && `${brandProfile.name} insights`,
+    brandProfile.valueProposition?.slice(0, 60),
+    'Industry news roundup',
+    'Customer success story',
+    'Product tips and tricks',
+    'Behind the brand',
+  ].filter(Boolean).map((s) => String(s).trim()).filter((s) => s.length > 3);
+  const unique = [...new Set(seeds)].slice(0, 8);
+  if (!unique.length) unique.push(`${brandProfile.name || 'Brand'} update`);
+  return unique.map((topic, i) => ({ topic, relevance: 90 - i * 3 }));
+};
+
+const recoverStaleStepsOnRun = async (run) => {
+  let changed = false;
+  for (const step of run.steps || []) {
+    if (step.status === 'running' && step.startedAt) {
+      const age = Date.now() - new Date(step.startedAt).getTime();
+      if (age > STALE_STEP_MS) {
+        step.status = 'pending';
+        step.startedAt = undefined;
+        step.summary = undefined;
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    run.markModified('steps');
+    await run.save();
+  }
+};
+
+const acquirePipelineLockOrSteal = async (runId) => {
+  let locked = await acquirePipelineLock(runId);
+  if (locked) return locked;
+  await releasePipelineLock(runId);
+  const run = await AutonomousRun.findById(runId);
+  if (run) await recoverStaleStepsOnRun(run);
+  return acquirePipelineLock(runId);
+};
+
 const buildPipelineContext = async (run) => {
   const workspace = await Workspace.findById(run.workspace);
   const brandProfile = workspace?.brandProfile || {};
@@ -177,7 +224,10 @@ const buildPipelineContext = async (run) => {
     : (workspace?.onboarding?.socialChannels || ['linkedin', 'instagram']);
   const stylePref = topPrefs.styles[0]?.name?.toLowerCase() || 'modern';
   const runIdStr = String(run._id);
-  const maxEntries = Math.min(AUTONOMOUS_MAX_ENTRIES, run.days);
+  const calendarEntries = process.env.VERCEL
+    ? Math.min(run.days, 30)
+    : Math.min(AUTONOMOUS_MAX_ENTRIES, run.days);
+  const contentGenCap = process.env.VERCEL ? 8 : calendarEntries;
   return {
     workspace,
     brandProfile,
@@ -185,7 +235,8 @@ const buildPipelineContext = async (run) => {
     channels,
     stylePref,
     runIdStr,
-    maxEntries,
+    maxEntries: calendarEntries,
+    contentGenCap,
   };
 };
 
@@ -255,43 +306,52 @@ const resolveDesignIdeaForRun = async (run) => {
 };
 
 const advanceAutonomousPipeline = async (runId) => {
-  const locked = await acquirePipelineLock(runId);
+  const locked = await acquirePipelineLockOrSteal(runId);
   if (!locked) {
     return AutonomousRun.findById(runId);
   }
 
   let run = locked;
   ensureSteps(run);
-
-  if (run.status === 'completed' || run.status === 'failed') {
-    return run;
-  }
+  let sessionTopics = null;
 
   try {
-    const ctx = await buildPipelineContext(run);
-    if (!ctx.workspace) throw new Error('Workspace not found');
-
-    const currentStep = run.steps.find((s) => s.status === 'running')
-      || run.steps.find((s) => s.status === 'pending');
-
-    if (!currentStep) {
-      run.status = 'completed';
-      run.progress = 100;
-      run.completedAt = new Date();
-      run.label = `${run.days}-Day Campaign — ${run.completedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-      await run.save();
-      return run;
-    }
-
-    if (currentStep.status === 'pending') {
-      await updateStep(run, currentStep.name, 'running');
+    for (let tick = 0; tick < STEPS_PER_TICK; tick += 1) {
       run = await AutonomousRun.findById(runId);
       ensureSteps(run);
-    }
+      await recoverStaleStepsOnRun(run);
+      run = await AutonomousRun.findById(runId);
+      ensureSteps(run);
 
-    let stepDone = false;
+      if (run.status === 'completed' || run.status === 'failed') {
+        return run;
+      }
 
-    switch (currentStep.name) {
+      const ctx = await buildPipelineContext(run);
+      if (!ctx.workspace) throw new Error('Workspace not found');
+
+      const currentStep = run.steps.find((s) => s.status === 'running')
+        || run.steps.find((s) => s.status === 'pending');
+
+      if (!currentStep) {
+        run.status = 'completed';
+        run.progress = 100;
+        run.completedAt = new Date();
+        run.label = `${run.days}-Day Campaign — ${run.completedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        await run.save();
+        return run;
+      }
+
+      if (currentStep.status === 'pending') {
+        await updateStep(run, currentStep.name, 'running');
+        run = await AutonomousRun.findById(runId);
+        ensureSteps(run);
+      }
+
+      let stepDone = false;
+      const stepName = currentStep.name;
+
+      switch (stepName) {
       case 'Brand Setup': {
         if (!ctx.brandProfile.name && !ctx.workspace.onboarding?.companyName) {
           throw new Error('Complete brand onboarding first — run Discover or set up your brand profile');
@@ -301,31 +361,34 @@ const advanceAutonomousPipeline = async (runId) => {
         break;
       }
       case 'Topic Discovery': {
-        await touchStep(run, 'Topic Discovery', 'Seeding topics from brand profile…');
-        const minTopics = process.env.VERCEL ? 3 : MIN_TOPICS_TO_REUSE;
-        const topicCount = await Topic.countDocuments({ workspace: run.workspace, status: 'active' });
-        let topics;
-        if (topicCount >= minTopics) {
-          topics = await Topic.find({ workspace: run.workspace, status: 'active' })
-            .sort({ relevance: -1 }).limit(20).lean();
-        } else if (process.env.VERCEL) {
-          topics = await fallbackTopicsFromBrand(run.workspace, ctx.brandProfile);
+        await touchStep(run, 'Topic Discovery', 'Building topic list from brand profile…');
+        if (process.env.VERCEL) {
+          sessionTopics = buildInMemoryTopics(ctx.brandProfile);
+          fallbackTopicsFromBrand(run.workspace, ctx.brandProfile).catch(() => {});
         } else {
-          const topicDiscoveryService = require('./topicDiscoveryService');
-          topics = await topicDiscoveryService.discoverTopics({
-            workspaceId: run.workspace,
-            brandProfile: ctx.brandProfile,
-          });
+          const topicCount = await Topic.countDocuments({ workspace: run.workspace, status: 'active' });
+          if (topicCount >= MIN_TOPICS_TO_REUSE) {
+            sessionTopics = await Topic.find({ workspace: run.workspace, status: 'active' })
+              .sort({ relevance: -1 }).limit(20).lean();
+          } else {
+            const topicDiscoveryService = require('./topicDiscoveryService');
+            sessionTopics = await topicDiscoveryService.discoverTopics({
+              workspaceId: run.workspace,
+              brandProfile: ctx.brandProfile,
+            });
+          }
         }
-        run.stats.topicsFound = topics.length;
+        run.stats.topicsFound = sessionTopics.length;
         await run.save();
-        await updateStep(run, 'Topic Discovery', 'completed', `${topics.length} topics ready`);
+        await updateStep(run, 'Topic Discovery', 'completed', `${sessionTopics.length} topics ready`);
         stepDone = true;
         break;
       }
       case 'Content Strategy': {
-        const topics = await Topic.find({ workspace: run.workspace, status: 'active' })
-          .sort({ relevance: -1 }).limit(20);
+        await touchStep(run, 'Content Strategy', `Building ${run.days}-day content plan…`);
+        const topics = sessionTopics?.length
+          ? sessionTopics
+          : await Topic.find({ workspace: run.workspace, status: 'active' }).sort({ relevance: -1 }).limit(20).lean();
         const { strategy, entries } = await strategyService.generateStrategy({
           workspaceId: run.workspace,
           userId: run.createdBy,
@@ -348,7 +411,7 @@ const advanceAutonomousPipeline = async (runId) => {
       case 'Content Generation': {
         const entries = await CalendarEntry.find({ autonomousRun: run._id }).sort({ day: 1 });
         const postEntries = entries.filter((e) => ['post', 'carousel', 'story', 'social_post', 'reel', 'video', 'ad_creative'].includes(e.type) || !e.type);
-        const contentTargets = (postEntries.length ? postEntries : entries).slice(0, ctx.maxEntries);
+        const contentTargets = (postEntries.length ? postEntries : entries).slice(0, ctx.contentGenCap);
         const start = run.pipelineState.contentIndex || 0;
         const end = Math.min(start + ITEMS_PER_TICK, contentTargets.length);
 
@@ -612,10 +675,18 @@ const advanceAutonomousPipeline = async (runId) => {
       }
       default:
         stepDone = true;
-    }
+      }
 
-    if (!stepDone) {
-      await run.save();
+      if (!stepDone) {
+        await run.save();
+        break;
+      }
+
+      run = await AutonomousRun.findById(runId);
+      const nextPending = run?.steps?.find((s) => s.status === 'pending');
+      if (!nextPending || SLOW_STEPS.has(nextPending.name)) {
+        break;
+      }
     }
 
     return AutonomousRun.findById(runId);
