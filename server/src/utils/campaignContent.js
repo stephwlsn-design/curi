@@ -14,13 +14,28 @@ const extractBriefKeywords = (brief = '') => {
     .split(/[,;]|\n+|\band\b/i)
     .map((s) => s.trim())
     .filter((s) => s.length > 4 && s.length < 80);
-  if (phrases.length) return [...new Set(phrases)].slice(0, 5);
+  if (phrases.length) return [...new Set(phrases)].slice(0, 8);
+  if (text.length <= 120) return [text];
   return [...new Set(
     text.toLowerCase()
       .replace(/[^a-z0-9\s]/g, ' ')
       .split(/\s+/)
       .filter((w) => w.length > 4 && !STOP_WORDS.has(w)),
-  )].slice(0, 5);
+  )].slice(0, 8);
+};
+
+const extractPromptThemes = (brief = '') => {
+  const text = String(brief).trim();
+  if (!text) return [];
+  const lines = text
+    .split(/\n+/)
+    .flatMap((line) => line.split(/(?<=[.!?])\s+/))
+    .map((s) => s.trim())
+    .filter((s) => s.length > 8 && s.length < 160);
+  const keywords = extractBriefKeywords(text);
+  const combined = [...lines, ...keywords];
+  if (!combined.length) return text.length <= 200 ? [text] : [];
+  return [...new Set(combined.map((s) => s.replace(/\s+/g, ' ').trim()))].filter(Boolean).slice(0, 15);
 };
 
 const subjectFromTopic = (topic = '') => {
@@ -86,11 +101,13 @@ const buildItemsFromPlanBrief = ({
   channels,
   entryCount,
   brandProfile,
+  contentPrompt = '',
 }) => {
   const FORMATS = ['post', 'carousel', 'story', 'video', 'reel'];
   const goals = ['awareness', 'education', 'engagement', 'conversion', 'trust'];
   const count = entryCount || days;
   const themeTopics = (planBrief?.themeTopics || []).filter(Boolean);
+  const promptThemes = extractPromptThemes(contentPrompt);
   const pillars = planBrief?.contentPillars?.length
     ? planBrief.contentPillars
     : ['Education', 'Social proof', 'Product value', 'Thought leadership', 'Community'];
@@ -98,9 +115,12 @@ const buildItemsFromPlanBrief = ({
     ? planBrief.phases
     : getDurationPlan(days).phases;
   const discovered = topics.length ? topics : [{ topic: `${brandProfile?.name || 'Brand'} update` }];
+  const briefKeywords = extractBriefKeywords(contentPrompt || planBrief?.userBrief || planBrief?.summary || '');
+  const briefTopics = briefKeywords.map((k) => ({ topic: String(k).trim(), fromBrief: true }));
   const topicPool = [
-    ...themeTopics.map((t) => ({ topic: String(t).trim() })),
-    ...discovered,
+    ...[...new Set([...promptThemes, ...themeTopics])].map((t) => ({ topic: String(t).trim(), fromAi: true })),
+    ...briefTopics,
+    ...discovered.map((t) => ({ topic: t.topic, fromAi: false })),
   ].filter((t) => t.topic?.length > 3);
   const audience = brandProfile?.audience || 'your audience';
 
@@ -111,10 +131,30 @@ const buildItemsFromPlanBrief = ({
     const channel = channels[i % channels.length] || 'linkedin';
     const poolItem = topicPool[i % topicPool.length];
     const phase = phaseForDay(phases, day, days);
-    const topic = String(poolItem.topic).slice(0, 140);
-    const angle = phase
-      ? `${phase.focus} · ${pillar} for ${audience} on ${channel}`
-      : `${pillar} content for ${audience} on ${channel}`;
+    const useDirectTopic = poolItem.fromAi || poolItem.fromBrief;
+    const topic = useDirectTopic
+      ? String(poolItem.topic).slice(0, 140)
+      : buildPlannedTopic({
+        brandProfile,
+        poolTopic: poolItem,
+        pillar,
+      }).slice(0, 140);
+    let angle = useDirectTopic
+      ? `${pillar} · ${poolItem.topic} · for ${audience} on ${channel}`
+      : buildPlannedAngle({
+        pillar,
+        goal,
+        audience,
+        platform: channel,
+        poolTopic: poolItem,
+        briefKeywords,
+        index: i,
+      });
+    if (!useDirectTopic && briefKeywords.length) {
+      angle = `${briefKeywords[i % briefKeywords.length]} · ${angle}`.slice(0, 180);
+    } else if (phase?.focus && useDirectTopic) {
+      angle = `${poolItem.topic} · ${phase.focus}`.slice(0, 180);
+    }
     return {
       day,
       topic,
@@ -155,9 +195,60 @@ const composeAutonomousPost = ({ entry, brandProfile, platform, campaignBrief = 
   const topic = entry.topic || 'Industry update';
   const subject = subjectFromTopic(topic);
   const keywords = extractBriefKeywords(campaignBrief);
-  const themeHint = keywords[entry.day % Math.max(keywords.length, 1)] || null;
-  const kws = (brandProfile.keywords || []).slice(0, 4);
   const day = entry.day || 1;
+  const themeHint = keywords[(day - 1) % Math.max(keywords.length, 1)] || keywords[0] || null;
+  const strategyAngle = entry.angle || entry.caption || '';
+  const kws = (brandProfile.keywords || []).slice(0, 4);
+
+  if (campaignBrief.trim() && topic) {
+    const focusLine = themeHint
+      ? `This post is part of our focus on ${themeHint}.`
+      : '';
+    const detail = strategyAngle
+      ? strategyAngle.split(' · ').filter((seg) => seg.trim() && seg !== topic).join(' · ').slice(0, 220)
+      : (vp || `${brand} helps ${audience} with ${subject}.`);
+    if (platform === 'instagram') {
+      return {
+        content: `${topic} ✨\n\n${detail}\n\n${focusLine}\n\nTap follow for more from ${brand}.`.replace(/\n\n\n/g, '\n\n').trim(),
+        hashtags: (kws.length ? kws : [brand.replace(/\s+/g, ''), 'content']).slice(0, 8),
+      };
+    }
+    if (platform === 'twitter') {
+      return {
+        content: `${topic}${themeHint ? ` — ${themeHint}` : ''}\n\n${detail}`.slice(0, 280),
+        hashtags: (kws.length ? kws : [brand.replace(/\s+/g, '')]).slice(0, 3),
+      };
+    }
+    return {
+      content: `${topic}\n\n${detail}\n\n${focusLine}\n\nWhat's your perspective?`.replace(/\n\n\n/g, '\n\n').trim(),
+      hashtags: (kws.length ? kws : [brand.replace(/\s+/g, ''), 'marketing']).slice(0, 5),
+    };
+  }
+
+  const angleHook = strategyAngle.split(' · ')[0]?.trim();
+  const briefLine = themeHint ? `This ties into our focus on ${themeHint}.` : '';
+
+  if (strategyAngle && angleHook) {
+    const angleBody = strategyAngle.includes(' · ')
+      ? strategyAngle.split(' · ').slice(1).join(' · ').slice(0, 200)
+      : vp;
+    if (platform === 'instagram') {
+      return {
+        content: `${topic} ✨\n\n${angleHook}\n\n${angleBody || vp || `Built for ${audience}.`}\n\n${briefLine}`.trim(),
+        hashtags: (kws.length ? kws : [brand.replace(/\s+/g, ''), 'content']).slice(0, 8),
+      };
+    }
+    if (platform === 'twitter') {
+      return {
+        content: `${angleHook}\n\n${topic}${themeHint ? ` · ${themeHint}` : ''}`.slice(0, 280),
+        hashtags: (kws.length ? kws : [brand.replace(/\s+/g, '')]).slice(0, 3),
+      };
+    }
+    return {
+      content: `${topic}\n\n${angleHook}\n\n${angleBody || vp || `${brand} helps ${audience} with ${subject}.`}\n\n${briefLine}\n\nWhat's your take?`.trim(),
+      hashtags: (kws.length ? kws : [brand.replace(/\s+/g, ''), 'marketing']).slice(0, 5),
+    };
+  }
 
   const linkedinBodies = [
     `${topic}\n\n${vp || `${brand} helps ${audience} move faster with clearer market intelligence.`}\n\nOne thing we're seeing: teams that act on ${subject} early outperform peers.\n\nWhat's your experience? Drop a comment.`,
@@ -191,12 +282,51 @@ const composeAutonomousPost = ({ entry, brandProfile, platform, campaignBrief = 
   return { content: body.trim(), hashtags: hashtags.slice(0, platform === 'instagram' ? 8 : 5) };
 };
 
+const buildBriefDrivenItems = ({
+  contentPrompt,
+  brandProfile,
+  days,
+  channels,
+  entryCount,
+  designIdea = null,
+}) => {
+  const themes = extractPromptThemes(contentPrompt);
+  if (!themes.length) return null;
+  const FORMATS = ['post', 'carousel', 'story', 'video', 'reel'];
+  const goals = ['awareness', 'education', 'engagement', 'conversion', 'trust'];
+  const audience = brandProfile?.audience || 'your audience';
+  const count = entryCount || days;
+  const visualNote = designIdea?.analyzedDirection || designIdea?.notes || '';
+  return Array.from({ length: count }, (_, i) => {
+    const theme = themes[i % themes.length];
+    const channel = channels[i % channels.length] || 'linkedin';
+    const day = spreadDay(i, count, days);
+    let angle = `${theme} · tailored for ${audience} on ${channel}`;
+    if (visualNote && i % 4 === 0) {
+      angle = `${angle} · match reference aesthetic`.slice(0, 180);
+    }
+    return {
+      day,
+      topic: theme.slice(0, 140),
+      angle: angle.slice(0, 180),
+      goal: goals[i % goals.length],
+      pillar: theme.slice(0, 40),
+      channel,
+      format: FORMATS[i % FORMATS.length],
+      publishTime: ['09:00', '11:00', '12:00', '14:00', '17:00'][i % 5],
+      priority: i + 1,
+    };
+  });
+};
+
 module.exports = {
   extractBriefKeywords,
+  extractPromptThemes,
   buildPlannedTopic,
   buildPlannedAngle,
   buildPlanNarrative,
   buildItemsFromPlanBrief,
+  buildBriefDrivenItems,
   composeAutonomousPost,
   subjectFromTopic,
 };

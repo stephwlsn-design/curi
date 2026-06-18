@@ -148,6 +148,26 @@ const analyzeDesignIdeaIfNeeded = async (designIdea, designService) => {
   return designIdea;
 };
 
+const mergeDesignIdeaSources = (runIdea, workspaceIdea) => {
+  const a = runIdea || {};
+  const b = workspaceIdea || {};
+  if (
+    !a.notes && !a.filename && !a.imageUrl && !a.previewDataUrl && !a.analyzedDirection && !a.analyzedSpec
+    && !b.notes && !b.filename && !b.imageUrl && !b.previewDataUrl && !b.analyzedDirection && !b.analyzedSpec
+  ) {
+    return null;
+  }
+  return {
+    notes: a.notes || b.notes || '',
+    filename: a.filename || b.filename,
+    imageUrl: a.imageUrl || b.imageUrl,
+    previewDataUrl: a.previewDataUrl || b.previewDataUrl,
+    analyzedDirection: a.analyzedDirection || b.analyzedDirection,
+    analyzedSpec: a.analyzedSpec || b.analyzedSpec,
+    uploadedAt: a.uploadedAt || b.uploadedAt,
+  };
+};
+
 module.exports = {
   MAX_PREVIEW_BYTES,
   buildImageDataUrl,
@@ -158,5 +178,6 @@ module.exports = {
   buildStoredDesignIdeaContext,
   attachPreviewFromBuffer,
   analyzeDesignIdeaIfNeeded,
+  mergeDesignIdeaSources,
   UPLOAD_DIR,
 };

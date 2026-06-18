@@ -9,6 +9,8 @@ const {
   buildPlannedAngle,
   buildPlanNarrative,
   buildItemsFromPlanBrief,
+  buildBriefDrivenItems,
+  extractPromptThemes,
 } = require('../utils/campaignContent');
 const logger = require('../utils/logger');
 
@@ -37,31 +39,39 @@ const spreadDay = (index, total, days) => {
 
 const buildFallbackItems = ({ topics, days, channels, entryCount, brandProfile, contentPrompt = '', designIdea = null }) => {
   const pool = topics.length ? topics : [{ topic: `${brandProfile?.name || 'Brand'} update` }];
-  const pillars = ['Education', 'Social proof', 'Product value', 'Thought leadership', 'Community'];
+  const briefKeywords = extractBriefKeywords(contentPrompt);
+  const briefTopics = briefKeywords.map((k) => ({ topic: k, fromBrief: true }));
+  const combinedPool = briefTopics.length ? [...briefTopics, ...pool] : pool;
+  const pillars = briefKeywords.length
+    ? briefKeywords.slice(0, 5).map((k) => k.slice(0, 40))
+    : ['Education', 'Social proof', 'Product value', 'Thought leadership', 'Community'];
   const goals = ['awareness', 'education', 'engagement', 'conversion', 'trust'];
   const count = entryCount || days;
-  const briefKeywords = extractBriefKeywords(contentPrompt);
   const visualNote = designIdea?.analyzedDirection || designIdea?.notes || '';
   return Array.from({ length: count }, (_, i) => {
-    const poolTopic = pool[i % pool.length];
+    const poolTopic = combinedPool[i % combinedPool.length];
     const pillar = pillars[i % pillars.length];
     const goal = goals[i % goals.length];
     const channel = channels[i % channels.length] || 'linkedin';
     const day = spreadDay(i, count, days);
-    const topic = buildPlannedTopic({
-      brandProfile,
-      poolTopic,
-      pillar,
-    });
-    let angle = buildPlannedAngle({
-      pillar,
-      goal,
-      audience: brandProfile?.audience || 'your audience',
-      platform: channel,
-      poolTopic,
-      briefKeywords,
-      index: i,
-    });
+    const topic = poolTopic.fromBrief
+      ? String(poolTopic.topic).slice(0, 140)
+      : buildPlannedTopic({
+        brandProfile,
+        poolTopic,
+        pillar,
+      });
+    let angle = poolTopic.fromBrief
+      ? `${pillar} · ${poolTopic.topic} · for ${brandProfile?.audience || 'your audience'} on ${channel}`
+      : buildPlannedAngle({
+        pillar,
+        goal,
+        audience: brandProfile?.audience || 'your audience',
+        platform: channel,
+        poolTopic,
+        briefKeywords,
+        index: i,
+      });
     if (visualNote && i % 4 === 0) {
       angle = `${angle} · match reference aesthetic`.slice(0, 180);
     }
@@ -193,42 +203,69 @@ const generateStrategy = async ({
   const hasBrief = Boolean(contentPrompt?.trim() || designIdea?.notes || designIdea?.analyzedDirection);
   const canUseAiBrief = gemini.isValidKey(process.env.GEMINI_API_KEY);
 
-  // Vercel: fast AI plan-brief (no 30-item JSON) then deterministic calendar build.
-  if (process.env.VERCEL) {
-    if (hasBrief && canUseAiBrief) {
-      const { system, user } = buildPlanBriefOnlyPrompt({
-        brandProfile,
-        onboarding,
+  const tryPlanBriefStrategy = async () => {
+    if (!canUseAiBrief) return null;
+    const { system, user } = buildPlanBriefOnlyPrompt({
+      brandProfile,
+      onboarding,
+      topics,
+      days,
+      channels,
+      designIdea,
+      contentPrompt,
+    });
+    try {
+      const parsed = await generateJSON({
+        label: 'Strategy plan brief',
+        system,
+        user,
+        temperature: 0.72,
+        once: true,
+        timeoutMs: process.env.VERCEL ? 20_000 : 28_000,
+      });
+      parsed.userBrief = contentPrompt?.trim() || '';
+      const promptThemes = extractPromptThemes(contentPrompt);
+      if (promptThemes.length) {
+        parsed.themeTopics = [...new Set([...promptThemes, ...(parsed.themeTopics || [])])];
+      }
+      const items = buildItemsFromPlanBrief({
+        planBrief: parsed,
         topics,
         days,
         channels,
-        designIdea,
-        contentPrompt,
+        entryCount,
+        brandProfile,
+        contentPrompt: contentPrompt?.trim() || '',
       });
-      try {
-        const parsed = await generateJSON({
-          label: 'Strategy plan brief',
-          system,
-          user,
-          temperature: 0.72,
-          once: true,
-          timeoutMs: 20_000,
-        });
-        parsed.userBrief = contentPrompt?.trim() || '';
-        const items = buildItemsFromPlanBrief({
-          planBrief: parsed,
-          topics,
-          days,
-          channels,
-          entryCount,
-          brandProfile,
-        });
-        logger.info(`Strategy: AI plan brief OK — ${items.length} items from ${parsed.themeTopics?.length || 0} themes`);
-        return persistStrategy({ workspaceId, userId, days, runId, parsed, items });
-      } catch (err) {
-        logger.warn(`Strategy AI plan brief failed on Vercel, using fallback: ${err.message?.slice(0, 100)}`);
-      }
+      logger.info(`Strategy: AI plan brief OK — ${items.length} items from ${parsed.themeTopics?.length || 0} themes`);
+      return persistStrategy({ workspaceId, userId, days, runId, parsed, items });
+    } catch (err) {
+      logger.warn(`Strategy AI plan brief failed: ${err.message?.slice(0, 100)}`);
+      return null;
     }
+  };
+
+  const planBriefResult = await tryPlanBriefStrategy();
+  if (planBriefResult) return planBriefResult;
+
+  if (contentPrompt?.trim()) {
+    const briefItems = buildBriefDrivenItems({
+      contentPrompt,
+      brandProfile,
+      days,
+      channels,
+      entryCount,
+      designIdea,
+    });
+    if (briefItems?.length) {
+      const parsed = buildFallbackPlan(brandProfile, days, entryCount, contentPrompt, designIdea, channels);
+      parsed.userBrief = contentPrompt.trim();
+      logger.info(`Strategy: brief-driven calendar — ${briefItems.length} items from user prompt`);
+      return persistStrategy({ workspaceId, userId, days, runId, parsed, items: briefItems });
+    }
+  }
+
+  if (process.env.VERCEL || hasBrief) {
     return fallbackStrategy();
   }
 

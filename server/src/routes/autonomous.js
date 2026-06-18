@@ -25,9 +25,8 @@ const { createUploadedDesign } = require('../services/designUploadService');
 router.post('/generate', checkCredits(100), async (req, res) => {
   try {
     const { run, message } = await createAutonomousRun({ user: req.user, body: req.body });
-    if (!process.env.VERCEL) {
-      enqueueAutonomousRun(run._id);
-    } else {
+    // Client polls /advance — skip Bull worker locally to avoid lock contention with the UI.
+    if (process.env.VERCEL) {
       enqueueAutonomousRun(run._id).catch(() => {});
     }
     res.status(202).json({ run, message });

@@ -73,8 +73,14 @@ const compactDesignMetadataForStorage = ({
   };
 };
 
+const isResolvableReference = (value) => (
+  typeof value === 'string'
+  && value.length > 0
+  && value !== DATA_URL_PLACEHOLDER
+);
+
 const hydrateCanvasWithReference = (canvas, referenceUrl) => {
-  if (!canvas || !referenceUrl || !isDataUrl(referenceUrl)) return canvas;
+  if (!canvas || !isResolvableReference(referenceUrl)) return canvas;
   const out = { ...canvas };
   if (out.background?.url === DATA_URL_PLACEHOLDER) {
     out.background = { ...out.background, url: referenceUrl };
@@ -82,7 +88,7 @@ const hydrateCanvasWithReference = (canvas, referenceUrl) => {
   if (out.background?.textureUrl === DATA_URL_PLACEHOLDER) {
     out.background = { ...out.background, textureUrl: referenceUrl };
   }
-  if (out.referenceImageUrl === DATA_URL_PLACEHOLDER) {
+  if (out.referenceImageUrl === DATA_URL_PLACEHOLDER || !out.referenceImageUrl) {
     out.referenceImageUrl = referenceUrl;
   }
   if (Array.isArray(out.elements)) {
@@ -103,8 +109,16 @@ const hydrateDesignContent = (content, runDesignIdea) => {
   if (doc.metadata.canvasLayout) {
     doc.metadata.canvasLayout = hydrateCanvasWithReference(doc.metadata.canvasLayout, ref);
   }
-  if (doc.metadata.referenceImageUrl === DATA_URL_PLACEHOLDER || !doc.metadata.referenceImageUrl) {
+  if (
+    doc.metadata.referenceImageUrl === DATA_URL_PLACEHOLDER
+    || !doc.metadata.referenceImageUrl
+    || doc.metadata.canvasLayout?.designIdeaBased
+  ) {
     doc.metadata.referenceImageUrl = ref;
+  }
+  if (doc.metadata.canvasLayout) {
+    doc.metadata.canvasLayout.referenceImageUrl = ref;
+    doc.metadata.canvasLayout.designIdeaBased = true;
   }
   return doc;
 };

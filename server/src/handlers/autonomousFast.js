@@ -1,8 +1,11 @@
 const AutonomousRun = require('../models/AutonomousRun');
 const Content = require('../models/Content');
+const Workspace = require('../models/Workspace');
 const { PIPELINE_STEPS, advanceAutonomousPipeline } = require('../services/autonomousEngineService');
 const { runIdFilter } = require('../services/approvalService');
 const { findAccessibleWorkspace } = require('../utils/workspaceAccess');
+const { mergeDesignIdeaSources } = require('../utils/designIdea');
+const { hydrateDesignContent } = require('../utils/designStorage');
 
 const User = require('../models/User');
 
@@ -22,8 +25,10 @@ const sanitizeDesignIdea = (idea) => {
 const mergeDesignIdeas = (fromBody, fromWorkspace) => {
   const a = fromBody || {};
   const b = fromWorkspace || {};
-  if (!a.notes && !a.imageUrl && !a.filename && !a.previewDataUrl
-    && !b.notes && !b.imageUrl && !b.filename && !b.previewDataUrl) return null;
+  if (!a.notes && !a.imageUrl && !a.filename && !a.previewDataUrl && !a.analyzedDirection && !a.analyzedSpec
+    && !b.notes && !b.imageUrl && !b.filename && !b.previewDataUrl && !b.analyzedDirection && !b.analyzedSpec) {
+    return null;
+  }
   return sanitizeDesignIdea({
     notes: a.notes || b.notes,
     filename: a.filename || b.filename,
@@ -42,13 +47,20 @@ const fetchRunPayload = async (run) => {
     'metadata.module': 'autonomous',
     ...runIdFilter(runId),
   };
+  const ws = await Workspace.findById(run.workspace).select('brandProfile.designIdea').lean();
+  const designIdeaForHydrate = mergeDesignIdeaSources(run.designIdea, ws?.brandProfile?.designIdea)
+    || run.designIdea
+    || ws?.brandProfile?.designIdea
+    || null;
   const creatives = await Content.find({ ...runFilter, type: { $in: ['image', 'video'] } }).sort({ createdAt: 1 });
   const posts = await Content.find({ ...runFilter, type: 'post' }).sort({ createdAt: 1 });
   const hydratedDesigns = creatives
     .filter((c) => c.type === 'image')
-    .map((d) => hydrateDesignContent(d, run.designIdea));
+    .map((d) => hydrateDesignContent(d, designIdeaForHydrate));
   return {
-    run,
+    run: designIdeaForHydrate && JSON.stringify(designIdeaForHydrate) !== JSON.stringify(run.designIdea || {})
+      ? { ...run.toObject?.() ?? run, designIdea: designIdeaForHydrate }
+      : run,
     posts,
     designs: hydratedDesigns,
     videos: creatives.filter((c) => c.type === 'video'),
@@ -96,7 +108,8 @@ const createAutonomousRun = async ({ user, body }) => {
     },
   );
 
-  const runDesignIdea = mergeDesignIdeas(designIdea, workspace.brandProfile?.designIdea);
+  const runDesignIdea = mergeDesignIdeas(designIdea, workspace.brandProfile?.designIdea)
+    || mergeDesignIdeas(null, workspace.brandProfile?.designIdea);
   const run = await AutonomousRun.create({
     workspace: workspaceId,
     createdBy: user._id,
@@ -127,24 +140,28 @@ const advanceAutonomousRun = async ({ user, runId, forceUnlock = false }) => {
 
   if (forceUnlock) {
     await AutonomousRun.findByIdAndUpdate(runId, { $unset: { processingLockAt: 1 } });
-  } else {
-    const stale = await AutonomousRun.findById(runId).lean();
-    if (stale?.processingLockAt) {
-      const age = Date.now() - new Date(stale.processingLockAt).getTime();
-      if (age > 8_000) {
-        await AutonomousRun.findByIdAndUpdate(runId, { $unset: { processingLockAt: 1 } });
-      }
+  }
+
+  const result = await advanceAutonomousPipeline(runId);
+  let updatedRun = result?.run;
+  const busy = Boolean(result?.busy);
+
+  if (!updatedRun && !busy) {
+    await AutonomousRun.findByIdAndUpdate(runId, { $unset: { processingLockAt: 1 } });
+    const retry = await advanceAutonomousPipeline(runId);
+    updatedRun = retry?.run;
+    if (retry?.busy) {
+      const fresh = await AutonomousRun.findById(runId).populate('strategy');
+      return { ...(await fetchRunPayload(fresh)), warning: 'Pipeline step in progress — retry shortly' };
     }
   }
 
-  let updated = await advanceAutonomousPipeline(runId);
-  if (!updated) {
-    await AutonomousRun.findByIdAndUpdate(runId, { $unset: { processingLockAt: 1 } });
-    updated = await advanceAutonomousPipeline(runId);
+  const fresh = await AutonomousRun.findById(updatedRun?._id || runId).populate('strategy');
+  const payload = await fetchRunPayload(fresh);
+  if (busy) {
+    payload.warning = 'Pipeline step in progress — retry shortly';
   }
-
-  const fresh = await AutonomousRun.findById(updated?._id || runId).populate('strategy');
-  return fetchRunPayload(fresh);
+  return payload;
 };
 
 const getAutonomousRun = async ({ user, runId }) => {

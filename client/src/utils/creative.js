@@ -2,12 +2,30 @@ export const toDesignPreview = (item) => {
   const m = item.metadata || item
   const ref = m.referenceImageUrl || item.referenceImageUrl
   let canvasLayout = m.canvasLayout || item.canvasLayout
-  if (ref?.startsWith('data:') && canvasLayout?.background?.url === '__design_reference__') {
+  const placeholder = '__design_reference__'
+  const needsHydration = ref && canvasLayout && (
+    canvasLayout.background?.url === placeholder
+    || canvasLayout.background?.textureUrl === placeholder
+    || canvasLayout.referenceImageUrl === placeholder
+    || !canvasLayout.referenceImageUrl
+  )
+  if (needsHydration) {
     canvasLayout = {
       ...canvasLayout,
-      background: { ...canvasLayout.background, url: ref },
       referenceImageUrl: ref,
       designIdeaBased: true,
+      background: canvasLayout.background
+        ? {
+          ...canvasLayout.background,
+          url: canvasLayout.background.url === placeholder ? ref : canvasLayout.background.url,
+          textureUrl: canvasLayout.background.textureUrl === placeholder ? ref : canvasLayout.background.textureUrl,
+        }
+        : canvasLayout.background,
+      elements: Array.isArray(canvasLayout.elements)
+        ? canvasLayout.elements.map((el) => (
+          el?.src === placeholder ? { ...el, src: ref } : el
+        ))
+        : canvasLayout.elements,
     }
   }
   return {

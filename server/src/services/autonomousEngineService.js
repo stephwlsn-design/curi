@@ -7,6 +7,7 @@ const { fallbackTopicsFromBrand } = require('./topicDiscoveryService');
 const strategyService = require('./strategyService');
 const createService = require('./createService');
 const designService = require('./designService');
+const gemini = require('./geminiService');
 const videoService = require('./videoService');
 const { scoreCreative } = require('./scoringService');
 const { recordInteraction, getTopPreferences } = require('./learningService');
@@ -15,9 +16,10 @@ const Strategy = require('../models/Strategy');
 const CalendarEntry = require('../models/CalendarEntry');
 const { runIdFilter } = require('./approvalService');
 const { applyDesignIdeaToDesign } = require('./designService');
-const { buildStoredDesignIdeaContext } = require('../utils/designIdea');
+const { buildStoredDesignIdeaContext, mergeDesignIdeaSources } = require('../utils/designIdea');
 const { compactDesignMetadataForStorage, hydrateDesignContent } = require('../utils/designStorage');
-const { composeAutonomousPost, extractBriefKeywords } = require('../utils/campaignContent');
+const { designToCanvas, buildCanvasWithDesignIdea } = require('../utils/designCanvas');
+const { composeAutonomousPost, extractBriefKeywords, extractPromptThemes } = require('../utils/campaignContent');
 const logger = require('../utils/logger');
 
 const PIPELINE_STEPS = [
@@ -32,17 +34,15 @@ const PIPELINE_STEPS = [
   'Learning Update',
 ];
 
-const BATCH_PAUSE_MS = process.env.VERCEL ? 0 : 3500;
-const ITEMS_PER_TICK = process.env.VERCEL ? 15 : 99;
-const LOCK_TTL_MS = process.env.VERCEL ? 10_000 : 85_000;
-const AUTONOMOUS_MAX_ENTRIES = process.env.VERCEL ? 30 : 8;
+const BATCH_PAUSE_MS = process.env.VERCEL ? 0 : 400;
+const ITEMS_PER_TICK = process.env.VERCEL ? 15 : 4;
+const LOCK_TTL_MS = process.env.VERCEL ? 10_000 : 120_000;
+const AUTONOMOUS_MAX_ENTRIES = 30;
 const MIN_TOPICS_TO_REUSE = process.env.VERCEL ? 3 : 5;
-const STEPS_PER_TICK = process.env.VERCEL ? 6 : 1;
-const STALE_STEP_MS = process.env.VERCEL ? 5_000 : 30_000;
-const SLOW_STEPS = process.env.VERCEL
-  ? new Set()
-  : new Set(['Content Generation', 'Creative Generation', 'Video Generation', 'Approval & Scheduling']);
-const DESIGN_CAP = process.env.VERCEL ? 10 : 8;
+const STEPS_PER_TICK = process.env.VERCEL ? 6 : 4;
+const STALE_STEP_MS = process.env.VERCEL ? 5_000 : 45_000;
+const SLOW_STEPS = new Set();
+const DESIGN_CAP = process.env.VERCEL ? 10 : 10;
 const VIDEO_CAP = process.env.VERCEL ? 3 : 2;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -65,30 +65,94 @@ const normalizePlatform = (platform) => {
 
 const completedStepCount = (run) => run.steps.filter(s => s.status === 'completed').length;
 
-const setProgress = async (run, completedSteps, stepFraction = 0) => {
-  const total = PIPELINE_STEPS.length;
-  run.progress = Math.min(99, Math.round(((completedSteps + stepFraction) / total) * 100));
-  await run.save();
-};
-
-const updateStep = async (run, stepName, status, summary = null, error = null) => {
-  const step = run.steps.find(s => s.name === stepName);
-  if (step) {
-    step.status = status;
-    if (status === 'running') step.startedAt = new Date();
-    if (status === 'completed' || status === 'failed') step.completedAt = new Date();
-    if (summary) step.summary = summary;
-    if (error) step.error = error;
+const ensureSteps = (run) => {
+  if (!run.steps?.length) {
+    run.steps = PIPELINE_STEPS.map((name) => ({ name, status: 'pending' }));
   }
-  const completed = run.steps.filter(s => s.status === 'completed').length;
-  run.progress = Math.round((completed / run.steps.length) * 100);
-  await run.save();
+  if (!run.pipelineState) {
+    run.pipelineState = { contentIndex: 0, designIndex: 0, videoIndex: 0, designIdeaResolved: false };
+  }
 };
 
-const touchStep = async (run, stepName, summary) => {
-  const step = run.steps.find(s => s.name === stepName);
-  if (step) step.summary = summary;
-  await run.save();
+const runIdOf = (runOrId) => (runOrId?._id ? runOrId._id : runOrId);
+
+const patchAutonomousRun = async (runOrId, mutator) => {
+  const id = runIdOf(runOrId);
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    const run = await AutonomousRun.findById(id);
+    if (!run) return null;
+    ensureSteps(run);
+    mutator(run);
+    try {
+      return await run.save();
+    } catch (err) {
+      const isVersion = err.name === 'VersionError'
+        || /No matching document found/i.test(err.message || '');
+      if (!isVersion || attempt === MAX_ATTEMPTS - 1) throw err;
+      logger.warn(`AutonomousRun save conflict (attempt ${attempt + 1}), retrying…`);
+    }
+  }
+  return null;
+};
+
+const setProgress = async (runOrId, completedSteps, stepFraction = 0) => {
+  return patchAutonomousRun(runOrId, (run) => {
+    const total = PIPELINE_STEPS.length;
+    run.progress = Math.min(99, Math.round(((completedSteps + stepFraction) / total) * 100));
+  });
+};
+
+const updateStep = async (runOrId, stepName, status, summary = null, error = null) => {
+  return patchAutonomousRun(runOrId, (run) => {
+    const step = run.steps.find(s => s.name === stepName);
+    if (step) {
+      step.status = status;
+      if (status === 'running') step.startedAt = new Date();
+      if (status === 'completed' || status === 'failed') step.completedAt = new Date();
+      if (summary) step.summary = summary;
+      if (error) step.error = error;
+    }
+    run.progress = Math.round((run.steps.filter(s => s.status === 'completed').length / run.steps.length) * 100);
+  });
+};
+
+const touchStep = async (runOrId, stepName, summary) => {
+  return patchAutonomousRun(runOrId, (run) => {
+    const step = run.steps.find(s => s.name === stepName);
+    if (step) step.summary = summary;
+  });
+};
+
+const flushBatchStepProgress = async (runOrId, {
+  stepName,
+  indexField,
+  indexValue,
+  statField,
+  statValue,
+  summary,
+  total,
+  complete = false,
+  completeSummary = null,
+}) => {
+  return patchAutonomousRun(runOrId, (run) => {
+    run.pipelineState[indexField] = complete ? 0 : indexValue;
+    run.markModified('pipelineState');
+    if (statField) run.stats[statField] = statValue;
+    const step = run.steps.find((s) => s.name === stepName);
+    if (step) {
+      step.summary = complete ? (completeSummary || summary) : summary;
+      if (complete) {
+        step.status = 'completed';
+        step.completedAt = new Date();
+      }
+    }
+    const completedSteps = run.steps.filter((s) => s.status === 'completed').length;
+    const stepFraction = complete ? 1 : indexValue / Math.max(total, 1);
+    run.progress = complete
+      ? Math.round((completedSteps / run.steps.length) * 100)
+      : Math.min(99, Math.round(((completedSteps + stepFraction) / PIPELINE_STEPS.length) * 100));
+  });
 };
 
 const buildFallbackDesign = (entry, brandProfile, stylePref, designIdeaContext = null) => {
@@ -153,15 +217,6 @@ const predictPublishTime = (platform, day, baseTime = '09:00') => {
   return date;
 };
 
-const ensureSteps = (run) => {
-  if (!run.steps?.length) {
-    run.steps = PIPELINE_STEPS.map((name) => ({ name, status: 'pending' }));
-  }
-  if (!run.pipelineState) {
-    run.pipelineState = { contentIndex: 0, designIndex: 0, videoIndex: 0, designIdeaResolved: false };
-  }
-};
-
 const acquirePipelineLock = async (runId) => {
   const staleBefore = new Date(Date.now() - LOCK_TTL_MS);
   return AutonomousRun.findOneAndUpdate(
@@ -201,31 +256,39 @@ const buildInMemoryTopics = (brandProfile = {}, contentPrompt = '') => {
   return unique.map((topic, i) => ({ topic, relevance: 90 - i * 3 }));
 };
 
-const recoverStaleStepsOnRun = async (run) => {
-  let changed = false;
-  for (const step of run.steps || []) {
-    if (step.status === 'running' && step.startedAt) {
-      const age = Date.now() - new Date(step.startedAt).getTime();
-      if (age > STALE_STEP_MS) {
-        step.status = 'pending';
-        step.startedAt = undefined;
-        step.summary = undefined;
-        changed = true;
+const recoverStaleStepsOnRun = async (runOrId) => {
+  return patchAutonomousRun(runOrId, (run) => {
+    for (const step of run.steps || []) {
+      if (step.status === 'running' && step.startedAt) {
+        const age = Date.now() - new Date(step.startedAt).getTime();
+        if (age > STALE_STEP_MS) {
+          step.status = 'pending';
+          step.startedAt = undefined;
+          step.summary = undefined;
+        }
       }
     }
-  }
-  if (changed) {
     run.markModified('steps');
-    await run.save();
-  }
+  });
 };
 
 const acquirePipelineLockOrSteal = async (runId) => {
-  let locked = await acquirePipelineLock(runId);
+  const locked = await acquirePipelineLock(runId);
   if (locked) return locked;
+
+  const existing = await AutonomousRun.findById(runId).lean();
+  if (!existing) return null;
+
+  const lockAt = existing.processingLockAt
+    ? new Date(existing.processingLockAt).getTime()
+    : 0;
+  const lockAge = lockAt ? Date.now() - lockAt : Number.POSITIVE_INFINITY;
+
+  // Another advance is still running — never steal an active lock.
+  if (lockAge < LOCK_TTL_MS) return null;
+
   await releasePipelineLock(runId);
-  const run = await AutonomousRun.findById(runId);
-  if (run) await recoverStaleStepsOnRun(run);
+  await recoverStaleStepsOnRun(runId);
   return acquirePipelineLock(runId);
 };
 
@@ -239,10 +302,8 @@ const buildPipelineContext = async (run) => {
     : (workspace?.onboarding?.socialChannels || ['linkedin', 'instagram']);
   const stylePref = topPrefs.styles[0]?.name?.toLowerCase() || 'modern';
   const runIdStr = String(run._id);
-  const calendarEntries = process.env.VERCEL
-    ? Math.min(run.days, 30)
-    : Math.min(AUTONOMOUS_MAX_ENTRIES, run.days);
-  const contentGenCap = process.env.VERCEL ? calendarEntries : Math.min(AUTONOMOUS_MAX_ENTRIES, run.days);
+  const calendarEntries = Math.min(run.days, AUTONOMOUS_MAX_ENTRIES);
+  const contentGenCap = calendarEntries;
   return {
     workspace,
     brandProfile,
@@ -258,11 +319,16 @@ const buildPipelineContext = async (run) => {
 const generateOnePost = async (run, entry, brandProfile, runIdStr, contentPrompt = '') => {
   const platform = normalizePlatform(entry.platform);
   const brief = contentPrompt?.trim() || '';
+  const creativeAngle = entry.angle || entry.caption || '';
+  const strategyDriven = Boolean(brief || creativeAngle);
   let generated;
 
-  if (process.env.VERCEL) {
+  const useComposed = process.env.VERCEL
+    || strategyDriven
+    || !gemini.isValidKey(process.env.GEMINI_API_KEY);
+  if (useComposed) {
     generated = composeAutonomousPost({
-      entry,
+      entry: { ...entry, angle: creativeAngle },
       brandProfile,
       platform,
       campaignBrief: brief,
@@ -276,12 +342,12 @@ const generateOnePost = async (run, entry, brandProfile, runIdStr, contentPrompt
         tone: brandProfile.voice || 'professional',
         type: ['carousel', 'story', 'video', 'reel'].includes(entry.type) ? 'social_post' : (entry.type || 'social_post'),
         campaignBrief: brief,
-        creativeAngle: entry.caption,
+        creativeAngle,
       });
     } catch (e) {
       logger.warn(`Post AI failed day ${entry.day}, using composed fallback: ${e.message?.slice(0, 80)}`);
       generated = composeAutonomousPost({
-        entry,
+        entry: { ...entry, angle: creativeAngle },
         brandProfile,
         platform,
         campaignBrief: brief,
@@ -309,20 +375,19 @@ const generateOnePost = async (run, entry, brandProfile, runIdStr, contentPrompt
   return content._id;
 };
 
-const resolveDesignIdeaForRun = async (run) => {
-  const idea = run.designIdea;
+const resolveDesignIdeaForRun = (run, workspaceDesignIdea = null) => {
+  const idea = mergeDesignIdeaSources(run.designIdea, workspaceDesignIdea);
   if (!idea?.notes && !idea?.filename && !idea?.imageUrl && !idea?.previewDataUrl
     && !idea?.analyzedDirection && !idea?.analyzedSpec) {
     return null;
   }
-  // Use upload-time analysis only — do not block design generation with another Gemini call.
   return buildStoredDesignIdeaContext(idea);
 };
 
 const advanceAutonomousPipeline = async (runId) => {
   const locked = await acquirePipelineLockOrSteal(runId);
   if (!locked) {
-    return AutonomousRun.findById(runId);
+    return { run: await AutonomousRun.findById(runId), busy: true };
   }
 
   let run = locked;
@@ -333,31 +398,41 @@ const advanceAutonomousPipeline = async (runId) => {
     for (let tick = 0; tick < STEPS_PER_TICK; tick += 1) {
       run = await AutonomousRun.findById(runId);
       ensureSteps(run);
-      await recoverStaleStepsOnRun(run);
+      await recoverStaleStepsOnRun(runId);
       run = await AutonomousRun.findById(runId);
       ensureSteps(run);
 
       if (run.status === 'completed' || run.status === 'failed') {
-        return run;
+        return { run, busy: false };
       }
 
       const ctx = await buildPipelineContext(run);
       if (!ctx.workspace) throw new Error('Workspace not found');
 
+      const mergedIdea = mergeDesignIdeaSources(run.designIdea, ctx.workspace.brandProfile?.designIdea);
+      if (mergedIdea && JSON.stringify(mergedIdea) !== JSON.stringify(run.designIdea || {})) {
+        await patchAutonomousRun(runId, (doc) => {
+          doc.designIdea = mergedIdea;
+          doc.markModified('designIdea');
+        });
+        run = await AutonomousRun.findById(runId);
+      }
+
       const currentStep = run.steps.find((s) => s.status === 'running')
         || run.steps.find((s) => s.status === 'pending');
 
       if (!currentStep) {
-        run.status = 'completed';
-        run.progress = 100;
-        run.completedAt = new Date();
-        run.label = `${run.days}-Day Campaign — ${run.completedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-        await run.save();
-        return run;
+        await patchAutonomousRun(runId, (doc) => {
+          doc.status = 'completed';
+          doc.progress = 100;
+          doc.completedAt = new Date();
+          doc.label = `${doc.days}-Day Campaign — ${doc.completedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        });
+        return { run: await AutonomousRun.findById(runId), busy: false };
       }
 
       if (currentStep.status === 'pending') {
-        await updateStep(run, currentStep.name, 'running');
+        await updateStep(runId, currentStep.name, 'running');
         run = await AutonomousRun.findById(runId);
         ensureSteps(run);
       }
@@ -370,12 +445,12 @@ const advanceAutonomousPipeline = async (runId) => {
         if (!ctx.brandProfile.name && !ctx.workspace.onboarding?.companyName) {
           throw new Error('Complete brand onboarding first — run Discover or set up your brand profile');
         }
-        await updateStep(run, 'Brand Setup', 'completed', `Brand: ${ctx.brandProfile.name || ctx.workspace.onboarding.companyName}`);
+        await updateStep(runId, 'Brand Setup', 'completed', `Brand: ${ctx.brandProfile.name || ctx.workspace.onboarding.companyName}`);
         stepDone = true;
         break;
       }
       case 'Topic Discovery': {
-        await touchStep(run, 'Topic Discovery', 'Building topic list from brand profile…');
+        await touchStep(runId, 'Topic Discovery', 'Building topic list from brand profile…');
         if (process.env.VERCEL) {
           sessionTopics = buildInMemoryTopics(ctx.brandProfile, run.contentPrompt);
           fallbackTopicsFromBrand(run.workspace, ctx.brandProfile).catch(() => {});
@@ -392,20 +467,21 @@ const advanceAutonomousPipeline = async (runId) => {
             });
           }
         }
-        run.stats.topicsFound = sessionTopics.length;
-        await run.save();
-        await updateStep(run, 'Topic Discovery', 'completed', `${sessionTopics.length} topics ready`);
+        await patchAutonomousRun(runId, (doc) => {
+          doc.stats.topicsFound = sessionTopics.length;
+        });
+        await updateStep(runId, 'Topic Discovery', 'completed', `${sessionTopics.length} topics ready`);
         stepDone = true;
         break;
       }
       case 'Content Strategy': {
         if (run.strategy) {
           const planned = await CalendarEntry.countDocuments({ autonomousRun: run._id });
-          await updateStep(run, 'Content Strategy', 'completed', `${planned} calendar entries planned`);
+          await updateStep(runId, 'Content Strategy', 'completed', `${planned} calendar entries planned`);
           stepDone = true;
           break;
         }
-        await touchStep(run, 'Content Strategy', `Building ${run.days}-day content plan…`);
+        await touchStep(runId, 'Content Strategy', `Building ${run.days}-day content plan…`);
         const topics = sessionTopics?.length
           ? sessionTopics
           : await Topic.find({ workspace: run.workspace, status: 'active' }).sort({ relevance: -1 }).limit(20).lean();
@@ -429,9 +505,10 @@ const advanceAutonomousPipeline = async (runId) => {
           logger.error(`Content Strategy failed: ${e.message}`);
           throw e;
         }
-        run.strategy = strategyResult.strategy._id;
-        await run.save();
-        await updateStep(run, 'Content Strategy', 'completed', `${strategyResult.entries.length} calendar entries planned`);
+        await patchAutonomousRun(runId, (doc) => {
+          doc.strategy = strategyResult.strategy._id;
+        });
+        await updateStep(runId, 'Content Strategy', 'completed', `${strategyResult.entries.length} calendar entries planned`);
         stepDone = true;
         break;
       }
@@ -451,26 +528,26 @@ const advanceAutonomousPipeline = async (runId) => {
           if (i + 1 < end) await sleep(BATCH_PAUSE_MS);
         }
 
-        run.pipelineState.contentIndex = end;
-        run.markModified('pipelineState');
         const generated = await Content.countDocuments({
           workspace: run.workspace, type: 'post', 'metadata.runId': ctx.runIdStr,
         });
-        run.stats.contentGenerated = generated;
-        await touchStep(run, 'Content Generation', `Writing posts — ${generated}/${contentTargets.length}`);
-        await setProgress(run, completedStepCount(run), end / Math.max(contentTargets.length, 1));
-
-        if (end >= contentTargets.length) {
-          await updateStep(run, 'Content Generation', 'completed', `${generated} posts written`);
-          run.pipelineState.contentIndex = 0;
-          run.markModified('pipelineState');
-          await run.save();
-          stepDone = true;
-        }
+        const stepComplete = end >= contentTargets.length;
+        await flushBatchStepProgress(runId, {
+          stepName: 'Content Generation',
+          indexField: 'contentIndex',
+          indexValue: end,
+          statField: 'contentGenerated',
+          statValue: generated,
+          summary: `Writing posts — ${generated}/${contentTargets.length}`,
+          total: contentTargets.length,
+          complete: stepComplete,
+          completeSummary: `${generated} posts written`,
+        });
+        if (stepComplete) stepDone = true;
         break;
       }
       case 'Creative Generation': {
-        const designIdeaContext = await resolveDesignIdeaForRun(run);
+        const designIdeaContext = resolveDesignIdeaForRun(run, ctx.workspace.brandProfile?.designIdea);
         run = await AutonomousRun.findById(runId);
         const freshEntries = await CalendarEntry.find({ autonomousRun: run._id }).sort({ day: 1 });
         let designSources = freshEntries.filter((e) => e.caption || e.topic);
@@ -494,8 +571,9 @@ const advanceAutonomousPipeline = async (runId) => {
           const entry = designSources[i];
           try {
             const platform = normalizePlatform(entry.platform);
+            const useDesignIdea = Boolean(designIdeaContext);
             let design;
-            if (process.env.VERCEL) {
+            if (useDesignIdea || process.env.VERCEL) {
               design = buildFallbackDesign(entry, ctx.brandProfile, ctx.stylePref, designIdeaContext);
             } else {
             try {
@@ -521,7 +599,7 @@ const advanceAutonomousPipeline = async (runId) => {
             const dimId = entry.type === 'story' ? '1080x1920' : '1080x1080';
             let canvasLayout;
             try {
-              canvasLayout = (designIdeaContext?.imageUrl || designIdeaContext?.spec?.colorPalette)
+              canvasLayout = designIdeaContext
                 ? buildCanvasWithDesignIdea(design, designIdeaContext, dimId)
                 : (design.canvasLayout || designToCanvas(design));
             } catch (canvasErr) {
@@ -558,27 +636,27 @@ const advanceAutonomousPipeline = async (runId) => {
           if (i + 1 < end) await sleep(BATCH_PAUSE_MS);
         }
 
-        run.pipelineState.designIndex = end;
-        run.markModified('pipelineState');
         const designCount = await Content.countDocuments({
           workspace: run.workspace,
           type: 'image',
           ...runIdFilter(ctx.runIdStr),
         });
-        run.stats.designsGenerated = designCount;
-        await touchStep(run, 'Creative Generation', `Designs — ${end}/${designSources.length}`);
-        await setProgress(run, completedStepCount(run), designSources.length ? end / designSources.length : 1);
-
-        if (end >= designSources.length) {
-          const summary = designCount > 0
-            ? `${designCount} design assets created`
-            : 'No calendar items to design — check content strategy step';
-          await updateStep(run, 'Creative Generation', 'completed', summary);
-          run.pipelineState.designIndex = 0;
-          run.markModified('pipelineState');
-          await run.save();
-          stepDone = true;
-        }
+        const designStepComplete = end >= designSources.length;
+        const designSummary = designCount > 0
+          ? `${designCount} design assets created`
+          : 'No calendar items to design — check content strategy step';
+        await flushBatchStepProgress(runId, {
+          stepName: 'Creative Generation',
+          indexField: 'designIndex',
+          indexValue: end,
+          statField: 'designsGenerated',
+          statValue: designCount,
+          summary: `Designs — ${end}/${designSources.length}`,
+          total: designSources.length,
+          complete: designStepComplete,
+          completeSummary: designSummary,
+        });
+        if (designStepComplete) stepDone = true;
         break;
       }
       case 'Video Generation': {
@@ -630,22 +708,22 @@ const advanceAutonomousPipeline = async (runId) => {
           if (i + 1 < end) await sleep(BATCH_PAUSE_MS);
         }
 
-        run.pipelineState.videoIndex = end;
-        run.markModified('pipelineState');
         const videoCount = await Content.countDocuments({
           workspace: run.workspace, type: 'video', 'metadata.runId': ctx.runIdStr,
         });
-        run.stats.videosGenerated = videoCount;
-        await touchStep(run, 'Video Generation', `Videos — ${end}/${videoTargets.length}`);
-        await setProgress(run, completedStepCount(run), end / Math.max(videoTargets.length, 1));
-
-        if (end >= videoTargets.length) {
-          await updateStep(run, 'Video Generation', 'completed', `${videoCount} video scripts created`);
-          run.pipelineState.videoIndex = 0;
-          run.markModified('pipelineState');
-          await run.save();
-          stepDone = true;
-        }
+        const videoStepComplete = end >= videoTargets.length;
+        await flushBatchStepProgress(runId, {
+          stepName: 'Video Generation',
+          indexField: 'videoIndex',
+          indexValue: end,
+          statField: 'videosGenerated',
+          statValue: videoCount,
+          summary: `Videos — ${end}/${videoTargets.length}`,
+          total: videoTargets.length,
+          complete: videoStepComplete,
+          completeSummary: `${videoCount} video scripts created`,
+        });
+        if (videoStepComplete) stepDone = true;
         break;
       }
       case 'Creative Scoring': {
@@ -663,9 +741,10 @@ const advanceAutonomousPipeline = async (runId) => {
             ...runIdFilter(ctx.runIdStr),
             status: 'review',
           });
-          run.stats.approved = 0;
-          await run.save();
-          await updateStep(run, 'Creative Scoring', 'completed', `${reviewCount} assets queued for approval`);
+          await patchAutonomousRun(runId, (doc) => {
+            doc.stats.approved = 0;
+          });
+          await updateStep(runId, 'Creative Scoring', 'completed', `${reviewCount} assets queued for approval`);
           stepDone = true;
           break;
         }
@@ -688,9 +767,10 @@ const advanceAutonomousPipeline = async (runId) => {
           }
           await item.save();
         }
-        run.stats.approved = approvedCount;
-        await run.save();
-        await updateStep(run, 'Creative Scoring', 'completed', `${approvedCount} assets scored above 80`);
+        await patchAutonomousRun(runId, (doc) => {
+          doc.stats.approved = approvedCount;
+        });
+        await updateStep(runId, 'Creative Scoring', 'completed', `${approvedCount} assets scored above 80`);
         stepDone = true;
         break;
       }
@@ -727,7 +807,6 @@ const advanceAutonomousPipeline = async (runId) => {
           if (entryIds.length) {
             await CalendarEntry.updateMany({ _id: { $in: entryIds } }, { $set: { status: 'planned' } });
           }
-          run.stats.scheduled = 0;
         } else {
         for (const entry of entries) {
           if (!entry.content) continue;
@@ -751,7 +830,9 @@ const advanceAutonomousPipeline = async (runId) => {
           scheduledCount++;
         }
         }
-        run.stats.scheduled = scheduledCount;
+        await patchAutonomousRun(runId, (doc) => {
+          doc.stats.scheduled = scheduledCount;
+        });
         const contentCount = await Content.countDocuments({
           workspace: run.workspace, type: 'post', 'metadata.runId': ctx.runIdStr,
         });
@@ -761,8 +842,7 @@ const advanceAutonomousPipeline = async (runId) => {
         ctx.workspace.stats.imagesGenerated = (ctx.workspace.stats.imagesGenerated || 0) + designCount;
         ctx.workspace.stats.videosGenerated = (ctx.workspace.stats.videosGenerated || 0) + videoCount;
         await ctx.workspace.save();
-        await run.save();
-        await updateStep(run, 'Approval & Scheduling', 'completed', process.env.VERCEL
+        await updateStep(runId, 'Approval & Scheduling', 'completed', process.env.VERCEL
           ? `${scheduledCount} items positioned for approval & scheduling`
           : `${scheduledCount} posts scheduled for publishing`);
         stepDone = true;
@@ -776,12 +856,13 @@ const advanceAutonomousPipeline = async (runId) => {
           format: ctx.topPrefs.formats[0]?.name || 'carousel',
           channel: ctx.channels[0],
         });
-        await updateStep(run, 'Learning Update', 'completed', 'Preferences updated for future campaigns');
-        run.status = 'completed';
-        run.progress = 100;
-        run.completedAt = new Date();
-        run.label = `${run.days}-Day Campaign — ${run.completedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-        await run.save();
+        await updateStep(runId, 'Learning Update', 'completed', 'Preferences updated for future campaigns');
+        await patchAutonomousRun(runId, (doc) => {
+          doc.status = 'completed';
+          doc.progress = 100;
+          doc.completedAt = new Date();
+          doc.label = `${doc.days}-Day Campaign — ${doc.completedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        });
         logger.info(`Autonomous pipeline completed: run ${runId}`);
         stepDone = true;
         break;
@@ -791,7 +872,6 @@ const advanceAutonomousPipeline = async (runId) => {
       }
 
       if (!stepDone) {
-        await run.save();
         break;
       }
 
@@ -802,21 +882,32 @@ const advanceAutonomousPipeline = async (runId) => {
       }
     }
 
-    return AutonomousRun.findById(runId);
+    return { run: await AutonomousRun.findById(runId), busy: false };
   } catch (err) {
+    const isVersion = err.name === 'VersionError'
+      || /No matching document found/i.test(err.message || '');
+    if (isVersion) {
+      logger.warn(`Autonomous advance version conflict — returning current state: ${err.message?.slice(0, 120)}`);
+      return { run: await AutonomousRun.findById(runId), busy: false };
+    }
     logger.error(`Autonomous advance failed: ${err.message}`);
     run = await AutonomousRun.findById(runId);
     if (run && run.status !== 'failed' && run.status !== 'completed') {
-      run.status = 'failed';
-      run.error = err.message;
-      const activeStep = run.steps?.find((s) => s.status === 'running');
-      if (activeStep) {
-        activeStep.status = 'failed';
-        activeStep.error = err.message;
-        activeStep.completedAt = new Date();
-        run.markModified('steps');
+      try {
+        await patchAutonomousRun(runId, (doc) => {
+          doc.status = 'failed';
+          doc.error = err.message;
+          const activeStep = doc.steps?.find((s) => s.status === 'running');
+          if (activeStep) {
+            activeStep.status = 'failed';
+            activeStep.error = err.message;
+            activeStep.completedAt = new Date();
+          }
+          doc.markModified('steps');
+        });
+      } catch (saveErr) {
+        logger.error(`Could not persist failed run state: ${saveErr.message}`);
       }
-      await run.save();
     }
     throw err;
   } finally {
@@ -827,7 +918,9 @@ const advanceAutonomousPipeline = async (runId) => {
 const runAutonomousPipeline = async ({ runId }) => {
   let safety = 0;
   while (safety++ < 250) {
-    const run = await advanceAutonomousPipeline(runId);
+    const result = await advanceAutonomousPipeline(runId);
+    const run = result?.run ?? result;
+    if (result?.busy) return run;
     if (!run || run.status === 'completed' || run.status === 'failed') return run;
     const pending = run.steps?.some((s) => s.status !== 'completed');
     if (!pending) return run;

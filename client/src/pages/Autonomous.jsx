@@ -109,6 +109,7 @@ export default function Autonomous() {
   const pollRef = useRef(null)
   const pollRunIdRef = useRef(null)
   const lastProgressRef = useRef({ progress: -1, at: Date.now() })
+  const advanceInFlightRef = useRef(false)
   const stuckRetriesRef = useRef(0)
   const progressPanelRef = useRef(null)
 
@@ -214,7 +215,7 @@ export default function Autonomous() {
       const { data } = await API.post(
         `/autonomous/run/${run._id}/advance`,
         { forceUnlock: true },
-        { timeout: 55000 },
+        { timeout: 90000 },
       )
       applyRunPayload(data)
       const cal = await API.get(`/autonomous/calendar?workspaceId=${workspaceId}&runId=${run._id}`).catch(() => ({ data: { entries: [] } }))
@@ -250,11 +251,13 @@ export default function Autonomous() {
 
     const tick = async () => {
       if (pollRunIdRef.current !== runId) return
+      if (advanceInFlightRef.current) return
+      advanceInFlightRef.current = true
       try {
         const { data } = await API.post(
           `/autonomous/run/${runId}/advance`,
           { forceUnlock: useForceUnlock },
-          { timeout: 55000 },
+          { timeout: 90000 },
         )
         useForceUnlock = false
         stuckRetriesRef.current = 0
@@ -265,19 +268,19 @@ export default function Autonomous() {
 
         if (data.warning) {
           toast(data.warning, { icon: '⏳' })
-          pollRef.current = setTimeout(() => pollRun(runId, { forceUnlock: true }), 1000)
+          pollRef.current = setTimeout(tick, 2000)
           return
         }
 
         const progress = data.run?.progress ?? 0
-        const stuckMs = progress <= 25 ? 12_000 : 20_000
+        const stuckMs = progress <= 25 ? 45_000 : 60_000
         if (progress !== lastProgressRef.current.progress) {
           lastProgressRef.current = { progress, at: Date.now() }
-        } else if (Date.now() - lastProgressRef.current.at > stuckMs && stuckRetriesRef.current < 6) {
+        } else if (Date.now() - lastProgressRef.current.at > stuckMs && stuckRetriesRef.current < 4) {
           stuckRetriesRef.current += 1
           lastProgressRef.current.at = Date.now()
-          toast('Pipeline may be stuck — retrying with unlock…', { icon: '⏳' })
-          pollRef.current = setTimeout(() => pollRun(runId, { forceUnlock: true }), 500)
+          toast('Pipeline still running — checking again…', { icon: '⏳' })
+          pollRef.current = setTimeout(tick, 4000)
           return
         }
 
@@ -315,12 +318,15 @@ export default function Autonomous() {
         } else {
           await refreshRunState(runId)
         }
-        if (isTimeout && stuckRetriesRef.current < 5) {
+        if (isTimeout && stuckRetriesRef.current < 3) {
           stuckRetriesRef.current += 1
-          pollRef.current = setTimeout(() => pollRun(runId, { forceUnlock: true }), 3000)
+          const force = stuckRetriesRef.current >= 2
+          pollRef.current = setTimeout(() => pollRun(runId, { forceUnlock: force }), 10_000)
           return
         }
-        pollRef.current = setTimeout(tick, 1500)
+        pollRef.current = setTimeout(tick, 2000)
+      } finally {
+        advanceInFlightRef.current = false
       }
     }
 
@@ -430,7 +436,7 @@ export default function Autonomous() {
         days,
         channels,
         contentPrompt: contentPrompt.trim(),
-        designIdea: sanitizeDesignIdea(designIdea),
+        designIdea: sanitizeDesignIdea(designIdea || workspace?.brandProfile?.designIdea),
       }, { timeout: 45000 })
       if (!data?.run?._id) throw new Error('No run returned from server')
       setRun(data.run)
