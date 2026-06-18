@@ -221,7 +221,7 @@ export default function Autonomous() {
         const progress = data.run?.progress ?? 0
         if (progress !== lastProgressRef.current.progress) {
           lastProgressRef.current = { progress, at: Date.now() }
-        } else if (Date.now() - lastProgressRef.current.at > 45000 && stuckRetriesRef.current < 3) {
+        } else if (Date.now() - lastProgressRef.current.at > 20000 && stuckRetriesRef.current < 3) {
           stuckRetriesRef.current += 1
           lastProgressRef.current.at = Date.now()
           toast('Pipeline may be stuck — retrying with unlock…', { icon: '⏳' })
@@ -247,7 +247,7 @@ export default function Autonomous() {
         const cal = await API.get(`/autonomous/calendar?workspaceId=${workspaceId}&runId=${runId}`).catch(() => ({ data: { entries: [] } }))
         if (cal.data.entries?.length) setEntries(cal.data.entries)
 
-        pollRef.current = setTimeout(tick, 2000)
+        pollRef.current = setTimeout(tick, 800)
       } catch (err) {
         const isTimeout = err.code === 'ECONNABORTED' || err.response?.status === 504
         if (err.response?.data?.run) {
@@ -268,7 +268,7 @@ export default function Autonomous() {
           pollRef.current = setTimeout(() => pollRun(runId, { forceUnlock: true }), 3000)
           return
         }
-        pollRef.current = setTimeout(tick, 3500)
+        pollRef.current = setTimeout(tick, 1500)
       }
     }
 

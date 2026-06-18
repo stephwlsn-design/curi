@@ -30,11 +30,11 @@ const PIPELINE_STEPS = [
 
 const DESIGN_CAP = 3;
 const VIDEO_CAP = 2;
-const BATCH_PAUSE_MS = process.env.VERCEL ? 600 : 3500;
+const BATCH_PAUSE_MS = process.env.VERCEL ? 0 : 3500;
 const ITEMS_PER_TICK = process.env.VERCEL ? 1 : 99;
-const LOCK_TTL_MS = process.env.VERCEL ? 15_000 : 85_000;
+const LOCK_TTL_MS = process.env.VERCEL ? 10_000 : 85_000;
 const AUTONOMOUS_MAX_ENTRIES = 8;
-const MIN_TOPICS_TO_REUSE = 5;
+const MIN_TOPICS_TO_REUSE = process.env.VERCEL ? 3 : 5;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -301,22 +301,25 @@ const advanceAutonomousPipeline = async (runId) => {
         break;
       }
       case 'Topic Discovery': {
-        let topics = await Topic.find({ workspace: run.workspace, status: 'active' })
-          .sort({ relevance: -1 }).limit(20);
-        if (topics.length < MIN_TOPICS_TO_REUSE) {
-          if (process.env.VERCEL) {
-            topics = await fallbackTopicsFromBrand(run.workspace, ctx.brandProfile);
-          } else {
-            const topicDiscoveryService = require('./topicDiscoveryService');
-            topics = await topicDiscoveryService.discoverTopics({
-              workspaceId: run.workspace,
-              brandProfile: ctx.brandProfile,
-            });
-          }
+        await touchStep(run, 'Topic Discovery', 'Seeding topics from brand profile…');
+        const minTopics = process.env.VERCEL ? 3 : MIN_TOPICS_TO_REUSE;
+        const topicCount = await Topic.countDocuments({ workspace: run.workspace, status: 'active' });
+        let topics;
+        if (topicCount >= minTopics) {
+          topics = await Topic.find({ workspace: run.workspace, status: 'active' })
+            .sort({ relevance: -1 }).limit(20).lean();
+        } else if (process.env.VERCEL) {
+          topics = await fallbackTopicsFromBrand(run.workspace, ctx.brandProfile);
+        } else {
+          const topicDiscoveryService = require('./topicDiscoveryService');
+          topics = await topicDiscoveryService.discoverTopics({
+            workspaceId: run.workspace,
+            brandProfile: ctx.brandProfile,
+          });
         }
         run.stats.topicsFound = topics.length;
         await run.save();
-        await updateStep(run, 'Topic Discovery', 'completed', `${topics.length} topics discovered`);
+        await updateStep(run, 'Topic Discovery', 'completed', `${topics.length} topics ready`);
         stepDone = true;
         break;
       }

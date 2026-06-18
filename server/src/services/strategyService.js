@@ -130,7 +130,7 @@ const generateStrategy = async ({
       system,
       user,
       temperature: 0.72,
-      timeoutMs: process.env.VERCEL ? 22_000 : 55_000,
+      timeoutMs: process.env.VERCEL ? 15_000 : 55_000,
     });
   } catch (err) {
     logger.warn(`Strategy AI failed, using topic-based fallback: ${err.message?.slice(0, 100)}`);
