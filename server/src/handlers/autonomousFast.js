@@ -12,8 +12,23 @@ const sanitizeDesignIdea = (idea) => {
     filename: idea.filename || undefined,
     imageUrl: idea.imageUrl || undefined,
     analyzedDirection: idea.analyzedDirection || undefined,
+    analyzedSpec: idea.analyzedSpec || undefined,
     uploadedAt: idea.uploadedAt || undefined,
   };
+};
+
+const mergeDesignIdeas = (fromBody, fromWorkspace) => {
+  const a = fromBody || {};
+  const b = fromWorkspace || {};
+  if (!a.notes && !a.imageUrl && !a.filename && !b.notes && !b.imageUrl && !b.filename) return null;
+  return sanitizeDesignIdea({
+    notes: a.notes || b.notes,
+    filename: a.filename || b.filename,
+    imageUrl: a.imageUrl || b.imageUrl,
+    analyzedDirection: a.analyzedDirection || b.analyzedDirection,
+    analyzedSpec: a.analyzedSpec || b.analyzedSpec,
+    uploadedAt: a.uploadedAt || b.uploadedAt,
+  });
 };
 
 const fetchRunPayload = async (run) => {
@@ -74,7 +89,7 @@ const createAutonomousRun = async ({ user, body }) => {
     },
   );
 
-  const runDesignIdea = sanitizeDesignIdea(designIdea || workspace.brandProfile?.designIdea || null);
+  const runDesignIdea = mergeDesignIdeas(designIdea, workspace.brandProfile?.designIdea);
   const run = await AutonomousRun.create({
     workspace: workspaceId,
     createdBy: user._id,

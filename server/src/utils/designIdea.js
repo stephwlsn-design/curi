@@ -24,7 +24,52 @@ const normalizeDesignIdea = (designIdea = {}) => {
     imageUrl: designIdea.imageUrl || (filename ? toPublicImageUrl(filename) : null),
     imagePath,
     hasImage: Boolean(imagePath),
+    analyzedDirection: designIdea.analyzedDirection || null,
+    analyzedSpec: designIdea.analyzedSpec || null,
   };
 };
 
-module.exports = { resolveDesignIdeaPath, toPublicImageUrl, normalizeDesignIdea, UPLOAD_DIR };
+const buildStoredDesignIdeaContext = (designIdea) => {
+  if (!designIdea) return null;
+  const idea = normalizeDesignIdea(designIdea);
+  if (!idea.notes && !idea.hasImage && !designIdea.analyzedDirection && !designIdea.analyzedSpec) {
+    return null;
+  }
+  if (
+    designIdea.analyzedSpec?.aestheticOnly
+    && designIdea.analyzedSpec.backgroundMode
+    && Array.isArray(designIdea.analyzedSpec.decorElements)
+  ) {
+    return {
+      direction: designIdea.analyzedDirection || idea.notes || '',
+      imagePath: idea.imagePath,
+      imageUrl: idea.imageUrl,
+      spec: designIdea.analyzedSpec,
+    };
+  }
+  if (designIdea.analyzedDirection || idea.notes || idea.imageUrl) {
+    return {
+      direction: [designIdea.analyzedDirection, idea.notes].filter(Boolean).join('\n'),
+      imagePath: idea.imagePath,
+      imageUrl: idea.imageUrl,
+      spec: designIdea.analyzedSpec || null,
+    };
+  }
+  if (idea.hasImage || idea.imageUrl) {
+    return {
+      direction: idea.notes || 'Match the uploaded reference aesthetic',
+      imagePath: idea.imagePath,
+      imageUrl: idea.imageUrl,
+      spec: null,
+    };
+  }
+  return null;
+};
+
+module.exports = {
+  resolveDesignIdeaPath,
+  toPublicImageUrl,
+  normalizeDesignIdea,
+  buildStoredDesignIdeaContext,
+  UPLOAD_DIR,
+};

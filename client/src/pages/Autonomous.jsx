@@ -75,6 +75,7 @@ const sanitizeDesignIdea = (idea) => {
     filename: idea.filename,
     imageUrl: idea.imageUrl,
     analyzedDirection: idea.analyzedDirection,
+    analyzedSpec: idea.analyzedSpec,
     uploadedAt: idea.uploadedAt,
   }
 }
@@ -452,6 +453,21 @@ export default function Autonomous() {
   }
 
   const totalGenerated = posts.length + designs.length + videos.length
+
+  const stepStatus = (name) => run?.steps?.find((s) => s.name === name)?.status
+  const graphicsUnderway = posts.length > 0
+    && run?._id
+    && run._id !== 'pending'
+    && run.status !== 'failed'
+    && (
+      stepStatus('Creative Generation') === 'running'
+      || stepStatus('Video Generation') === 'running'
+      || (
+        run.status !== 'completed'
+        && stepStatus('Content Generation') === 'completed'
+        && (stepStatus('Creative Generation') !== 'completed' || stepStatus('Video Generation') !== 'completed')
+      )
+    )
 
   const sendToApprovalQueue = async () => {
     if (!run?._id || run._id === 'pending') return toast.error('No active campaign run')
@@ -886,6 +902,23 @@ export default function Autonomous() {
                   </button>
                 </div>
               </div>
+              {graphicsUnderway && (
+                <div className="page-card border-curi-blue/30 bg-curi-blue/5">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center">
+                      <span className="h-3 w-3 rounded-full bg-curi-blue animate-pulse" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-bold text-theme-text">
+                        Graphics are underway. Pls standby for less than 2 mins.
+                      </p>
+                      <p className="text-xs text-theme-muted/55 mt-1">
+                        Your posts are ready — designs and videos will appear here as soon as they finish rendering.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
               {posts.length > 0 && (
                 <div className="page-card">
                   <div className="section-label mb-4">

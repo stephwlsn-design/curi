@@ -34,6 +34,7 @@ const autonomousRunSchema = new mongoose.Schema({
     filename: String,
     imageUrl: String,
     analyzedDirection: String,
+    analyzedSpec: { type: mongoose.Schema.Types.Mixed },
     uploadedAt: Date,
   },
   contentPrompt: { type: String, default: '' },

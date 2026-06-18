@@ -35,6 +35,8 @@ const workspaceSchema = new mongoose.Schema({
       notes: String,
       filename: String,
       imageUrl: String,
+      analyzedDirection: String,
+      analyzedSpec: { type: mongoose.Schema.Types.Mixed },
       uploadedAt: Date,
     },
   },

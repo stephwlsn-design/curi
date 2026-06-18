@@ -14,6 +14,7 @@ const UserPreferences = require('../models/UserPreferences');
 const CalendarEntry = require('../models/CalendarEntry');
 const { designToCanvas, buildCanvasWithDesignIdea } = require('../utils/designCanvas');
 const { applyDesignIdeaToDesign } = require('./designService');
+const { buildStoredDesignIdeaContext, normalizeDesignIdea } = require('../utils/designIdea');
 const logger = require('../utils/logger');
 
 const PIPELINE_STEPS = [
@@ -88,22 +89,28 @@ const touchStep = async (run, stepName, summary) => {
 };
 
 const buildFallbackDesign = (entry, brandProfile, stylePref, designIdeaContext = null) => {
-  const palette = designIdeaContext?.spec?.colorPalette || brandProfile?.colors?.palette || ['#FF6B9D', '#4DA8EE', '#FFD154'];
-  const headline = entry.caption?.split('\n')[0]?.slice(0, 80) || entry.topic;
+  const spec = designIdeaContext?.spec;
+  const palette = spec?.colorPalette || brandProfile?.colors?.palette || ['#FF6B9D', '#4DA8EE', '#FFD154'];
+  const headline = entry.topic?.slice(0, 80)
+    || entry.caption?.split('\n')[0]?.slice(0, 80)
+    || 'Your headline';
+  const angleLine = entry.caption?.includes(' — ')
+    ? entry.caption.split(' — ').slice(1).join(' — ').slice(0, 120)
+    : '';
   const ideaNote = designIdeaContext?.direction?.slice(0, 120);
   return {
     name: `Design — Day ${entry.day}`,
     headline,
-    subheadline: ideaNote || entry.topic,
+    subheadline: angleLine || ideaNote || entry.topic,
     cta: 'Learn more',
-    layout: designIdeaContext?.spec?.layout || 'centered',
-    typography: designIdeaContext?.spec?.typography || `${stylePref} sans-serif`,
-    colorPalette: palette.slice(0, 3),
+    layout: spec?.layout || 'centered',
+    typography: spec?.typography || spec?.fontHeadline || `${stylePref} sans-serif`,
+    colorPalette: palette.slice(0, 5),
     referenceImageUrl: designIdeaContext?.imageUrl,
     visualElements: ['Brand logo', 'Hero image', 'CTA button'],
-    compositionNotes: designIdeaContext?.direction
-      ? `Based on uploaded reference: ${designIdeaContext.direction.slice(0, 160)}`
-      : 'On-brand layout using saved content',
+    compositionNotes: ideaNote
+      ? `Reference aesthetic: ${ideaNote.slice(0, 160)}`
+      : 'On-brand layout using campaign content',
     engagementScore: 82,
     brandScore: 88,
     conversionScore: 78,
@@ -113,14 +120,18 @@ const buildFallbackDesign = (entry, brandProfile, stylePref, designIdeaContext =
   };
 };
 
-const buildFallbackVideo = (entry, brandProfile) => {
+const buildFallbackVideo = (entry, brandProfile, contentPrompt = '') => {
+  const direction = contentPrompt?.trim();
   const hook = entry.caption?.split('\n')[0]?.slice(0, 120) || entry.topic;
+  const valueScript = direction
+    ? `${direction.slice(0, 160)}\n\n${entry.caption?.slice(0, 200) || entry.topic}`
+    : (entry.caption?.slice(0, 200) || entry.topic);
   return {
     title: `Video — ${entry.topic.slice(0, 40)}`,
     hook,
     scenes: [
       { label: 'Hook', duration: 3, script: hook, visual: 'Bold text on brand background' },
-      { label: 'Value', duration: 15, script: entry.caption?.slice(0, 200) || entry.topic, visual: 'Product demo or b-roll' },
+      { label: 'Value', duration: 15, script: valueScript, visual: 'Product demo or b-roll' },
     ],
     cta: 'Visit our site to learn more',
     captions: [hook],
@@ -172,19 +183,25 @@ const releasePipelineLock = async (runId) => {
   await AutonomousRun.findByIdAndUpdate(runId, { $unset: { processingLockAt: 1 } });
 };
 
-const buildInMemoryTopics = (brandProfile = {}) => {
+const buildInMemoryTopics = (brandProfile = {}, contentPrompt = '') => {
+  const direction = contentPrompt?.trim();
+  const promptSeeds = direction
+    ? direction.split(/[.!?]\s+|\n+|;\s+|(?:\s+and\s+)/i).map((s) => s.trim()).filter((s) => s.length > 6)
+    : [];
   const seeds = [
+    ...promptSeeds,
     ...(brandProfile.keywords || []),
     brandProfile.industry && `${brandProfile.industry} trends`,
     brandProfile.name && `${brandProfile.name} insights`,
     brandProfile.valueProposition?.slice(0, 60),
+    direction && `${direction.slice(0, 50)} update`,
     'Industry news roundup',
     'Customer success story',
     'Product tips and tricks',
     'Behind the brand',
   ].filter(Boolean).map((s) => String(s).trim()).filter((s) => s.length > 3);
   const unique = [...new Set(seeds)].slice(0, 8);
-  if (!unique.length) unique.push(`${brandProfile.name || 'Brand'} update`);
+  if (!unique.length) unique.push(direction?.slice(0, 60) || `${brandProfile.name || 'Brand'} update`);
   return unique.map((topic, i) => ({ topic, relevance: 90 - i * 3 }));
 };
 
@@ -250,8 +267,11 @@ const generateOnePost = async (run, entry, brandProfile, runIdStr, contentPrompt
     const anglePart = entry.caption?.includes(' — ')
       ? entry.caption.split(' — ').slice(1).join(' — ')
       : (entry.caption && entry.caption !== entry.topic ? entry.caption : '');
-    const parts = [entry.topic, anglePart || direction || brandProfile.valueProposition || 'Discover how we help brands grow with AI-powered marketing.'];
-    if (direction && !anglePart?.includes(direction.slice(0, 20))) {
+    const hook = direction
+      ? `${entry.topic}\n\n${anglePart || direction}`
+      : [entry.topic, anglePart || brandProfile.valueProposition || 'Discover how we help brands grow with AI-powered marketing.'].filter(Boolean).join('\n\n');
+    const parts = [hook];
+    if (direction && anglePart && !anglePart.toLowerCase().includes(direction.slice(0, 24).toLowerCase())) {
       parts.push(`Campaign focus: ${direction}`);
     }
     generated = {
@@ -299,31 +319,36 @@ const generateOnePost = async (run, entry, brandProfile, runIdStr, contentPrompt
 };
 
 const resolveDesignIdeaForRun = async (run) => {
-  if (run.pipelineState?.designIdeaResolved) return null;
-  let designIdeaContext = null;
-  if (process.env.VERCEL) {
-    designIdeaContext = run.designIdea?.notes || run.designIdea?.imageUrl
-      ? { direction: run.designIdea.notes || '', imageUrl: run.designIdea.imageUrl, imagePath: null }
-      : null;
-  } else if (run.designIdea?.notes || run.designIdea?.filename || run.designIdea?.imageUrl) {
+  const idea = run.designIdea;
+  if (!idea?.notes && !idea?.filename && !idea?.imageUrl && !idea?.analyzedDirection && !idea?.analyzedSpec) {
+    return null;
+  }
+
+  let ctx = buildStoredDesignIdeaContext(idea);
+  const normalized = normalizeDesignIdea(idea);
+  const needsAnalysis = !idea?.analyzedSpec?.aestheticOnly
+    && (normalized.hasImage || idea?.imageUrl)
+    && !run.pipelineState?.designIdeaResolved;
+
+  if (needsAnalysis) {
     try {
-      designIdeaContext = await designService.resolveDesignIdeaContext(run.designIdea);
-      if (designIdeaContext?.direction) {
-        run.designIdea.analyzedDirection = designIdeaContext.direction;
-        run.designIdea.analyzedSpec = designIdeaContext.spec;
+      const analyzed = await designService.resolveDesignIdeaContext(idea);
+      if (analyzed) {
+        run.designIdea.analyzedDirection = analyzed.direction;
+        run.designIdea.analyzedSpec = analyzed.spec;
         run.markModified('designIdea');
+        ctx = analyzed;
       }
     } catch (e) {
       logger.warn(`Design idea analysis failed: ${e.message?.slice(0, 80)}`);
-      designIdeaContext = run.designIdea?.notes
-        ? { direction: run.designIdea.notes, imagePath: null }
-        : null;
+      ctx = ctx || buildStoredDesignIdeaContext(idea);
     }
+    run.pipelineState.designIdeaResolved = true;
+    run.markModified('pipelineState');
+    await run.save();
   }
-  run.pipelineState.designIdeaResolved = true;
-  run.markModified('pipelineState');
-  await run.save();
-  return designIdeaContext;
+
+  return ctx || buildStoredDesignIdeaContext(idea);
 };
 
 const advanceAutonomousPipeline = async (runId) => {
@@ -384,7 +409,7 @@ const advanceAutonomousPipeline = async (runId) => {
       case 'Topic Discovery': {
         await touchStep(run, 'Topic Discovery', 'Building topic list from brand profile…');
         if (process.env.VERCEL) {
-          sessionTopics = buildInMemoryTopics(ctx.brandProfile);
+          sessionTopics = buildInMemoryTopics(ctx.brandProfile, run.contentPrompt);
           fallbackTopicsFromBrand(run.workspace, ctx.brandProfile).catch(() => {});
         } else {
           const topicCount = await Topic.countDocuments({ workspace: run.workspace, status: 'active' });
@@ -501,7 +526,7 @@ const advanceAutonomousPipeline = async (runId) => {
             }
             design = applyDesignIdeaToDesign(design, designIdeaContext);
             const dimId = entry.type === 'story' ? '1080x1920' : '1080x1080';
-            const canvasLayout = designIdeaContext?.imageUrl
+            const canvasLayout = (designIdeaContext?.imageUrl || designIdeaContext?.spec?.colorPalette)
               ? buildCanvasWithDesignIdea(design, designIdeaContext, dimId)
               : (design.canvasLayout || designToCanvas(design));
             const score = scoreCreative({ type: 'design', content: design.headline, metadata: design, brandProfile: ctx.brandProfile });
@@ -568,7 +593,7 @@ const advanceAutonomousPipeline = async (runId) => {
             const platform = normalizePlatform(entry.platform);
             let video;
             if (process.env.VERCEL) {
-              video = buildFallbackVideo(entry, ctx.brandProfile);
+              video = buildFallbackVideo(entry, ctx.brandProfile, run.contentPrompt);
             } else {
             try {
               const videos = await videoService.generateVideos({
