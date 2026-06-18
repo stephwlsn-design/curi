@@ -80,6 +80,11 @@ const isDesignFastRequest = (req) => {
   return false;
 };
 
+const isDesignIdeaUploadGet = (req) => {
+  const pathOnly = requestPath(req);
+  return req.method === 'GET' && pathOnly.startsWith('/api/uploads/design-ideas/');
+};
+
 const isDesignIdeaRequest = (req) => {
   const pathOnly = requestPath(req);
   return req.method === 'POST' && pathOnly === '/api/design/idea';
@@ -600,7 +605,7 @@ const handleDesignIdea = async (req, res) => {
   const { connectDB } = require('../server/src/config/database');
   const designService = require('../server/src/services/designService');
   const { findAccessibleWorkspace } = require('../server/src/utils/workspaceAccess');
-  const { toPublicImageUrl, normalizeDesignIdea } = require('../server/src/utils/designIdea');
+  const { toPublicImageUrl, attachPreviewFromBuffer, analyzeDesignIdeaIfNeeded } = require('../server/src/utils/designIdea');
   const { UPLOAD_DIR } = require('../server/src/middleware/upload');
 
   await connectDB();
@@ -638,42 +643,52 @@ const handleDesignIdea = async (req, res) => {
     fs.writeFileSync(pathMod.join(UPLOAD_DIR, filename), file);
   }
 
-  const designIdea = {
+  let designIdea = {
     notes: String(notes || '').trim(),
     filename,
     imageUrl: filename ? toPublicImageUrl(filename) : (existing.imageUrl || null),
     uploadedAt: file ? new Date() : (existing.uploadedAt || new Date()),
+    analyzedDirection: file ? undefined : (existing.analyzedDirection || undefined),
+    analyzedSpec: file ? undefined : (existing.analyzedSpec || undefined),
+    previewDataUrl: file ? undefined : (existing.previewDataUrl || undefined),
   };
+
+  if (file) {
+    const mime = fileMeta?.mimeType || 'image/jpeg';
+    designIdea = attachPreviewFromBuffer(designIdea, file, mime);
+  }
 
   workspace.brandProfile = workspace.brandProfile || {};
   workspace.brandProfile.designIdea = designIdea;
 
-  if (designIdea.imageUrl && file) {
-    try {
-      const ideaContext = await withTimeout(
-        designService.resolveDesignIdeaContext(normalizeDesignIdea(designIdea)),
-        30000,
-        'Style analysis timed out',
-      );
-      if (ideaContext) {
-        designIdea.analyzedDirection = ideaContext.direction;
-        designIdea.analyzedSpec = ideaContext.spec;
-        workspace.brandProfile.designIdea = designIdea;
-      }
-    } catch (err) {
-      console.warn('[api] design idea analysis skipped:', err.message);
-    }
+  if (designIdea.previewDataUrl || (designIdea.imageUrl && file)) {
+    designIdea = await analyzeDesignIdeaIfNeeded(designIdea, designService);
+    workspace.brandProfile.designIdea = designIdea;
   }
 
   await workspace.save();
 
-  const responseIdea = { ...designIdea };
-  if (file && file.length < 900000) {
-    const mime = fileMeta?.mimeType || 'image/jpeg';
-    responseIdea.previewDataUrl = `data:${mime};base64,${file.toString('base64')}`;
-  }
+  return sendJson(res, 200, { designIdea });
+};
 
-  return sendJson(res, 200, { designIdea: responseIdea });
+const handleDesignIdeaFileGet = async (req, res) => {
+  const fs = require('fs');
+  const pathMod = require('path');
+  const { UPLOAD_DIR } = require('../server/src/middleware/upload');
+  const filename = pathMod.basename(requestPath(req).replace('/api/uploads/design-ideas/', ''));
+  if (!filename || filename.includes('..')) {
+    return sendJson(res, 400, { error: 'Invalid filename' });
+  }
+  const filePath = pathMod.join(UPLOAD_DIR, filename);
+  if (!fs.existsSync(filePath)) {
+    return sendJson(res, 404, { error: 'Not found' });
+  }
+  const ext = pathMod.extname(filename).toLowerCase();
+  const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.gif' ? 'image/gif' : 'image/jpeg';
+  res.statusCode = 200;
+  res.setHeader('Content-Type', mime);
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.end(fs.readFileSync(filePath));
 };
 
 const handleDesignUpload = async (req, res) => {
@@ -1120,6 +1135,16 @@ module.exports = async (req, res) => {
     } catch (err) {
       console.error('[api] design upload failed:', err);
       return sendJson(res, err.status || 502, { error: err.message || 'Upload failed' });
+    }
+  }
+
+  if (isDesignIdeaUploadGet(req)) {
+    try {
+      normalizeRequestUrl(req);
+      return await handleDesignIdeaFileGet(req, res);
+    } catch (err) {
+      console.error('[api] design idea file failed:', err);
+      return sendJson(res, err.status || 404, { error: err.message || 'Not found' });
     }
   }
 

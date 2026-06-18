@@ -11,6 +11,7 @@ const sanitizeDesignIdea = (idea) => {
     notes: idea.notes || undefined,
     filename: idea.filename || undefined,
     imageUrl: idea.imageUrl || undefined,
+    previewDataUrl: idea.previewDataUrl || undefined,
     analyzedDirection: idea.analyzedDirection || undefined,
     analyzedSpec: idea.analyzedSpec || undefined,
     uploadedAt: idea.uploadedAt || undefined,
@@ -20,11 +21,13 @@ const sanitizeDesignIdea = (idea) => {
 const mergeDesignIdeas = (fromBody, fromWorkspace) => {
   const a = fromBody || {};
   const b = fromWorkspace || {};
-  if (!a.notes && !a.imageUrl && !a.filename && !b.notes && !b.imageUrl && !b.filename) return null;
+  if (!a.notes && !a.imageUrl && !a.filename && !a.previewDataUrl
+    && !b.notes && !b.imageUrl && !b.filename && !b.previewDataUrl) return null;
   return sanitizeDesignIdea({
     notes: a.notes || b.notes,
     filename: a.filename || b.filename,
     imageUrl: a.imageUrl || b.imageUrl,
+    previewDataUrl: a.previewDataUrl || b.previewDataUrl,
     analyzedDirection: a.analyzedDirection || b.analyzedDirection,
     analyzedSpec: a.analyzedSpec || b.analyzedSpec,
     uploadedAt: a.uploadedAt || b.uploadedAt,

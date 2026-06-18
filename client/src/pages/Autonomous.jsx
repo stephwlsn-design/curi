@@ -74,6 +74,7 @@ const sanitizeDesignIdea = (idea) => {
     notes: idea.notes || '',
     filename: idea.filename,
     imageUrl: idea.imageUrl,
+    previewDataUrl: idea.previewDataUrl,
     analyzedDirection: idea.analyzedDirection,
     analyzedSpec: idea.analyzedSpec,
     uploadedAt: idea.uploadedAt,

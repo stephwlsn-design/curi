@@ -36,13 +36,18 @@ const resolveDesignIdeaContext = async (designIdea) => {
     return {
       direction: designIdea.analyzedDirection || idea.notes,
       imagePath: idea.imagePath,
-      imageUrl: idea.imageUrl,
+      imageUrl: idea.previewDataUrl || idea.imageUrl,
       spec: designIdea.analyzedSpec,
     };
   }
 
   if (!idea.hasImage) {
-    return { direction: idea.notes, imagePath: null, imageUrl: null, spec: null };
+    return {
+      direction: idea.notes,
+      imagePath: null,
+      imageUrl: null,
+      spec: null,
+    };
   }
 
   const parsed = await generateJSON({
@@ -100,13 +105,19 @@ Return JSON:
     temperature: 0.1,
     label: 'Design Idea Analysis',
     imagePath: idea.imagePath,
-    timeoutMs: 30000,
+    once: Boolean(process.env.VERCEL),
+    timeoutMs: process.env.VERCEL ? 18_000 : 30_000,
   });
 
   const spec = normalizeSpec(parsed);
 
   const direction = [parsed.direction, idea.notes ? `User notes: ${idea.notes}` : ''].filter(Boolean).join('\n');
-  return { direction, imagePath: idea.imagePath, imageUrl: idea.imageUrl, spec };
+  return {
+    direction,
+    imagePath: idea.imagePath,
+    imageUrl: idea.previewDataUrl || idea.imageUrl,
+    spec,
+  };
 };
 
 const applyDesignIdeaToDesign = (design, ideaContext) => {

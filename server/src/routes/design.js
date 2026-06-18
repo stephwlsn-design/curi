@@ -6,7 +6,7 @@ const designService = require('../services/designService');
 const Content = require('../models/Content');
 const { findAccessibleWorkspace } = require('../utils/workspaceAccess');
 const DesignTemplate = require('../models/DesignTemplate');
-const { toPublicImageUrl, normalizeDesignIdea } = require('../utils/designIdea');
+const { toPublicImageUrl, normalizeDesignIdea, attachPreviewFromBuffer, analyzeDesignIdeaIfNeeded } = require('../utils/designIdea');
 const { designToCanvas, BUILTIN_TEMPLATES, buildCanvasWithDesignIdea } = require('../utils/designCanvas');
 const { getGraphicTemplate, buildGraphicCanvas } = require('../utils/graphicCanvas');
 const pexelsService = require('../services/pexelsService');
@@ -27,47 +27,33 @@ router.post('/idea', uploadDesignIdea.single('image'), async (req, res) => {
   }
 
   const existing = workspace.brandProfile?.designIdea || {};
-  const designIdea = {
+  let designIdea = {
     notes: String(notes || '').trim(),
     filename: req.file?.filename || existing.filename || null,
     imageUrl: req.file ? toPublicImageUrl(req.file.filename) : (existing.imageUrl || null),
     uploadedAt: req.file ? new Date() : (existing.uploadedAt || new Date()),
+    analyzedDirection: req.file ? undefined : existing.analyzedDirection,
+    analyzedSpec: req.file ? undefined : existing.analyzedSpec,
+    previewDataUrl: req.file ? undefined : existing.previewDataUrl,
   };
+
+  if (req.file) {
+    const fs = require('fs');
+    const buf = fs.readFileSync(req.file.path);
+    designIdea = attachPreviewFromBuffer(designIdea, buf, req.file.mimetype || 'image/jpeg');
+  }
 
   workspace.brandProfile = workspace.brandProfile || {};
   workspace.brandProfile.designIdea = designIdea;
 
-  if (designIdea.imageUrl && req.file) {
-    try {
-      const ideaContext = await Promise.race([
-        designService.resolveDesignIdeaContext(normalizeDesignIdea(designIdea)),
-        new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Style analysis timed out')), 30000);
-        }),
-      ]);
-      if (ideaContext) {
-        designIdea.analyzedDirection = ideaContext.direction;
-        designIdea.analyzedSpec = ideaContext.spec;
-        workspace.brandProfile.designIdea = designIdea;
-      }
-    } catch (e) {
-      console.warn('[design] idea analysis skipped:', e.message);
-    }
+  if (designIdea.previewDataUrl || (designIdea.imageUrl && req.file)) {
+    designIdea = await analyzeDesignIdeaIfNeeded(designIdea, designService);
+    workspace.brandProfile.designIdea = designIdea;
   }
 
   await workspace.save();
 
-  const responseIdea = { ...designIdea };
-  if (req.file?.path && req.file.size < 900000) {
-    try {
-      const fs = require('fs');
-      const buf = fs.readFileSync(req.file.path);
-      const mime = req.file.mimetype || 'image/jpeg';
-      responseIdea.previewDataUrl = `data:${mime};base64,${buf.toString('base64')}`;
-    } catch { /* preview optional */ }
-  }
-
-  res.json({ designIdea: responseIdea });
+  res.json({ designIdea });
 });
 
 router.post('/from-inspiration', checkCredits(2), async (req, res) => {

@@ -1,19 +1,29 @@
 import { useRef, useState, useEffect } from 'react'
 import { API } from '../context/AuthContext'
 import toast from 'react-hot-toast'
-import { Upload, X, ImageIcon } from 'lucide-react'
+import { Upload, X, ImageIcon, Loader2 } from 'lucide-react'
 
 export default function DesignIdeaUpload({ workspaceId, value, onChange, compact = false }) {
   const inputRef = useRef(null)
   const [uploading, setUploading] = useState(false)
   const [notes, setNotes] = useState(value?.notes || '')
+  const [localPreview, setLocalPreview] = useState(null)
+
+  const previewUrl = value?.previewDataUrl || value?.imageUrl || localPreview || null
 
   useEffect(() => {
     setNotes(value?.notes || '')
-  }, [value?.notes, value?.imageUrl])
+  }, [value?.notes, value?.imageUrl, value?.previewDataUrl])
+
+  useEffect(() => () => {
+    if (localPreview?.startsWith('blob:')) URL.revokeObjectURL(localPreview)
+  }, [localPreview])
 
   const saveIdea = async (file, noteText) => {
-    if (!workspaceId) return
+    if (!workspaceId) {
+      toast.error('Workspace not loaded — sign in again')
+      return
+    }
     if (!file && !noteText?.trim()) {
       onChange?.(null)
       return
@@ -26,13 +36,26 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
       formData.append('notes', noteText || '')
       if (file) formData.append('image', file)
 
-      const { data } = await API.post('/design/idea', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      const { data } = await API.post('/design/idea', formData, { timeout: 55000 })
       onChange?.(data.designIdea)
-      toast.success(file ? 'Design idea uploaded' : 'Design idea saved')
+      if (file) {
+        if (localPreview?.startsWith('blob:')) URL.revokeObjectURL(localPreview)
+        setLocalPreview(null)
+        toast.success(
+          data.designIdea?.analyzedSpec
+            ? 'Design reference uploaded — style extracted'
+            : 'Design reference uploaded',
+        )
+      } else {
+        toast.success('Design idea saved')
+      }
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Upload failed')
+      const msg = err.code === 'ECONNABORTED'
+        ? 'Upload timed out — try a smaller image'
+        : (err.response?.data?.error || 'Upload failed')
+      toast.error(msg)
+      if (localPreview?.startsWith('blob:')) URL.revokeObjectURL(localPreview)
+      setLocalPreview(null)
     } finally {
       setUploading(false)
     }
@@ -40,9 +63,15 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
 
   const onFileChange = (e) => {
     const file = e.target.files?.[0]
-    if (!file) return
-    saveIdea(file, notes)
     e.target.value = ''
+    if (!file) return
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error('Image must be under 8 MB')
+      return
+    }
+    const blobUrl = URL.createObjectURL(file)
+    setLocalPreview(blobUrl)
+    saveIdea(file, notes)
   }
 
   const onNotesBlur = () => {
@@ -53,6 +82,8 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
 
   const clearIdea = async () => {
     setNotes('')
+    if (localPreview?.startsWith('blob:')) URL.revokeObjectURL(localPreview)
+    setLocalPreview(null)
     onChange?.(null)
     if (workspaceId) {
       try {
@@ -65,8 +96,6 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
     toast.success('Design idea cleared')
   }
 
-  const previewUrl = value?.imageUrl || null
-
   return (
     <div className={compact ? 'space-y-2' : 'space-y-3'}>
       <div className="text-sm font-semibold text-theme-muted/50 uppercase tracking-wider">
@@ -76,13 +105,26 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
         Upload a reference image or describe your visual direction. Generated designs will use your reference as the visual base — same layout, colors, and style with your copy on top.
       </p>
 
-      {previewUrl ? (
+      {previewUrl || uploading ? (
         <div className="relative rounded-xl overflow-hidden border border-theme-border">
-          <img src={previewUrl} alt="Design reference" className="w-full h-36 object-cover" />
+          {previewUrl ? (
+            <img src={previewUrl} alt="Design reference" className="w-full h-36 object-cover" />
+          ) : (
+            <div className="w-full h-36 flex items-center justify-center bg-theme-subtle/5">
+              <Loader2 size={24} className="animate-spin text-curi-pink" />
+            </div>
+          )}
+          {uploading && (
+            <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2">
+              <Loader2 size={22} className="animate-spin text-white" />
+              <span className="text-xs font-bold text-white">Uploading & analyzing…</span>
+            </div>
+          )}
           <button
             type="button"
             onClick={clearIdea}
-            className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 text-white hover:bg-black/70"
+            disabled={uploading}
+            className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 text-white hover:bg-black/70 disabled:opacity-50"
             title="Remove"
           >
             <X size={14} />
@@ -97,12 +139,12 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
         >
           <Upload size={22} className="text-theme-muted/40" />
           <span className="text-sm font-bold text-theme-muted/60">
-            {uploading ? 'Uploading...' : 'Upload reference image'}
+            Upload reference image
           </span>
         </button>
       )}
 
-      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
+      <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/*" className="hidden" onChange={onFileChange} />
 
       <textarea
         className="input resize-none h-24 text-base"
@@ -110,12 +152,13 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
         value={notes}
         onChange={e => setNotes(e.target.value)}
         onBlur={onNotesBlur}
+        disabled={uploading}
       />
 
-      {(value?.notes || value?.imageUrl) && (
+      {(value?.notes || value?.imageUrl || value?.previewDataUrl) && (
         <div className="flex items-center gap-2 text-sm text-curi-green font-medium">
           <ImageIcon size={16} />
-          {value?.imageUrl
+          {value?.previewDataUrl || value?.imageUrl
             ? 'Reference image locked — designs will replicate this look'
             : 'Creative notes will guide design generation'}
         </div>

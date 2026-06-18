@@ -309,14 +309,15 @@ const generateOnePost = async (run, entry, brandProfile, runIdStr, contentPrompt
 
 const resolveDesignIdeaForRun = async (run) => {
   const idea = run.designIdea;
-  if (!idea?.notes && !idea?.filename && !idea?.imageUrl && !idea?.analyzedDirection && !idea?.analyzedSpec) {
+  if (!idea?.notes && !idea?.filename && !idea?.imageUrl && !idea?.previewDataUrl
+    && !idea?.analyzedDirection && !idea?.analyzedSpec) {
     return null;
   }
 
   let ctx = buildStoredDesignIdeaContext(idea);
   const normalized = normalizeDesignIdea(idea);
   const needsAnalysis = !idea?.analyzedSpec?.aestheticOnly
-    && (normalized.hasImage || idea?.imageUrl)
+    && (normalized.hasImage || idea?.imageUrl || idea?.previewDataUrl)
     && !run.pipelineState?.designIdeaResolved;
 
   if (needsAnalysis) {
