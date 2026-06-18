@@ -15,6 +15,7 @@ const CalendarEntry = require('../models/CalendarEntry');
 const { designToCanvas, buildCanvasWithDesignIdea } = require('../utils/designCanvas');
 const { applyDesignIdeaToDesign } = require('./designService');
 const { buildStoredDesignIdeaContext, normalizeDesignIdea } = require('../utils/designIdea');
+const { composeAutonomousPost, extractBriefKeywords } = require('../utils/campaignContent');
 const logger = require('../utils/logger');
 
 const PIPELINE_STEPS = [
@@ -120,18 +121,15 @@ const buildFallbackDesign = (entry, brandProfile, stylePref, designIdeaContext =
   };
 };
 
-const buildFallbackVideo = (entry, brandProfile, contentPrompt = '') => {
-  const direction = contentPrompt?.trim();
+const buildFallbackVideo = (entry, brandProfile) => {
   const hook = entry.caption?.split('\n')[0]?.slice(0, 120) || entry.topic;
-  const valueScript = direction
-    ? `${direction.slice(0, 160)}\n\n${entry.caption?.slice(0, 200) || entry.topic}`
-    : (entry.caption?.slice(0, 200) || entry.topic);
+  const body = entry.caption?.slice(0, 200) || entry.topic;
   return {
     title: `Video — ${entry.topic.slice(0, 40)}`,
     hook,
     scenes: [
       { label: 'Hook', duration: 3, script: hook, visual: 'Bold text on brand background' },
-      { label: 'Value', duration: 15, script: valueScript, visual: 'Product demo or b-roll' },
+      { label: 'Value', duration: 15, script: body, visual: 'Product demo or b-roll' },
     ],
     cta: 'Visit our site to learn more',
     captions: [hook],
@@ -184,24 +182,20 @@ const releasePipelineLock = async (runId) => {
 };
 
 const buildInMemoryTopics = (brandProfile = {}, contentPrompt = '') => {
-  const direction = contentPrompt?.trim();
-  const promptSeeds = direction
-    ? direction.split(/[.!?]\s+|\n+|;\s+|(?:\s+and\s+)/i).map((s) => s.trim()).filter((s) => s.length > 6)
-    : [];
+  const briefKeywords = extractBriefKeywords(contentPrompt);
   const seeds = [
-    ...promptSeeds,
     ...(brandProfile.keywords || []),
     brandProfile.industry && `${brandProfile.industry} trends`,
     brandProfile.name && `${brandProfile.name} insights`,
     brandProfile.valueProposition?.slice(0, 60),
-    direction && `${direction.slice(0, 50)} update`,
+    ...briefKeywords.map((k) => `${brandProfile.name || 'Brand'} — ${k}`),
     'Industry news roundup',
     'Customer success story',
     'Product tips and tricks',
     'Behind the brand',
   ].filter(Boolean).map((s) => String(s).trim()).filter((s) => s.length > 3);
   const unique = [...new Set(seeds)].slice(0, 8);
-  if (!unique.length) unique.push(direction?.slice(0, 60) || `${brandProfile.name || 'Brand'} update`);
+  if (!unique.length) unique.push(`${brandProfile.name || 'Brand'} update`);
   return unique.map((topic, i) => ({ topic, relevance: 90 - i * 3 }));
 };
 
@@ -261,40 +255,35 @@ const buildPipelineContext = async (run) => {
 
 const generateOnePost = async (run, entry, brandProfile, runIdStr, contentPrompt = '') => {
   const platform = normalizePlatform(entry.platform);
+  const brief = contentPrompt?.trim() || '';
   let generated;
-  const direction = contentPrompt?.trim();
+
   if (process.env.VERCEL) {
-    const anglePart = entry.caption?.includes(' — ')
-      ? entry.caption.split(' — ').slice(1).join(' — ')
-      : (entry.caption && entry.caption !== entry.topic ? entry.caption : '');
-    const hook = direction
-      ? `${entry.topic}\n\n${anglePart || direction}`
-      : [entry.topic, anglePart || brandProfile.valueProposition || 'Discover how we help brands grow with AI-powered marketing.'].filter(Boolean).join('\n\n');
-    const parts = [hook];
-    if (direction && anglePart && !anglePart.toLowerCase().includes(direction.slice(0, 24).toLowerCase())) {
-      parts.push(`Campaign focus: ${direction}`);
-    }
-    generated = {
-      content: parts.filter(Boolean).join('\n\n'),
-      hashtags: (brandProfile.keywords || []).slice(0, 5),
-    };
+    generated = composeAutonomousPost({
+      entry,
+      brandProfile,
+      platform,
+      campaignBrief: brief,
+    });
   } else {
     try {
       generated = await createService.generatePost({
         brandProfile,
         platform,
-        topic: entry.caption && entry.caption !== entry.topic
-          ? entry.caption
-          : entry.topic,
+        topic: entry.topic,
         tone: brandProfile.voice || 'professional',
         type: ['carousel', 'story', 'video', 'reel'].includes(entry.type) ? 'social_post' : (entry.type || 'social_post'),
+        campaignBrief: brief,
+        creativeAngle: entry.caption,
       });
     } catch (e) {
-      logger.warn(`Post AI failed day ${entry.day}, using topic fallback: ${e.message?.slice(0, 80)}`);
-      generated = {
-        content: `${entry.topic}\n\n${brandProfile.valueProposition || 'Discover how we help brands grow with AI-powered marketing.'}`,
-        hashtags: (brandProfile.keywords || []).slice(0, 5),
-      };
+      logger.warn(`Post AI failed day ${entry.day}, using composed fallback: ${e.message?.slice(0, 80)}`);
+      generated = composeAutonomousPost({
+        entry,
+        brandProfile,
+        platform,
+        campaignBrief: brief,
+      });
     }
   }
 
@@ -611,7 +600,7 @@ const advanceAutonomousPipeline = async (runId) => {
             const platform = normalizePlatform(entry.platform);
             let video;
             if (process.env.VERCEL) {
-              video = buildFallbackVideo(entry, ctx.brandProfile, run.contentPrompt);
+              video = buildFallbackVideo(entry, ctx.brandProfile);
             } else {
             try {
               const videos = await videoService.generateVideos({

@@ -89,7 +89,7 @@ const buildStrategyPrompt = ({
   contentPrompt = '',
 }) => {
   const promptBlock = contentPrompt?.trim()
-    ? `\nUser campaign direction (follow closely): ${contentPrompt.trim()}`
+    ? `\nUser campaign direction (use as strategic guidance only — never copy verbatim into topics or posts): ${contentPrompt.trim()}`
     : '';
   if (compact) {
     const system = `You are a content strategist. Return ONLY valid JSON. Formats: post, carousel, story, video, reel. Channels: ${channels.join(', ')}.`;
@@ -155,7 +155,7 @@ ${topicBlock || 'Generate topics from brand profile and industry.'}
 ## Learned preferences
 ${prefBlock}
 ${designBlock ? `\n## Creative direction\n${designBlock}` : ''}
-${promptBlock ? `\n## User campaign direction\n${contentPrompt.trim()}\nEvery calendar item must align with this direction.` : ''}
+${promptBlock ? `\n## User campaign direction\n${contentPrompt.trim()}\nInform themes and tone — each calendar item must be original copy aligned with this direction, not a summary of it.` : ''}
 
 ## Planning rules
 1. **Brand-fit:** Every topic, angle, and CTA must reflect the brand voice (${brandProfile?.voice || 'professional'}) and speak to ${brandProfile?.audience || 'the target audience'}.

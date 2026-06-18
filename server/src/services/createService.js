@@ -21,8 +21,16 @@ const PLATFORM_SPECS = {
   universal: { maxChars: 500, style: 'clear, engaging, adaptable', hashtagCount: '3-5' },
 };
 
-const buildPostPrompt = ({ brandProfile, platform, topic, tone, type }) => {
+const buildPostPrompt = ({
+  brandProfile, platform, topic, tone, type, campaignBrief = '', creativeAngle = '',
+}) => {
   const spec = PLATFORM_SPECS[platform] || PLATFORM_SPECS.universal;
+  const briefBlock = campaignBrief?.trim()
+    ? `\nCampaign brief (inform themes and tone ONLY — do NOT quote or summarize this text in the post): ${campaignBrief.trim().slice(0, 400)}`
+    : '';
+  const angleBlock = creativeAngle?.trim()
+    ? `\nCreative angle for this post: ${creativeAngle.trim().slice(0, 200)}`
+    : '';
   return {
     system: `You are a world-class social media content creator specialising in ${platform}.
 
@@ -32,15 +40,17 @@ Brand Context:
 - Voice: ${tone || brandProfile?.voice || 'professional'}
 - Target Audience: ${brandProfile?.audience || 'General audience'}
 - Value Proposition: ${brandProfile?.valueProposition || ''}
-- Key Products/Services: ${(brandProfile?.products || []).join(', ')}
+- Key Products/Services: ${(brandProfile?.products || []).join(', ')}${briefBlock}
 
 Platform Rules for ${platform}:
 - Max characters: ${spec.maxChars}
 - Style: ${spec.style}
 - Hashtags: ${spec.hashtagCount} hashtags
 
+Write original, specific copy. Never paste the campaign brief verbatim.
+
 Return ONLY valid JSON with keys: content (string), hashtags (array of strings without #), emojis (array)`,
-    user: `Create a ${type || 'social post'} about: ${topic}. Make it authentic to the brand voice and optimised for ${platform}.`,
+    user: `Create a ${type || 'social post'} about: ${topic}.${angleBlock} Make it authentic to the brand voice and optimised for ${platform}.`,
   };
 };
 
@@ -82,8 +92,12 @@ const callCreateAI = async ({ system, user, label }) => {
   );
 };
 
-const generatePost = async ({ brandProfile, platform, topic, tone, type }) => {
-  const { system, user } = buildPostPrompt({ brandProfile, platform, topic, tone, type });
+const generatePost = async ({
+  brandProfile, platform, topic, tone, type, campaignBrief, creativeAngle,
+}) => {
+  const { system, user } = buildPostPrompt({
+    brandProfile, platform, topic, tone, type, campaignBrief, creativeAngle,
+  });
   const result = await callCreateAI({ system, user, label: 'Create' });
   const normalized = normalizePostResult(result);
 

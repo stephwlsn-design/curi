@@ -2,6 +2,12 @@ const Strategy = require('../models/Strategy');
 const CalendarEntry = require('../models/CalendarEntry');
 const { generateJSON } = require('./llmService');
 const { buildStrategyPrompt, getDurationPlan } = require('../utils/strategyPrompt');
+const {
+  extractBriefKeywords,
+  buildPlannedTopic,
+  buildPlannedAngle,
+  buildPlanNarrative,
+} = require('../utils/campaignContent');
 const logger = require('../utils/logger');
 
 const FORMATS = ['post', 'carousel', 'story', 'video', 'reel'];
@@ -27,47 +33,43 @@ const spreadDay = (index, total, days) => {
   return Math.max(1, Math.min(days, Math.round(((index + 1) / total) * days)));
 };
 
-const derivePromptThemes = (contentPrompt, count) => {
-  const direction = contentPrompt?.trim();
-  if (!direction) return [];
-  const parts = direction
-    .split(/[.!?]\s+|\n+|;\s+|(?:\s+and\s+)/i)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 6);
-  if (!parts.length) return [direction.slice(0, 100)];
-  const out = [];
-  for (let i = 0; i < count; i += 1) out.push(parts[i % parts.length]);
-  return out;
-};
-
 const buildFallbackItems = ({ topics, days, channels, entryCount, brandProfile, contentPrompt = '', designIdea = null }) => {
   const pool = topics.length ? topics : [{ topic: `${brandProfile?.name || 'Brand'} update` }];
   const pillars = ['Education', 'Social proof', 'Product value', 'Thought leadership', 'Community'];
   const goals = ['awareness', 'education', 'engagement', 'conversion', 'trust'];
   const count = entryCount || days;
-  const brand = brandProfile?.name || 'the brand';
-  const audience = brandProfile?.audience || 'your audience';
-  const direction = contentPrompt?.trim();
-  const themes = derivePromptThemes(contentPrompt, count);
+  const briefKeywords = extractBriefKeywords(contentPrompt);
   const visualNote = designIdea?.analyzedDirection || designIdea?.notes || '';
   return Array.from({ length: count }, (_, i) => {
-    const theme = themes[i] || direction;
-    const baseTopic = pool[i % pool.length].topic;
-    const topic = theme
-      ? `${theme.slice(0, 80)}${baseTopic && !theme.toLowerCase().includes(baseTopic.toLowerCase().slice(0, 12)) ? ` · ${baseTopic}` : ''}`
-      : baseTopic;
-    const angle = theme
-      ? `${theme} — ${pillars[i % pillars.length]} for ${audience}`
-      : `${brand} take for ${audience} — ${pillars[i % pillars.length].toLowerCase()} focus`;
+    const poolTopic = pool[i % pool.length];
+    const pillar = pillars[i % pillars.length];
+    const goal = goals[i % goals.length];
+    const channel = channels[i % channels.length] || 'linkedin';
+    const day = spreadDay(i, count, days);
+    const topic = buildPlannedTopic({
+      brandProfile,
+      poolTopic,
+      pillar,
+    });
+    let angle = buildPlannedAngle({
+      pillar,
+      goal,
+      audience: brandProfile?.audience || 'your audience',
+      platform: channel,
+      poolTopic,
+      briefKeywords,
+      index: i,
+    });
+    if (visualNote && i % 4 === 0) {
+      angle = `${angle} · match reference aesthetic`.slice(0, 180);
+    }
     return {
-      day: spreadDay(i, count, days),
-      topic: topic.slice(0, 140),
-      angle: visualNote && i % 3 === 0
-        ? `${angle} (visual: ${visualNote.slice(0, 80)})`
-        : angle.slice(0, 180),
-      goal: goals[i % goals.length],
-      pillar: pillars[i % pillars.length],
-      channel: channels[i % channels.length] || 'linkedin',
+      day,
+      topic,
+      angle,
+      goal,
+      pillar,
+      channel,
       format: FORMATS[i % FORMATS.length],
       publishTime: ['09:00', '11:00', '12:00', '14:00', '17:00'][i % 5],
       priority: i + 1,
@@ -77,32 +79,34 @@ const buildFallbackItems = ({ topics, days, channels, entryCount, brandProfile, 
 
 const buildFallbackPlan = (brandProfile, days, entryCount, contentPrompt = '', designIdea = null, channels = []) => {
   const duration = getDurationPlan(days);
-  const direction = contentPrompt?.trim();
+  const brief = contentPrompt?.trim();
+  const kws = extractBriefKeywords(brief);
   const visual = designIdea?.analyzedDirection || designIdea?.notes || '';
-  const phases = duration.phases.map((p, i) => ({
+  const phases = duration.phases.map((p) => ({
     name: p.name,
     dayRange: p.name.match(/\d+–\d+|\d+-\d+/)?.[0] || '',
-    focus: direction
-      ? `${direction.split(/[.!?]/)[0]?.slice(0, 80) || direction.slice(0, 80)} — ${p.focus}`
-      : p.focus,
+    focus: kws.length ? `${p.focus} · aligned with ${kws[0]}` : p.focus,
   }));
   return {
-    name: direction
-      ? `${days}-Day Plan: ${direction.slice(0, 50)}${direction.length > 50 ? '…' : ''}`
+    name: kws.length
+      ? `${days}-Day ${brandProfile?.name || 'Brand'} Campaign`
       : `${days}-Day ${brandProfile?.name || 'Brand'} Content Plan`,
-    campaignGoal: direction || `Build consistent ${days}-day visibility and engagement for ${brandProfile?.name || 'the brand'}`,
-    narrative: [
-      direction && `Campaign direction: ${direction}`,
-      visual && `Visual direction: ${visual}`,
-      `Phased ${days}-day arc across ${entryCount} touchpoints.`,
-    ].filter(Boolean).join(' '),
-    contentPillars: direction
-      ? derivePromptThemes(contentPrompt, 5).slice(0, 5).map((t) => t.slice(0, 40))
+    campaignGoal: brief
+      ? `Build a ${days}-day presence for ${brandProfile?.name || 'the brand'} around: ${kws.slice(0, 3).join(', ') || 'core themes'}`
+      : `Build consistent ${days}-day visibility and engagement for ${brandProfile?.name || 'the brand'}`,
+    narrative: buildPlanNarrative({
+      brandProfile,
+      days,
+      entryCount,
+      brief,
+      visual,
+      channels,
+    }),
+    contentPillars: kws.length
+      ? kws.slice(0, 5).map((k) => k.slice(0, 40))
       : ['Education', 'Social proof', 'Product value', 'Thought leadership', 'Community'],
     phases,
-    channelStrategy: direction
-      ? `Execute "${direction.slice(0, 60)}" across ${channelsLabel(channels)} — ${entryCount} entries over ${days} days.`
-      : `Rotate content across selected channels with one planned touchpoint per campaign day (${entryCount} entries across ${days} days).`,
+    channelStrategy: `Rotate ${entryCount} posts across ${channelsLabel(channels)} over ${days} days — each post is unique, informed by brand topics${kws.length ? ` and campaign themes (${kws.slice(0, 2).join(', ')})` : ''}.`,
     clusters: [],
   };
 };
@@ -143,21 +147,18 @@ const persistStrategy = async ({
   });
 
   const entries = await CalendarEntry.insertMany(
-    strategy.items.map((item) => {
-      const planningNote = [item.topic, item.angle].filter(Boolean).join(' — ');
-      return {
-        workspace: workspaceId,
-        day: item.day,
-        platform: normalizeChannel(item.channel),
-        type: normalizeFormat(item.format),
-        topic: item.topic,
-        caption: planningNote,
-        publishTime: item.publishTime || '09:00',
-        strategy: strategy._id,
-        autonomousRun: runId,
-        status: 'planned',
-      };
-    }),
+    strategy.items.map((item) => ({
+      workspace: workspaceId,
+      day: item.day,
+      platform: normalizeChannel(item.channel),
+      type: normalizeFormat(item.format),
+      topic: item.topic,
+      caption: item.angle || item.topic,
+      publishTime: item.publishTime || '09:00',
+      strategy: strategy._id,
+      autonomousRun: runId,
+      status: 'planned',
+    })),
   );
 
   return { strategy, entries };
