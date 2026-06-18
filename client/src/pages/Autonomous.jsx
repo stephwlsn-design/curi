@@ -84,6 +84,7 @@ export default function Autonomous() {
   const navigate = useNavigate()
   const [days, setDays] = useState(30)
   const [channels, setChannels] = useState(['linkedin', 'instagram'])
+  const [contentPrompt, setContentPrompt] = useState('')
   const [loading, setLoading] = useState(false)
   const [run, setRun] = useState(null)
   const [historyRuns, setHistoryRuns] = useState([])
@@ -102,6 +103,7 @@ export default function Autonomous() {
   })
   const [discovering, setDiscovering] = useState(false)
   const [manualAdvancing, setManualAdvancing] = useState(false)
+  const [submittingApproval, setSubmittingApproval] = useState(false)
   const pollRef = useRef(null)
   const pollRunIdRef = useRef(null)
   const lastProgressRef = useRef({ progress: -1, at: Date.now() })
@@ -109,12 +111,13 @@ export default function Autonomous() {
   const progressPanelRef = useRef(null)
 
   useDraftModule('autonomous', () => ({
-    days, channels, designIdea, onboarding,
+    days, channels, designIdea, onboarding, contentPrompt,
     runId: run?._id, runStatus: run?.status,
   }), (s) => {
     if (s.days) setDays(s.days)
     if (s.channels) setChannels(s.channels)
     if (s.designIdea) setDesignIdea(s.designIdea)
+    if (s.contentPrompt) setContentPrompt(s.contentPrompt)
     if (s.onboarding) setOnboarding(prev => ({ ...prev, ...s.onboarding }))
   })
 
@@ -417,6 +420,7 @@ export default function Autonomous() {
         workspaceId,
         days,
         channels,
+        contentPrompt: contentPrompt.trim(),
         designIdea: sanitizeDesignIdea(designIdea),
       }, { timeout: 45000 })
       if (!data?.run?._id) throw new Error('No run returned from server')
@@ -445,6 +449,27 @@ export default function Autonomous() {
 
   const toggleChannel = (ch) => {
     setChannels(prev => prev.includes(ch) ? (prev.length > 1 ? prev.filter(c => c !== ch) : prev) : [...prev, ch])
+  }
+
+  const totalGenerated = posts.length + designs.length + videos.length
+
+  const sendToApprovalQueue = async () => {
+    if (!run?._id || run._id === 'pending') return toast.error('No active campaign run')
+    if (!totalGenerated) return toast.error('Generate content first')
+    setSubmittingApproval(true)
+    try {
+      const { data } = await API.post(`/autonomous/run/${run._id}/submit-for-approval`, {}, { timeout: 30000 })
+      if (data.run) setRun(data.run)
+      if (data.posts) setPosts(data.posts)
+      if (data.designs) setDesigns(data.designs)
+      if (data.videos) setVideos(data.videos)
+      toast.success(data.message || 'Sent to approval queue')
+      navigate('/approvals')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not send to approval queue')
+    } finally {
+      setSubmittingApproval(false)
+    }
   }
 
   return (
@@ -591,6 +616,23 @@ export default function Autonomous() {
             </div>
           </div>
 
+          <div className="page-card sm:col-span-2 xl:col-span-4">
+            <div className="section-label mb-2">Content Strategy</div>
+            <p className="text-xs text-theme-muted/55 mb-3 leading-relaxed">
+              Tell Curi what to focus on — themes, angles, launches, or audience goals. The autonomous engine uses this prompt when building your calendar, posts, designs, and videos.
+            </p>
+            <textarea
+              className="input text-sm min-h-[88px] resize-y w-full"
+              placeholder="e.g. Focus on our Q3 product launch, thought leadership for media buyers, and weekly industry trend roundups…"
+              value={contentPrompt}
+              onChange={(e) => setContentPrompt(e.target.value)}
+              maxLength={2000}
+            />
+            {contentPrompt.trim() && (
+              <p className="text-[10px] text-theme-muted/45 mt-1.5">{contentPrompt.trim().length}/2000 characters</p>
+            )}
+          </div>
+
       </div>
 
       {historyRuns.length > 0 && (
@@ -627,7 +669,7 @@ export default function Autonomous() {
           <div className="page-card bg-gradient-to-br from-curi-pink/10 to-curi-blue/10 border-curi-pink/20">
             <h2 className="text-2xl font-extrabold text-theme-text mb-2">Generate Next {days} Days</h2>
             <p className="text-theme-muted/60 text-base mb-5">
-              Curi builds a custom {days}-day content plan tailored to your brand — phased themes, channel strategy, and calendar items — then writes posts, creates designs and videos, and schedules publishing.
+              Curi builds a custom {days}-day content plan tailored to your brand and your strategy prompt — phased themes, channel strategy, and calendar items — then writes posts, creates designs and videos, and queues them for your approval.
             </p>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-sm text-theme-muted/50 font-medium">100 credits</span>
@@ -735,9 +777,21 @@ export default function Autonomous() {
                     </button>
                   )}
                 </div>
+                {run.contentPrompt && !run.strategy?.planBrief && (
+                  <div className="mb-4 rounded-lg border border-curi-pink/25 bg-curi-pink/5 p-3">
+                    <p className="text-[10px] font-bold text-curi-pink uppercase tracking-wider mb-1">Your strategy prompt</p>
+                    <p className="text-sm text-theme-muted/70 leading-relaxed">{run.contentPrompt}</p>
+                  </div>
+                )}
                 {run.strategy?.planBrief && (
                   <div className="mb-4 p-4 rounded-xl bg-theme-subtle/5 border border-theme-border space-y-3">
                     <div className="section-label">Custom content plan</div>
+                    {run.contentPrompt && (
+                      <div className="rounded-lg border border-curi-pink/25 bg-curi-pink/5 p-3">
+                        <p className="text-[10px] font-bold text-curi-pink uppercase tracking-wider mb-1">Your strategy prompt</p>
+                        <p className="text-sm text-theme-muted/70 leading-relaxed">{run.contentPrompt}</p>
+                      </div>
+                    )}
                     {run.strategy.name && (
                       <p className="text-sm font-bold text-theme-text">{run.strategy.name}</p>
                     )}
@@ -814,6 +868,24 @@ export default function Autonomous() {
 
           {(designs.length > 0 || videos.length > 0 || posts.length > 0) && (
             <div className="space-y-5">
+              <div className="page-card bg-gradient-to-r from-curi-green/10 to-curi-blue/10 border-curi-green/25">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-extrabold text-theme-text mb-1">Ready for approval</h3>
+                    <p className="text-sm text-theme-muted/60">
+                      {totalGenerated} asset{totalGenerated === 1 ? '' : 's'} generated — send everything to the approval queue with suggested publish dates from your calendar.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={sendToApprovalQueue}
+                    disabled={submittingApproval || !run?._id || run._id === 'pending'}
+                    className="btn-primary text-sm px-6 py-2.5 whitespace-nowrap flex-shrink-0"
+                  >
+                    {submittingApproval ? 'Sending…' : 'Send All to Approval Queue →'}
+                  </button>
+                </div>
+              </div>
               {posts.length > 0 && (
                 <div className="page-card">
                   <div className="section-label mb-4">

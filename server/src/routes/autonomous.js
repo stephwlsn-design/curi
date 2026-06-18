@@ -14,6 +14,7 @@ const {
   advanceAutonomousRun,
   getAutonomousRun,
   getAutonomousHistory,
+  submitRunForApprovalHandler,
 } = require('../handlers/autonomousFast');
 const { enqueueAutonomousRun, enqueueTopicDiscovery } = require('../workers');
 const UserPreferences = require('../models/UserPreferences');
@@ -57,6 +58,15 @@ router.post('/run/:id/advance', async (req, res) => {
       }
     } catch { /* ignore */ }
     return res.status(502).json({ error: err.message });
+  }
+});
+
+router.post('/run/:id/submit-for-approval', async (req, res) => {
+  try {
+    const payload = await submitRunForApprovalHandler({ user: req.user, runId: req.params.id });
+    return res.json(payload);
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message });
   }
 });
 

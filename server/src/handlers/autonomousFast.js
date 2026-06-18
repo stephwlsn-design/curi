@@ -34,7 +34,7 @@ const fetchRunPayload = async (run) => {
 };
 
 const createAutonomousRun = async ({ user, body }) => {
-  const { workspaceId, days = 30, channels = [], designIdea } = body;
+  const { workspaceId, days = 30, channels = [], designIdea, contentPrompt = '' } = body;
   if (!workspaceId) {
     const err = new Error('Workspace not loaded');
     err.status = 400;
@@ -81,6 +81,7 @@ const createAutonomousRun = async ({ user, body }) => {
     days,
     channels,
     designIdea: runDesignIdea,
+    contentPrompt: String(contentPrompt || '').trim().slice(0, 2000),
     status: 'queued',
     steps: PIPELINE_STEPS.map((name) => ({ name, status: 'pending' })),
   });
@@ -167,6 +168,18 @@ const getAutonomousCalendar = async ({ user, workspaceId, runId }) => {
   return { entries };
 };
 
+const submitRunForApprovalHandler = async ({ user, runId }) => {
+  const { submitRunForApproval } = require('../services/autonomousEngineService');
+  const { reviewCount, positioned, run } = await submitRunForApproval(runId, user._id);
+  const payload = await fetchRunPayload(run);
+  return {
+    ...payload,
+    reviewCount,
+    positioned,
+    message: `${reviewCount} item${reviewCount === 1 ? '' : 's'} sent to approval queue`,
+  };
+};
+
 module.exports = {
   fetchRunPayload,
   createAutonomousRun,
@@ -174,4 +187,5 @@ module.exports = {
   getAutonomousRun,
   getAutonomousHistory,
   getAutonomousCalendar,
+  submitRunForApprovalHandler,
 };

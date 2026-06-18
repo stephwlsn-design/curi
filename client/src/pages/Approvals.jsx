@@ -78,6 +78,13 @@ export default function Approvals() {
               {item.type === 'image' ? (
                 <div className="space-y-4">
                   <DesignPreview design={toDesignPreview(item)} onEdit={setEditingDesign} />
+                  {item.metadata?.suggestedScheduledAt && tab === 'review' && (
+                    <p className="text-xs text-curi-blue font-semibold">
+                      Suggested publish: {new Date(item.metadata.suggestedScheduledAt).toLocaleString(undefined, {
+                        weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+                      })}
+                    </p>
+                  )}
                   {tab === 'review' && (
                     <div className="flex gap-2 justify-end">
                       <button onClick={() => approve(item._id)} className="btn-primary text-sm px-4 py-2">Approve</button>
@@ -88,6 +95,13 @@ export default function Approvals() {
               ) : item.type === 'video' ? (
                 <div className="space-y-4">
                   <VideoPreview video={toVideoPreview(item)} />
+                  {item.metadata?.suggestedScheduledAt && tab === 'review' && (
+                    <p className="text-xs text-curi-blue font-semibold">
+                      Suggested publish: {new Date(item.metadata.suggestedScheduledAt).toLocaleString(undefined, {
+                        weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+                      })}
+                    </p>
+                  )}
                   {tab === 'review' && (
                     <div className="flex gap-2 justify-end">
                       <button onClick={() => approve(item._id)} className="btn-primary text-sm px-4 py-2">Approve</button>
@@ -108,6 +122,16 @@ export default function Approvals() {
                     )}
                   </div>
                   <div className="font-bold text-theme-text text-base mb-1">{item.title || 'Untitled'}</div>
+                  {item.metadata?.suggestedScheduledAt && tab === 'review' && (
+                    <p className="text-xs text-curi-blue font-semibold mb-1">
+                      Suggested publish: {new Date(item.metadata.suggestedScheduledAt).toLocaleString(undefined, {
+                        weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+                      })}
+                      {item.metadata.suggestedPlatform && (
+                        <span className="text-theme-muted/50 font-medium"> · {item.metadata.suggestedPlatform}</span>
+                      )}
+                    </p>
+                  )}
                   <p className="text-theme-muted/60 text-base line-clamp-3">{item.content}</p>
                 </div>
                 {tab === 'review' && (

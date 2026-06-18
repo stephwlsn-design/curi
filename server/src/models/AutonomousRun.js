@@ -36,6 +36,7 @@ const autonomousRunSchema = new mongoose.Schema({
     analyzedDirection: String,
     uploadedAt: Date,
   },
+  contentPrompt: { type: String, default: '' },
   processingLockAt: Date,
   pipelineState: {
     contentIndex: { type: Number, default: 0 },

@@ -27,17 +27,22 @@ const spreadDay = (index, total, days) => {
   return Math.max(1, Math.min(days, Math.round(((index + 1) / total) * days)));
 };
 
-const buildFallbackItems = ({ topics, days, channels, entryCount, brandProfile }) => {
+const buildFallbackItems = ({ topics, days, channels, entryCount, brandProfile, contentPrompt = '' }) => {
   const pool = topics.length ? topics : [{ topic: `${brandProfile?.name || 'Brand'} update` }];
   const pillars = ['Education', 'Social proof', 'Product value', 'Thought leadership', 'Community'];
   const goals = ['awareness', 'education', 'engagement', 'conversion', 'trust'];
   const count = entryCount || days;
   const brand = brandProfile?.name || 'the brand';
   const audience = brandProfile?.audience || 'your audience';
+  const direction = contentPrompt?.trim();
   return Array.from({ length: count }, (_, i) => ({
     day: spreadDay(i, count, days),
-    topic: pool[i % pool.length].topic,
-    angle: `${brand} take for ${audience} — ${pillars[i % pillars.length].toLowerCase()} focus`,
+    topic: direction && i === 0
+      ? `${pool[i % pool.length].topic} — ${direction.slice(0, 60)}`
+      : pool[i % pool.length].topic,
+    angle: direction
+      ? `${direction.slice(0, 100)} (${pillars[i % pillars.length]} for ${audience})`
+      : `${brand} take for ${audience} — ${pillars[i % pillars.length].toLowerCase()} focus`,
     goal: goals[i % goals.length],
     pillar: pillars[i % pillars.length],
     channel: channels[i % channels.length] || 'linkedin',
@@ -47,12 +52,15 @@ const buildFallbackItems = ({ topics, days, channels, entryCount, brandProfile }
   }));
 };
 
-const buildFallbackPlan = (brandProfile, days, entryCount) => {
+const buildFallbackPlan = (brandProfile, days, entryCount, contentPrompt = '') => {
   const duration = getDurationPlan(days);
+  const direction = contentPrompt?.trim();
   return {
     name: `${days}-Day ${brandProfile?.name || 'Brand'} Content Plan`,
-    campaignGoal: `Build consistent ${days}-day visibility and engagement for ${brandProfile?.name || 'the brand'}`,
-    narrative: `A phased ${days}-day arc: ${duration.phases.map((p) => p.focus).slice(0, 2).join('; ')}.`,
+    campaignGoal: direction || `Build consistent ${days}-day visibility and engagement for ${brandProfile?.name || 'the brand'}`,
+    narrative: direction
+      ? `User direction: ${direction}. Phased arc across ${days} days.`
+      : `A phased ${days}-day arc: ${duration.phases.map((p) => p.focus).slice(0, 2).join('; ')}.`,
     contentPillars: ['Education', 'Social proof', 'Product value', 'Thought leadership', 'Community'],
     phases: duration.phases.map((p) => ({ name: p.name, dayRange: p.name.match(/\d+–\d+|\d+-\d+/)?.[0] || '', focus: p.focus })),
     channelStrategy: `Rotate content across selected channels with one planned touchpoint per campaign day (${entryCount} entries across ${days} days).`,
@@ -126,12 +134,13 @@ const generateStrategy = async ({
   designIdea = null,
   runId = null,
   maxEntries = null,
+  contentPrompt = '',
 }) => {
   const entryCount = maxEntries || Math.min(days, 30);
 
   if (process.env.VERCEL) {
-    const items = buildFallbackItems({ topics, days, channels, entryCount, brandProfile });
-    const parsed = buildFallbackPlan(brandProfile, days, entryCount);
+    const items = buildFallbackItems({ topics, days, channels, entryCount, brandProfile, contentPrompt });
+    const parsed = buildFallbackPlan(brandProfile, days, entryCount, contentPrompt);
     return persistStrategy({ workspaceId, userId, days, runId, parsed, items });
   }
 
@@ -145,6 +154,7 @@ const generateStrategy = async ({
     designIdea,
     maxEntries: entryCount,
     compact: Boolean(process.env.VERCEL),
+    contentPrompt,
   });
 
   let parsed;
@@ -158,23 +168,17 @@ const generateStrategy = async ({
     });
   } catch (err) {
     logger.warn(`Strategy AI failed, using topic-based fallback: ${err.message?.slice(0, 100)}`);
-    const items = buildFallbackItems({ topics, days, channels, entryCount, brandProfile });
+    const items = buildFallbackItems({ topics, days, channels, entryCount, brandProfile, contentPrompt });
     return persistStrategy({
       workspaceId, userId, days, runId,
-      parsed: {
-        name: `${days}-Day ${brandProfile?.name || 'Brand'} Plan`,
-        campaignGoal: `Sustain ${days}-day visibility for ${brandProfile?.name || 'the brand'}`,
-        narrative: `A phased content arc across ${days} days using discovered brand topics.`,
-        contentPillars: ['Education', 'Engagement', 'Conversion'],
-        clusters: [],
-      },
+      parsed: buildFallbackPlan(brandProfile, days, entryCount, contentPrompt),
       items,
     });
   }
 
   let items = (parsed.items || []).slice(0, entryCount);
   if (!items.length) {
-    items = buildFallbackItems({ topics, days, channels, entryCount, brandProfile });
+    items = buildFallbackItems({ topics, days, channels, entryCount, brandProfile, contentPrompt });
   }
 
   // Ensure days are spread across the campaign window

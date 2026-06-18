@@ -86,13 +86,17 @@ const buildStrategyPrompt = ({
   designIdea,
   maxEntries,
   compact = false,
+  contentPrompt = '',
 }) => {
+  const promptBlock = contentPrompt?.trim()
+    ? `\nUser campaign direction (follow closely): ${contentPrompt.trim()}`
+    : '';
   if (compact) {
     const system = `You are a content strategist. Return ONLY valid JSON. Formats: post, carousel, story, video, reel. Channels: ${channels.join(', ')}.`;
     const user = `Create a ${days}-day plan for ${brandProfile?.name || onboarding?.companyName || 'this brand'}.
-${buildBrandBrief(brandProfile, onboarding, true)}
+${buildBrandBrief(brandProfile, onboarding, true)}${promptBlock}
 Channels: ${channels.join(', ')}. Topics: ${topics.slice(0, 10).map((t) => t.topic).join(', ')}.
-Generate exactly ${maxEntries} items spread across days 1-${days}. Each item must be brand-specific.
+Generate exactly ${maxEntries} items spread across days 1-${days}. Each item must reflect the user direction.
 Return JSON: {"name":"...","campaignGoal":"...","narrative":"...","contentPillars":["..."],"phases":[{"name":"...","dayRange":"1-7","focus":"..."}],"channelStrategy":"...","clusters":[],"items":[{"day":1,"topic":"...","angle":"...","goal":"awareness","pillar":"...","channel":"linkedin","format":"carousel","publishTime":"09:00","priority":1}]}`;
     return { system, user };
   }
@@ -151,6 +155,7 @@ ${topicBlock || 'Generate topics from brand profile and industry.'}
 ## Learned preferences
 ${prefBlock}
 ${designBlock ? `\n## Creative direction\n${designBlock}` : ''}
+${promptBlock ? `\n## User campaign direction\n${contentPrompt.trim()}\nEvery calendar item must align with this direction.` : ''}
 
 ## Planning rules
 1. **Brand-fit:** Every topic, angle, and CTA must reflect the brand voice (${brandProfile?.voice || 'professional'}) and speak to ${brandProfile?.audience || 'the target audience'}.

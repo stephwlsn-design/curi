@@ -242,21 +242,20 @@ const buildPipelineContext = async (run) => {
   };
 };
 
-const generateOnePost = async (run, entry, brandProfile, runIdStr) => {
+const generateOnePost = async (run, entry, brandProfile, runIdStr, contentPrompt = '') => {
   const platform = normalizePlatform(entry.platform);
   let generated;
+  const direction = contentPrompt?.trim();
   if (process.env.VERCEL) {
     const anglePart = entry.caption?.includes(' — ')
       ? entry.caption.split(' — ').slice(1).join(' — ')
       : (entry.caption && entry.caption !== entry.topic ? entry.caption : '');
+    const parts = [entry.topic, anglePart || direction || brandProfile.valueProposition || 'Discover how we help brands grow with AI-powered marketing.'];
+    if (direction && !anglePart?.includes(direction.slice(0, 20))) {
+      parts.push(`Campaign focus: ${direction}`);
+    }
     generated = {
-      content: [
-        entry.topic,
-        anglePart || brandProfile.valueProposition || 'Discover how we help brands grow with AI-powered marketing.',
-        (brandProfile.keywords || []).length
-          ? `#${String(brandProfile.keywords[0]).replace(/\s+/g, '')}`
-          : '',
-      ].filter(Boolean).join('\n\n'),
+      content: parts.filter(Boolean).join('\n\n'),
       hashtags: (brandProfile.keywords || []).slice(0, 5),
     };
   } else {
@@ -423,6 +422,7 @@ const advanceAutonomousPipeline = async (runId) => {
           designIdea: run.designIdea,
           runId: run._id,
           maxEntries: ctx.maxEntries,
+          contentPrompt: run.contentPrompt || '',
         });
         run.strategy = strategy._id;
         await run.save();
@@ -439,7 +439,7 @@ const advanceAutonomousPipeline = async (runId) => {
 
         for (let i = start; i < end; i += 1) {
           try {
-            await generateOnePost(run, contentTargets[i], ctx.brandProfile, ctx.runIdStr);
+            await generateOnePost(run, contentTargets[i], ctx.brandProfile, ctx.runIdStr, run.contentPrompt);
           } catch (e) {
             logger.error(`Content gen failed for day ${contentTargets[i].day}: ${e.message}`);
           }
@@ -626,18 +626,18 @@ const advanceAutonomousPipeline = async (runId) => {
             {
               workspace: run.workspace,
               'metadata.runId': ctx.runIdStr,
-              status: { $in: ['draft', 'review'] },
+              status: { $in: ['draft', 'approved', 'scheduled'] },
             },
-            { $set: { status: 'approved' } },
+            { $set: { status: 'review' } },
           );
-          const approvedCount = await Content.countDocuments({
+          const reviewCount = await Content.countDocuments({
             workspace: run.workspace,
             'metadata.runId': ctx.runIdStr,
-            status: 'approved',
+            status: 'review',
           });
-          run.stats.approved = approvedCount;
+          run.stats.approved = 0;
           await run.save();
-          await updateStep(run, 'Creative Scoring', 'completed', `${approvedCount} assets approved`);
+          await updateStep(run, 'Creative Scoring', 'completed', `${reviewCount} assets queued for approval`);
           stepDone = true;
           break;
         }
@@ -673,27 +673,33 @@ const advanceAutonomousPipeline = async (runId) => {
         let scheduledCount = 0;
 
         if (process.env.VERCEL) {
-          const jobs = [];
           const entryIds = [];
           for (const entry of entries) {
+            if (!entry.content) continue;
             const scheduledAt = predictPublishTime(entry.platform, entry.day, entry.publishTime);
-            await Content.findByIdAndUpdate(entry.content, { scheduledAt, status: 'scheduled' });
-            jobs.push({
-              workspace: run.workspace,
-              content: entry.content,
-              platform: entry.platform,
-              scheduledAt,
-              predictedBestTime: scheduledAt,
-              status: 'queued',
-              autonomousRun: run._id,
+            await Content.findByIdAndUpdate(entry.content, {
+              $set: {
+                status: 'review',
+                'metadata.suggestedScheduledAt': scheduledAt,
+                'metadata.suggestedPlatform': entry.platform,
+                'metadata.campaignDay': entry.day,
+              },
             });
             entryIds.push(entry._id);
             scheduledCount += 1;
           }
-          if (jobs.length) await PublishJob.insertMany(jobs);
+          await Content.updateMany(
+            {
+              workspace: run.workspace,
+              'metadata.runId': ctx.runIdStr,
+              type: { $in: ['image', 'video'] },
+            },
+            { $set: { status: 'review' } },
+          );
           if (entryIds.length) {
-            await CalendarEntry.updateMany({ _id: { $in: entryIds } }, { $set: { status: 'scheduled' } });
+            await CalendarEntry.updateMany({ _id: { $in: entryIds } }, { $set: { status: 'planned' } });
           }
+          run.stats.scheduled = 0;
         } else {
         for (const entry of entries) {
           if (!entry.content) continue;
@@ -728,7 +734,9 @@ const advanceAutonomousPipeline = async (runId) => {
         ctx.workspace.stats.videosGenerated = (ctx.workspace.stats.videosGenerated || 0) + videoCount;
         await ctx.workspace.save();
         await run.save();
-        await updateStep(run, 'Approval & Scheduling', 'completed', `${scheduledCount} posts scheduled for publishing`);
+        await updateStep(run, 'Approval & Scheduling', 'completed', process.env.VERCEL
+          ? `${scheduledCount} items positioned for approval & scheduling`
+          : `${scheduledCount} posts scheduled for publishing`);
         stepDone = true;
         break;
       }
@@ -801,4 +809,72 @@ const runAutonomousPipeline = async ({ runId }) => {
   return AutonomousRun.findById(runId);
 };
 
-module.exports = { runAutonomousPipeline, advanceAutonomousPipeline, PIPELINE_STEPS };
+const submitRunForApproval = async (runId, userId) => {
+  const run = await AutonomousRun.findOne({ _id: runId, createdBy: userId });
+  if (!run) {
+    const err = new Error('Run not found');
+    err.status = 404;
+    throw err;
+  }
+
+  const runIdStr = String(run._id);
+  const entries = await CalendarEntry.find({ autonomousRun: run._id }).sort({ day: 1 });
+  let positioned = 0;
+
+  for (const entry of entries) {
+    if (!entry.content) continue;
+    const scheduledAt = predictPublishTime(entry.platform, entry.day, entry.publishTime);
+    await Content.findByIdAndUpdate(entry.content, {
+      $set: {
+        status: 'review',
+        'metadata.suggestedScheduledAt': scheduledAt,
+        'metadata.suggestedPlatform': entry.platform,
+        'metadata.campaignDay': entry.day,
+      },
+    });
+    positioned += 1;
+  }
+
+  await Content.updateMany(
+    {
+      workspace: run.workspace,
+      'metadata.runId': runIdStr,
+      status: { $nin: ['published', 'review'] },
+    },
+    { $set: { status: 'review' } },
+  );
+
+  const reviewCount = await Content.countDocuments({
+    workspace: run.workspace,
+    'metadata.runId': runIdStr,
+    status: 'review',
+  });
+
+  const scoringStep = run.steps?.find((s) => s.name === 'Creative Scoring');
+  if (scoringStep && scoringStep.status !== 'completed') {
+    scoringStep.status = 'completed';
+    scoringStep.completedAt = new Date();
+    scoringStep.summary = `${reviewCount} assets queued for approval`;
+  }
+
+  const approvalStep = run.steps?.find((s) => s.name === 'Approval & Scheduling');
+  if (approvalStep && approvalStep.status !== 'completed') {
+    approvalStep.status = 'completed';
+    approvalStep.completedAt = new Date();
+    approvalStep.summary = `${positioned || reviewCount} items positioned for approval & scheduling`;
+  }
+
+  run.stats.approved = 0;
+  run.stats.scheduled = 0;
+  run.markModified('steps');
+  await run.save();
+
+  return { reviewCount, positioned, run };
+};
+
+module.exports = {
+  runAutonomousPipeline,
+  advanceAutonomousPipeline,
+  PIPELINE_STEPS,
+  submitRunForApproval,
+};

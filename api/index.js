@@ -186,6 +186,7 @@ const isAutonomousFastRequest = (req) => {
   if (pathOnly === '/api/autonomous/history' && req.method === 'GET') return true;
   if (pathOnly === '/api/autonomous/calendar' && req.method === 'GET') return true;
   if (/^\/api\/autonomous\/run\/[^/]+\/advance$/.test(pathOnly) && req.method === 'POST') return true;
+  if (/^\/api\/autonomous\/run\/[^/]+\/submit-for-approval$/.test(pathOnly) && req.method === 'POST') return true;
   if (/^\/api\/autonomous\/run\/[^/]+$/.test(pathOnly) && req.method === 'GET') return true;
   return false;
 };
@@ -325,6 +326,7 @@ const handleAutonomousFast = async (req, res) => {
     getAutonomousRun,
     getAutonomousHistory,
     getAutonomousCalendar,
+    submitRunForApprovalHandler,
   } = require('../server/src/handlers/autonomousFast');
 
   await connectDB();
@@ -373,6 +375,20 @@ const handleAutonomousFast = async (req, res) => {
       } catch {
         return sendJson(res, 502, { error: err.message });
       }
+    }
+  }
+
+  const approvalMatch = pathOnly.match(/^\/api\/autonomous\/run\/([^/]+)\/submit-for-approval$/);
+  if (approvalMatch && req.method === 'POST') {
+    try {
+      const payload = await withTimeout(
+        submitRunForApprovalHandler({ user, runId: approvalMatch[1] }),
+        25_000,
+        'Failed to send items to approval queue',
+      );
+      return sendJson(res, 200, payload);
+    } catch (err) {
+      return sendJson(res, err.status || 500, { error: err.message });
     }
   }
 
