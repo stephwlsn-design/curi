@@ -368,16 +368,22 @@ export default function Autonomous() {
   }, [workspaceId, pollRun, fetchHistory, loadRunResults])
 
   const saveOnboarding = async () => {
+    if (!workspaceId) return toast.error('Workspace not loaded — sign out and sign in again')
     try {
       const competitors = Array.isArray(onboarding.competitors)
         ? onboarding.competitors
         : String(onboarding.competitors || '').split(',').map(s => s.trim()).filter(Boolean)
-      const { data } = await API.post('/workspace/onboarding', { ...onboarding, competitors })
+      const { data } = await API.post('/workspace/onboarding', {
+        ...onboarding,
+        competitors,
+        workspaceId,
+        socialChannels: channels.length ? channels : onboarding.socialChannels,
+      }, { timeout: 30000 })
       setWorkspace(data.workspace)
       fetchMe?.()
       toast.success('Brand profile saved')
     } catch (err) {
-      toast.error(err.response?.data?.details?.join(', ') || err.response?.data?.error || 'Save failed')
+      toast.error(err.response?.data?.errors?.[0]?.msg || err.response?.data?.error || 'Save failed')
     }
   }
 
@@ -400,7 +406,12 @@ export default function Autonomous() {
         const competitors = Array.isArray(onboarding.competitors)
           ? onboarding.competitors
           : String(onboarding.competitors || '').split(',').map(s => s.trim()).filter(Boolean)
-        API.post('/workspace/onboarding', { ...onboarding, competitors }, { timeout: 12000 }).catch(() => {})
+        await API.post('/workspace/onboarding', {
+          ...onboarding,
+          competitors,
+          workspaceId,
+          socialChannels: channels,
+        }, { timeout: 15000 }).catch(() => {})
       }
       const { data } = await API.post('/autonomous/generate', {
         workspaceId,

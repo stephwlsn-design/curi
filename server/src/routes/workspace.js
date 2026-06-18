@@ -53,6 +53,7 @@ router.post('/onboarding', async (req, res) => {
   const {
     companyName, industry, website, targetAudience,
     competitors = [], socialChannels = [], brandColors = [], brandVoice,
+    valueProposition, marketingSummary,
   } = req.body;
 
   const workspace = await getWorkspace(req, res);
@@ -79,6 +80,8 @@ router.post('/onboarding', async (req, res) => {
   if (brandVoice) profileUpdates.voice = normalizeVoice(brandVoice);
   if (competitors.length) profileUpdates.competitors = competitors;
   if (brandColors.length) profileUpdates.colors = { palette: brandColors };
+  if (valueProposition) profileUpdates.valueProposition = valueProposition;
+  if (marketingSummary) profileUpdates.marketingSummary = marketingSummary;
 
   workspace.brandProfile = mergeBrandProfile(workspace.brandProfile, profileUpdates);
 

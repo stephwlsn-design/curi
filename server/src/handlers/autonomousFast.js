@@ -153,10 +153,25 @@ const getAutonomousHistory = async ({ user, workspaceId, page = 1, limit = 20 })
   };
 };
 
+const getAutonomousCalendar = async ({ user, workspaceId, runId }) => {
+  const workspace = await findAccessibleWorkspace(workspaceId, user._id);
+  if (!workspace) {
+    const err = new Error('Workspace not found');
+    err.status = 404;
+    throw err;
+  }
+  const CalendarEntry = require('../models/CalendarEntry');
+  const filter = { workspace: workspaceId };
+  if (runId) filter.autonomousRun = runId;
+  const entries = await CalendarEntry.find(filter).populate('content').sort({ day: 1 });
+  return { entries };
+};
+
 module.exports = {
   fetchRunPayload,
   createAutonomousRun,
   advanceAutonomousRun,
   getAutonomousRun,
   getAutonomousHistory,
+  getAutonomousCalendar,
 };

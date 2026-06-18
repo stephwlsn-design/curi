@@ -173,10 +173,18 @@ const isCreateFastRequest = (req) => {
   return false;
 };
 
+const isWorkspaceFastRequest = (req) => {
+  const pathOnly = requestPath(req);
+  if (pathOnly === '/api/workspace' && req.method === 'GET') return true;
+  if (pathOnly === '/api/workspace/onboarding' && req.method === 'POST') return true;
+  return false;
+};
+
 const isAutonomousFastRequest = (req) => {
   const pathOnly = requestPath(req);
   if (pathOnly === '/api/autonomous/generate' && req.method === 'POST') return true;
   if (pathOnly === '/api/autonomous/history' && req.method === 'GET') return true;
+  if (pathOnly === '/api/autonomous/calendar' && req.method === 'GET') return true;
   if (/^\/api\/autonomous\/run\/[^/]+\/advance$/.test(pathOnly) && req.method === 'POST') return true;
   if (/^\/api\/autonomous\/run\/[^/]+$/.test(pathOnly) && req.method === 'GET') return true;
   return false;
@@ -278,6 +286,37 @@ const handleCreateFast = async (req, res) => {
   return sendJson(res, 404, { error: 'Not found' });
 };
 
+const handleWorkspaceFast = async (req, res) => {
+  const { connectDB } = require('../server/src/config/database');
+  const { getWorkspacePayload, saveOnboarding } = require('../server/src/handlers/workspaceFast');
+
+  await connectDB();
+  const user = await authenticateRequest(req);
+  const pathOnly = requestPath(req);
+  const q = getQueryParams(req);
+  const body = req.body || {};
+
+  if (pathOnly === '/api/workspace' && req.method === 'GET') {
+    try {
+      const payload = await getWorkspacePayload({ user, workspaceId: q.workspaceId });
+      return sendJson(res, 200, payload);
+    } catch (err) {
+      return sendJson(res, err.status || 500, { error: err.message });
+    }
+  }
+
+  if (pathOnly === '/api/workspace/onboarding' && req.method === 'POST') {
+    try {
+      const payload = await saveOnboarding({ user, body });
+      return sendJson(res, 200, payload);
+    } catch (err) {
+      return sendJson(res, err.status || 500, { error: err.message });
+    }
+  }
+
+  return sendJson(res, 404, { error: 'Not found' });
+};
+
 const handleAutonomousFast = async (req, res) => {
   const { connectDB } = require('../server/src/config/database');
   const {
@@ -285,6 +324,7 @@ const handleAutonomousFast = async (req, res) => {
     advanceAutonomousRun,
     getAutonomousRun,
     getAutonomousHistory,
+    getAutonomousCalendar,
   } = require('../server/src/handlers/autonomousFast');
 
   await connectDB();
@@ -353,6 +393,19 @@ const handleAutonomousFast = async (req, res) => {
         workspaceId: q.workspaceId,
         page: q.page,
         limit: q.limit,
+      });
+      return sendJson(res, 200, payload);
+    } catch (err) {
+      return sendJson(res, err.status || 500, { error: err.message });
+    }
+  }
+
+  if (pathOnly === '/api/autonomous/calendar' && req.method === 'GET') {
+    try {
+      const payload = await getAutonomousCalendar({
+        user,
+        workspaceId: q.workspaceId,
+        runId: q.runId,
       });
       return sendJson(res, 200, payload);
     } catch (err) {
@@ -1082,6 +1135,17 @@ module.exports = async (req, res) => {
       return await handleCreateFast(req, res);
     } catch (err) {
       console.error('[api] create fast failed:', err);
+      return sendJson(res, err.status || 502, { error: err.message });
+    }
+  }
+
+  if (isWorkspaceFastRequest(req)) {
+    try {
+      normalizeRequestUrl(req);
+      await parseRequestBody(req);
+      return await handleWorkspaceFast(req, res);
+    } catch (err) {
+      console.error('[api] workspace fast failed:', err);
       return sendJson(res, err.status || 502, { error: err.message });
     }
   }
