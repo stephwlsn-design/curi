@@ -178,7 +178,6 @@ const generateStrategy = async ({
   contentPrompt = '',
 }) => {
   const entryCount = maxEntries || Math.min(days, 30);
-  const hasCustomDirection = Boolean(contentPrompt?.trim() || designIdea?.notes || designIdea?.analyzedDirection || designIdea?.imageUrl);
 
   const fallbackStrategy = () => {
     const items = buildFallbackItems({ topics, days, channels, entryCount, brandProfile, contentPrompt, designIdea });
@@ -186,44 +185,9 @@ const generateStrategy = async ({
     return persistStrategy({ workspaceId, userId, days, runId, parsed, items });
   };
 
-  if (process.env.VERCEL && !hasCustomDirection) {
+  // Vercel: instant prompt-aware fallback — LLM strategy calls stall the pipeline at ~22%.
+  if (process.env.VERCEL) {
     return fallbackStrategy();
-  }
-
-  if (process.env.VERCEL && hasCustomDirection) {
-    try {
-      const { system, user } = buildStrategyPrompt({
-        brandProfile,
-        onboarding,
-        topics,
-        days,
-        channels,
-        preferences,
-        designIdea,
-        maxEntries: entryCount,
-        compact: true,
-        contentPrompt,
-      });
-      const parsed = await generateJSON({
-        label: 'Strategy',
-        system,
-        user,
-        temperature: 0.72,
-        timeoutMs: 20_000,
-      });
-      let items = (parsed.items || []).slice(0, entryCount);
-      if (!items.length) return fallbackStrategy();
-      items = items.map((item, i) => ({
-        ...item,
-        day: item.day && item.day <= days ? item.day : spreadDay(i, items.length, days),
-        channel: normalizeChannel(item.channel || channels[i % channels.length]),
-        format: normalizeFormat(item.format),
-      }));
-      return persistStrategy({ workspaceId, userId, days, runId, parsed, items });
-    } catch (err) {
-      logger.warn(`Vercel strategy AI failed, using prompt-aware fallback: ${err.message?.slice(0, 100)}`);
-      return fallbackStrategy();
-    }
   }
 
   const { system, user } = buildStrategyPrompt({

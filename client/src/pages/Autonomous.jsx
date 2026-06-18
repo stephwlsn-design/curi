@@ -262,10 +262,17 @@ export default function Autonomous() {
         setDesigns((data.designs || []).map(toDesignPreview))
         setVideos((data.videos || []).map(toVideoPreview))
 
+        if (data.warning) {
+          toast(data.warning, { icon: '⏳' })
+          pollRef.current = setTimeout(() => pollRun(runId, { forceUnlock: true }), 1000)
+          return
+        }
+
         const progress = data.run?.progress ?? 0
+        const stuckMs = progress <= 25 ? 12_000 : 20_000
         if (progress !== lastProgressRef.current.progress) {
           lastProgressRef.current = { progress, at: Date.now() }
-        } else if (Date.now() - lastProgressRef.current.at > 20000 && stuckRetriesRef.current < 3) {
+        } else if (Date.now() - lastProgressRef.current.at > stuckMs && stuckRetriesRef.current < 6) {
           stuckRetriesRef.current += 1
           lastProgressRef.current.at = Date.now()
           toast('Pipeline may be stuck — retrying with unlock…', { icon: '⏳' })

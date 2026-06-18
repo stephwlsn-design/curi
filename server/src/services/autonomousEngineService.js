@@ -35,7 +35,7 @@ const LOCK_TTL_MS = process.env.VERCEL ? 10_000 : 85_000;
 const AUTONOMOUS_MAX_ENTRIES = process.env.VERCEL ? 30 : 8;
 const MIN_TOPICS_TO_REUSE = process.env.VERCEL ? 3 : 5;
 const STEPS_PER_TICK = process.env.VERCEL ? 6 : 1;
-const STALE_STEP_MS = process.env.VERCEL ? 8_000 : 30_000;
+const STALE_STEP_MS = process.env.VERCEL ? 5_000 : 30_000;
 const SLOW_STEPS = process.env.VERCEL
   ? new Set()
   : new Set(['Content Generation', 'Creative Generation', 'Video Generation', 'Approval & Scheduling']);
@@ -332,7 +332,13 @@ const resolveDesignIdeaForRun = async (run) => {
 
   if (needsAnalysis) {
     try {
-      const analyzed = await designService.resolveDesignIdeaContext(idea);
+      const timeoutMs = process.env.VERCEL ? 12_000 : 30_000;
+      const analyzed = await Promise.race([
+        designService.resolveDesignIdeaContext(idea),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Design analysis timed out')), timeoutMs);
+        }),
+      ]);
       if (analyzed) {
         run.designIdea.analyzedDirection = analyzed.direction;
         run.designIdea.analyzedSpec = analyzed.spec;
@@ -431,27 +437,39 @@ const advanceAutonomousPipeline = async (runId) => {
         break;
       }
       case 'Content Strategy': {
+        if (run.strategy) {
+          const planned = await CalendarEntry.countDocuments({ autonomousRun: run._id });
+          await updateStep(run, 'Content Strategy', 'completed', `${planned} calendar entries planned`);
+          stepDone = true;
+          break;
+        }
         await touchStep(run, 'Content Strategy', `Building ${run.days}-day content plan…`);
         const topics = sessionTopics?.length
           ? sessionTopics
           : await Topic.find({ workspace: run.workspace, status: 'active' }).sort({ relevance: -1 }).limit(20).lean();
-        const { strategy, entries } = await strategyService.generateStrategy({
-          workspaceId: run.workspace,
-          userId: run.createdBy,
-          brandProfile: ctx.brandProfile,
-          onboarding: ctx.workspace.onboarding,
-          topics,
-          days: run.days,
-          channels: ctx.channels,
-          preferences: ctx.topPrefs,
-          designIdea: run.designIdea,
-          runId: run._id,
-          maxEntries: ctx.maxEntries,
-          contentPrompt: run.contentPrompt || '',
-        });
-        run.strategy = strategy._id;
+        let strategyResult;
+        try {
+          strategyResult = await strategyService.generateStrategy({
+            workspaceId: run.workspace,
+            userId: run.createdBy,
+            brandProfile: ctx.brandProfile,
+            onboarding: ctx.workspace.onboarding,
+            topics,
+            days: run.days,
+            channels: ctx.channels,
+            preferences: ctx.topPrefs,
+            designIdea: run.designIdea,
+            runId: run._id,
+            maxEntries: ctx.maxEntries,
+            contentPrompt: run.contentPrompt || '',
+          });
+        } catch (e) {
+          logger.error(`Content Strategy failed: ${e.message}`);
+          throw e;
+        }
+        run.strategy = strategyResult.strategy._id;
         await run.save();
-        await updateStep(run, 'Content Strategy', 'completed', `${entries.length} calendar entries planned`);
+        await updateStep(run, 'Content Strategy', 'completed', `${strategyResult.entries.length} calendar entries planned`);
         stepDone = true;
         break;
       }
