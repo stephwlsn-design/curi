@@ -1,5 +1,15 @@
 export const toDesignPreview = (item) => {
   const m = item.metadata || item
+  const ref = m.referenceImageUrl || item.referenceImageUrl
+  let canvasLayout = m.canvasLayout || item.canvasLayout
+  if (ref?.startsWith('data:') && canvasLayout?.background?.url === '__design_reference__') {
+    canvasLayout = {
+      ...canvasLayout,
+      background: { ...canvasLayout.background, url: ref },
+      referenceImageUrl: ref,
+      designIdeaBased: true,
+    }
+  }
   return {
     _id: item._id,
     name: item.title || m.name || 'Design',
@@ -9,11 +19,11 @@ export const toDesignPreview = (item) => {
     layout: m.layout || 'centered',
     colorPalette: m.colorPalette || ['#FF6B9D', '#4DA8EE', '#1A2B48'],
     dimensions: m.dimensions,
-    canvasLayout: m.canvasLayout || item.canvasLayout,
+    canvasLayout,
     mediaUrl: m.mediaUrl || item.mediaUrl,
     thumbnailUrl: m.thumbnailUrl || item.thumbnailUrl,
-    referenceImageUrl: m.referenceImageUrl || item.referenceImageUrl,
-    designIdeaBased: m.designIdeaBased || item.canvasLayout?.designIdeaBased,
+    referenceImageUrl: ref,
+    designIdeaBased: m.designIdeaBased || m.usesDesignReference || canvasLayout?.designIdeaBased,
     scores: m.scores?.engagement ? m.scores : (m.creativeScore || item.creativeScore),
     favorited: m.favorited,
   }

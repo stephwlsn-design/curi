@@ -11,10 +11,12 @@ const videoService = require('./videoService');
 const { scoreCreative } = require('./scoringService');
 const { recordInteraction, getTopPreferences } = require('./learningService');
 const UserPreferences = require('../models/UserPreferences');
+const Strategy = require('../models/Strategy');
 const CalendarEntry = require('../models/CalendarEntry');
 const { runIdFilter } = require('./approvalService');
 const { applyDesignIdeaToDesign } = require('./designService');
-const { buildStoredDesignIdeaContext, normalizeDesignIdea } = require('../utils/designIdea');
+const { buildStoredDesignIdeaContext } = require('../utils/designIdea');
+const { compactDesignMetadataForStorage, hydrateDesignContent } = require('../utils/designStorage');
 const { composeAutonomousPost, extractBriefKeywords } = require('../utils/campaignContent');
 const logger = require('../utils/logger');
 
@@ -40,7 +42,7 @@ const STALE_STEP_MS = process.env.VERCEL ? 5_000 : 30_000;
 const SLOW_STEPS = process.env.VERCEL
   ? new Set()
   : new Set(['Content Generation', 'Creative Generation', 'Video Generation', 'Approval & Scheduling']);
-const DESIGN_CAP = process.env.VERCEL ? 5 : 3;
+const DESIGN_CAP = process.env.VERCEL ? 10 : 8;
 const VIDEO_CAP = process.env.VERCEL ? 3 : 2;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -313,38 +315,8 @@ const resolveDesignIdeaForRun = async (run) => {
     && !idea?.analyzedDirection && !idea?.analyzedSpec) {
     return null;
   }
-
-  let ctx = buildStoredDesignIdeaContext(idea);
-  const normalized = normalizeDesignIdea(idea);
-  const needsAnalysis = !idea?.analyzedSpec?.aestheticOnly
-    && (normalized.hasImage || idea?.imageUrl || idea?.previewDataUrl)
-    && !run.pipelineState?.designIdeaResolved;
-
-  if (needsAnalysis) {
-    try {
-      const timeoutMs = process.env.VERCEL ? 12_000 : 30_000;
-      const analyzed = await Promise.race([
-        designService.resolveDesignIdeaContext(idea),
-        new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Design analysis timed out')), timeoutMs);
-        }),
-      ]);
-      if (analyzed) {
-        run.designIdea.analyzedDirection = analyzed.direction;
-        run.designIdea.analyzedSpec = analyzed.spec;
-        run.markModified('designIdea');
-        ctx = analyzed;
-      }
-    } catch (e) {
-      logger.warn(`Design idea analysis failed: ${e.message?.slice(0, 80)}`);
-      ctx = ctx || buildStoredDesignIdeaContext(idea);
-    }
-    run.pipelineState.designIdeaResolved = true;
-    run.markModified('pipelineState');
-    await run.save();
-  }
-
-  return ctx || buildStoredDesignIdeaContext(idea);
+  // Use upload-time analysis only — do not block design generation with another Gemini call.
+  return buildStoredDesignIdeaContext(idea);
 };
 
 const advanceAutonomousPipeline = async (runId) => {
@@ -501,7 +473,20 @@ const advanceAutonomousPipeline = async (runId) => {
         const designIdeaContext = await resolveDesignIdeaForRun(run);
         run = await AutonomousRun.findById(runId);
         const freshEntries = await CalendarEntry.find({ autonomousRun: run._id }).sort({ day: 1 });
-        const designSources = freshEntries.filter((e) => e.caption || e.topic).slice(0, DESIGN_CAP);
+        let designSources = freshEntries.filter((e) => e.caption || e.topic);
+
+        if (!designSources.length && run.strategy) {
+          const strategy = await Strategy.findById(run.strategy).lean();
+          designSources = (strategy?.items || []).map((item) => ({
+            topic: item.topic,
+            caption: item.angle || item.topic,
+            platform: item.channel,
+            type: item.format,
+            day: item.day,
+          }));
+        }
+
+        designSources = designSources.slice(0, DESIGN_CAP);
         const start = run.pipelineState.designIndex || 0;
         const end = Math.min(start + ITEMS_PER_TICK, designSources.length);
 
@@ -534,9 +519,21 @@ const advanceAutonomousPipeline = async (runId) => {
             }
             design = applyDesignIdeaToDesign(design, designIdeaContext);
             const dimId = entry.type === 'story' ? '1080x1920' : '1080x1080';
-            const canvasLayout = (designIdeaContext?.imageUrl || designIdeaContext?.spec?.colorPalette)
-              ? buildCanvasWithDesignIdea(design, designIdeaContext, dimId)
-              : (design.canvasLayout || designToCanvas(design));
+            let canvasLayout;
+            try {
+              canvasLayout = (designIdeaContext?.imageUrl || designIdeaContext?.spec?.colorPalette)
+                ? buildCanvasWithDesignIdea(design, designIdeaContext, dimId)
+                : (design.canvasLayout || designToCanvas(design));
+            } catch (canvasErr) {
+              logger.warn(`Canvas build failed day ${entry.day}: ${canvasErr.message?.slice(0, 80)}`);
+              canvasLayout = designToCanvas(design);
+            }
+            const compactMeta = compactDesignMetadataForStorage({
+              design,
+              canvasLayout,
+              designIdeaContext,
+              runDesignIdea: run.designIdea,
+            });
             const score = scoreCreative({ type: 'design', content: design.headline, metadata: design, brandProfile: ctx.brandProfile });
             await Content.create({
               workspace: run.workspace,
@@ -546,21 +543,14 @@ const advanceAutonomousPipeline = async (runId) => {
               title: design.name || `Design — Day ${entry.day}`,
               content: design.headline,
               metadata: {
-                ...design,
+                ...compactMeta,
                 module: 'autonomous',
-                canvasLayout,
                 scores: design.scores || score,
                 creativeScore: score,
                 runId: ctx.runIdStr,
-                designIdea: run.designIdea?.notes || run.designIdea?.imageUrl ? {
-                  notes: run.designIdea.notes,
-                  imageUrl: run.designIdea.imageUrl,
-                  referenceImageUrl: designIdeaContext?.imageUrl,
-                } : undefined,
-                referenceImageUrl: design.referenceImageUrl || designIdeaContext?.imageUrl,
               },
               status: score.publishReady ? 'approved' : 'review',
-              calendarEntry: entry._id,
+              calendarEntry: entry._id || undefined,
             });
           } catch (e) {
             logger.error(`Design save failed day ${entry.day}: ${e.message}`);
@@ -571,14 +561,19 @@ const advanceAutonomousPipeline = async (runId) => {
         run.pipelineState.designIndex = end;
         run.markModified('pipelineState');
         const designCount = await Content.countDocuments({
-          workspace: run.workspace, type: 'image', 'metadata.runId': ctx.runIdStr,
+          workspace: run.workspace,
+          type: 'image',
+          ...runIdFilter(ctx.runIdStr),
         });
         run.stats.designsGenerated = designCount;
         await touchStep(run, 'Creative Generation', `Designs — ${end}/${designSources.length}`);
-        await setProgress(run, completedStepCount(run), end / Math.max(designSources.length, 1));
+        await setProgress(run, completedStepCount(run), designSources.length ? end / designSources.length : 1);
 
         if (end >= designSources.length) {
-          await updateStep(run, 'Creative Generation', 'completed', `${designCount} design assets created`);
+          const summary = designCount > 0
+            ? `${designCount} design assets created`
+            : 'No calendar items to design — check content strategy step';
+          await updateStep(run, 'Creative Generation', 'completed', summary);
           run.pipelineState.designIndex = 0;
           run.markModified('pipelineState');
           await run.save();

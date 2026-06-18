@@ -44,10 +44,13 @@ const fetchRunPayload = async (run) => {
   };
   const creatives = await Content.find({ ...runFilter, type: { $in: ['image', 'video'] } }).sort({ createdAt: 1 });
   const posts = await Content.find({ ...runFilter, type: 'post' }).sort({ createdAt: 1 });
+  const hydratedDesigns = creatives
+    .filter((c) => c.type === 'image')
+    .map((d) => hydrateDesignContent(d, run.designIdea));
   return {
     run,
     posts,
-    designs: creatives.filter((c) => c.type === 'image'),
+    designs: hydratedDesigns,
     videos: creatives.filter((c) => c.type === 'video'),
   };
 };
