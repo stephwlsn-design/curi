@@ -45,10 +45,62 @@ export default forwardRef(function DesignCanvasEditor({
   const [sidebarTab, setSidebarTab] = useState('templates')
   const dragRef = useRef(null)
   const resizeRef = useRef(null)
+  const inlineEditRef = useRef(null)
+  const [inlineEditId, setInlineEditId] = useState(null)
+  const [inlineEditText, setInlineEditText] = useState('')
 
   const HANDLE_PX = 10
 
   const selected = canvas.elements.find(e => e.id === selectedId)
+
+  const focusCanvas = useCallback(() => {
+    canvasFocusRef.current?.focus({ preventScroll: true })
+  }, [])
+
+  const updateElement = useCallback((id, patch) => {
+    setCanvas(prev => ({
+      ...prev,
+      elements: prev.elements.map(el => el.id === id ? { ...el, ...patch } : el),
+    }))
+  }, [])
+
+  const selectElement = useCallback((id) => {
+    setInlineEditId(null)
+    setSelectedId(id)
+    requestAnimationFrame(() => focusCanvas())
+  }, [focusCanvas])
+
+  const isTextLikeElement = useCallback((el) => (
+    !!el && (
+      el.type === 'text'
+      || el.type === 'button'
+      || el.type === 'badge'
+      || ['headline', 'subheadline', 'cta', 'badge'].includes(el.id)
+    )
+  ), [])
+
+  const startInlineEdit = useCallback((elId) => {
+    const el = canvas.elements.find((item) => item.id === elId)
+    if (!isTextLikeElement(el)) return
+    setInlineEditId(elId)
+    setInlineEditText(el?.text || '')
+    setSelectedId(elId)
+    requestAnimationFrame(() => {
+      inlineEditRef.current?.focus()
+      inlineEditRef.current?.select()
+    })
+  }, [canvas.elements, isTextLikeElement])
+
+  const commitInlineEdit = useCallback(() => {
+    if (!inlineEditId) return
+    updateElement(inlineEditId, { text: inlineEditText })
+    setInlineEditId(null)
+    focusCanvas()
+  }, [inlineEditId, inlineEditText, focusCanvas, updateElement])
+
+  useEffect(() => {
+    focusCanvas()
+  }, [focusCanvas])
 
   useEffect(() => {
     const fit = () => {
@@ -62,19 +114,12 @@ export default forwardRef(function DesignCanvasEditor({
     return () => window.removeEventListener('resize', fit)
   }, [canvas.width, canvas.height])
 
-  const updateElement = useCallback((id, patch) => {
-    setCanvas(prev => ({
-      ...prev,
-      elements: prev.elements.map(el => el.id === id ? { ...el, ...patch } : el),
-    }))
-  }, [])
-
   const onPointerDown = (e, elId) => {
     if (e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
-    canvasFocusRef.current?.focus({ preventScroll: true })
-    setSelectedId(elId)
+    if (inlineEditId && inlineEditId !== elId) commitInlineEdit()
+    selectElement(elId)
     const el = canvas.elements.find(x => x.id === elId)
     if (!el) return
     const bounds = getElementBounds(el)
@@ -113,7 +158,7 @@ export default forwardRef(function DesignCanvasEditor({
     if (e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
-    setSelectedId(elId)
+    selectElement(elId)
     const el = canvas.elements.find(x => x.id === elId)
     if (!el) return
     const bounds = getElementBounds(el)
@@ -275,6 +320,7 @@ export default forwardRef(function DesignCanvasEditor({
       }],
     }))
     setSelectedId(id)
+    focusCanvas()
   }
 
   const deleteSelected = useCallback(() => {
@@ -285,8 +331,8 @@ export default forwardRef(function DesignCanvasEditor({
       ...prev,
       elements: prev.elements.filter(e => e.id !== selectedId),
     }))
-    setSelectedId(null)
-  }, [selectedId])
+    selectElement(null)
+  }, [selectedId, selectElement])
 
   const getSpeakableLayerContext = useCallback(() => {
     if (!selected) return null
@@ -302,66 +348,110 @@ export default forwardRef(function DesignCanvasEditor({
     }
   }, [selected])
 
-  const isFormField = (target) => {
-    if (!target) return false
-    const tag = target.tagName
-    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
-  }
+  const shouldHandleCanvasKeys = useCallback((target) => {
+    if (inlineEditId) return false
+    if (!target?.tagName) return Boolean(selectedId)
+    if (target.isContentEditable) return false
+    if (target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.tagName === 'INPUT') {
+      return false
+    }
+    const canvasHost = canvasFocusRef.current
+    if (canvasHost?.contains(target)) return true
+    return Boolean(selectedId)
+  }, [inlineEditId, selectedId])
 
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      if (isFormField(e.target)) return
+  const handleCanvasKeyDown = useCallback((e) => {
+    if (!shouldHandleCanvasKeys(e.target)) return
 
-      if (e.key === 'Escape') {
-        if (selectedId) {
-          e.preventDefault()
-          setSelectedId(null)
-        }
-        return
-      }
+    if (inlineEditId) return
 
-      if (!selectedId) return
-
-      const el = canvas.elements.find((item) => item.id === selectedId)
-      if (!el) return
-
-      const bounds = getElementBounds(el)
-      const step = e.shiftKey ? 10 : 1
-
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault()
-        updateElement(selectedId, { x: Math.max(0, el.x - step) })
-        return
-      }
-      if (e.key === 'ArrowRight') {
-        e.preventDefault()
-        updateElement(selectedId, { x: Math.min(canvas.width - bounds.width, el.x + step) })
-        return
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        updateElement(selectedId, { y: Math.max(0, el.y - step) })
-        return
-      }
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        updateElement(selectedId, { y: Math.min(canvas.height - bounds.height, el.y + step) })
-        return
-      }
-
-      if ((e.key === 'Delete' || e.key === 'Backspace') && !['headline', 'subheadline', 'cta', 'badge'].includes(selectedId)) {
-        e.preventDefault()
-        setCanvas((prev) => ({
-          ...prev,
-          elements: prev.elements.filter((item) => item.id !== selectedId),
-        }))
-        setSelectedId(null)
-      }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault()
+      saveDesign()
+      return
     }
 
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [selectedId, canvas.elements, canvas.width, canvas.height, updateElement])
+    if (e.key === 'Escape') {
+      if (selectedId) {
+        e.preventDefault()
+        selectElement(null)
+      }
+      return
+    }
+
+    if (e.key === 'Tab' && canvas.elements.length > 0) {
+      e.preventDefault()
+      const visible = canvas.elements.filter((item) => item.visible !== false)
+      if (!visible.length) return
+      const currentIndex = visible.findIndex((item) => item.id === selectedId)
+      const nextIndex = e.shiftKey
+        ? (currentIndex <= 0 ? visible.length - 1 : currentIndex - 1)
+        : (currentIndex < 0 || currentIndex >= visible.length - 1 ? 0 : currentIndex + 1)
+      selectElement(visible[nextIndex].id)
+      return
+    }
+
+    if (e.key === 'Enter' && selectedId && !e.shiftKey) {
+      const el = canvas.elements.find((item) => item.id === selectedId)
+      if (isTextLikeElement(el)) {
+        e.preventDefault()
+        startInlineEdit(selectedId)
+      }
+      return
+    }
+
+    if (!selectedId) return
+
+    const el = canvas.elements.find((item) => item.id === selectedId)
+    if (!el) return
+
+    const bounds = getElementBounds(el)
+    const step = e.shiftKey ? 10 : 1
+
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      updateElement(selectedId, { x: Math.max(0, el.x - step) })
+      return
+    }
+    if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      updateElement(selectedId, { x: Math.min(canvas.width - bounds.width, el.x + step) })
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      updateElement(selectedId, { y: Math.max(0, el.y - step) })
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      updateElement(selectedId, { y: Math.min(canvas.height - bounds.height, el.y + step) })
+      return
+    }
+
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !['headline', 'subheadline', 'cta', 'badge'].includes(selectedId)) {
+      e.preventDefault()
+      deleteSelected()
+    }
+  }, [
+    shouldHandleCanvasKeys,
+    inlineEditId,
+    selectedId,
+    canvas.elements,
+    canvas.width,
+    canvas.height,
+    updateElement,
+    selectElement,
+    startInlineEdit,
+    isTextLikeElement,
+    deleteSelected,
+    saveDesign,
+  ])
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleCanvasKeyDown)
+    return () => window.removeEventListener('keydown', handleCanvasKeyDown)
+  }, [handleCanvasKeyDown])
 
   const applyPexelsPhoto = (item, useAs = 'background') => {
     setCanvas((prev) => applyPexelsPhotoToCanvas(prev, item.url, useAs))
@@ -596,17 +686,19 @@ export default forwardRef(function DesignCanvasEditor({
             <div
               ref={canvasFocusRef}
               tabIndex={0}
+              role="application"
+              aria-label="Design canvas. Use arrow keys to move the selected layer, Tab to cycle layers, Enter or double-click to edit text."
               className="relative outline-none focus-visible:ring-2 focus-visible:ring-curi-pink/40 rounded-lg"
               onPointerDown={(e) => {
-                canvasFocusRef.current?.focus({ preventScroll: true })
-                if (e.target === e.currentTarget) setSelectedId(null)
+                focusCanvas()
+                if (e.target === e.currentTarget) selectElement(null)
               }}
             >
               <DesignCanvasRenderer
                 canvas={canvas}
                 scale={scale}
-                selectedId={null}
-                onSelect={setSelectedId}
+                selectedId={selectedId}
+                onSelect={selectElement}
                 interactive
               />
               {canvas.elements.filter(e => e.visible !== false && e.id !== selectedId).map(el => {
@@ -624,6 +716,10 @@ export default forwardRef(function DesignCanvasEditor({
                       zIndex: 10,
                     }}
                     onPointerDown={e => onPointerDown(e, el.id)}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation()
+                      startInlineEdit(el.id)
+                    }}
                   />
                 )
               })}
@@ -674,6 +770,10 @@ export default forwardRef(function DesignCanvasEditor({
                       className="absolute inset-0 cursor-move"
                       style={{ margin: HANDLE_PX }}
                       onPointerDown={e => onPointerDown(e, selected.id)}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation()
+                        startInlineEdit(selected.id)
+                      }}
                     />
                     {RESIZE_HANDLES.map((handle) => (
                       <div
@@ -692,16 +792,61 @@ export default forwardRef(function DesignCanvasEditor({
               })()}
               {selected && !canResizeElement(selected) && (
                 <div
-                  className="absolute border-2 border-curi-pink border-dashed pointer-events-none"
+                  className="absolute border-2 border-curi-pink border-dashed"
                   style={{
                     left: selected.x * scale,
                     top: selected.y * scale,
                     width: getElementBounds(selected).width * scale,
                     height: getElementBounds(selected).height * scale,
                     zIndex: 20,
+                    cursor: isTextLikeElement(selected) ? 'text' : 'move',
+                  }}
+                  onPointerDown={e => onPointerDown(e, selected.id)}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    startInlineEdit(selected.id)
                   }}
                 />
               )}
+              {inlineEditId && (() => {
+                const el = canvas.elements.find((item) => item.id === inlineEditId)
+                if (!el) return null
+                const bounds = getElementBounds(el)
+                return (
+                  <textarea
+                    ref={inlineEditRef}
+                    value={inlineEditText}
+                    onChange={(e) => setInlineEditText(e.target.value)}
+                    onBlur={commitInlineEdit}
+                    onKeyDown={(e) => {
+                      e.stopPropagation()
+                      if (e.key === 'Escape') {
+                        e.preventDefault()
+                        setInlineEditId(null)
+                        setInlineEditText(el.text || '')
+                        focusCanvas()
+                      }
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        commitInlineEdit()
+                      }
+                    }}
+                    className="absolute bg-white/95 text-theme-text border-2 border-curi-pink rounded px-2 py-1 resize-none outline-none z-50 shadow-lg"
+                    style={{
+                      left: el.x * scale,
+                      top: el.y * scale,
+                      width: Math.max(bounds.width * scale, 120),
+                      minHeight: Math.max(bounds.height * scale, 32),
+                      fontSize: (el.fontSize || 24) * scale,
+                      fontFamily: el.fontFamily || '"Poppins", system-ui, sans-serif',
+                      fontWeight: el.fontWeight || 600,
+                      textAlign: el.align || 'left',
+                      color: el.color?.startsWith('#') ? el.color : '#1A2B48',
+                      lineHeight: 1.15,
+                    }}
+                  />
+                )
+              })()}
             </div>
           </div>
         </div>
@@ -709,12 +854,15 @@ export default forwardRef(function DesignCanvasEditor({
         {/* Properties panel */}
         <div className={`${isSpeakableLayer ? 'w-80' : 'w-64'} border-l border-theme-border p-4 overflow-y-auto flex-shrink-0 space-y-4 transition-all`}>
           <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">Layers</div>
+          <p className="text-[10px] text-theme-muted/50 leading-snug -mt-2">
+            Click canvas to focus, then use arrow keys to nudge, Tab to cycle layers, Enter/double-click to edit text, Delete to remove.
+          </p>
           <div className="space-y-1">
             {canvas.elements.map(el => (
               <button
                 key={el.id}
                 type="button"
-                onClick={() => setSelectedId(el.id)}
+                onClick={() => selectElement(el.id)}
                 className={`w-full text-left px-2 py-1.5 rounded-lg text-xs font-medium capitalize ${
                   selectedId === el.id ? 'bg-curi-pink/15 text-curi-pink' : 'hover:bg-theme-subtle/5 text-theme-muted/60'
                 }`}

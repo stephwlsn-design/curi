@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { API, useAuth } from '../context/AuthContext'
 import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
@@ -8,28 +9,47 @@ const DAY_OPTIONS = [30, 60, 90]
 
 export default function Calendar() {
   const { workspaceId } = useAuth()
+  const navigate = useNavigate()
   const [days, setDays] = useState(30)
   const [goal, setGoal] = useState('')
   const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [entries, setEntries] = useState([])
 
   const generate = async () => {
+    if (!workspaceId) return toast.error('Select a workspace first')
     setLoading(true)
     try {
       const { data } = await API.post('/calendar/generate', { workspaceId, days, goal })
       setEntries(data.calendar || [])
-      toast.success(`${days}-day calendar generated`)
+      toast.success(`${(data.calendar || []).length} calendar entries generated`)
     } catch (err) {
       toast.error(err.response?.data?.error || 'Calendar generation failed')
     } finally { setLoading(false) }
+  }
+
+  const sendToApprovals = async () => {
+    if (!entries.length) return
+    setSaving(true)
+    try {
+      const { data } = await API.post('/calendar/save', { workspaceId, entries, goal })
+      toast.success(data.message || 'Sent to approval queue')
+      navigate('/approvals')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not save calendar')
+    } finally { setSaving(false) }
   }
 
   return (
     <PageShell>
       <PageHeader
         title="Curi Calendar"
-        description="Auto-generate a content calendar with captions, platforms, and publish times. Schedule your next 30, 60, or 90 days in one click."
+        description="Auto-generate a content calendar with captions, platforms, and publish times. Send entries to Approvals to schedule publishing."
       />
+
+      {!workspaceId && (
+        <div className="page-card mb-6 text-sm text-theme-muted/60">Complete onboarding or select a workspace to generate a calendar.</div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 mb-6">
         <div className="page-card">
@@ -52,7 +72,7 @@ export default function Calendar() {
       <div className="page-card mb-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-sm text-theme-muted/50 font-medium">10 credits</span>
-          <button onClick={generate} disabled={loading} className="btn-primary text-base px-6 py-3">
+          <button onClick={generate} disabled={loading || !workspaceId} className="btn-primary text-base px-6 py-3">
             {loading ? 'Generating...' : `Generate ${days}-Day Calendar`}
           </button>
         </div>
@@ -60,7 +80,17 @@ export default function Calendar() {
 
       {entries.length > 0 && (
         <div className="space-y-4">
-          <h2 className="text-xl font-bold text-theme-text">{entries.length} scheduled posts</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-bold text-theme-text">{entries.length} calendar entries</h2>
+            <div className="flex gap-2">
+              <button type="button" onClick={sendToApprovals} disabled={saving} className="btn-primary text-sm">
+                {saving ? 'Saving…' : 'Send all to Approvals →'}
+              </button>
+              <button type="button" onClick={() => navigate('/scheduled')} className="btn-secondary text-sm">
+                View scheduled
+              </button>
+            </div>
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {entries.map((entry, i) => (
               <motion.div key={i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.02 }}

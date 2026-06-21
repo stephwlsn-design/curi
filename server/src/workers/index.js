@@ -1,10 +1,8 @@
 const { getQueue, QUEUE_NAMES, addJob } = require('../config/queue');
 const { runAutonomousPipeline } = require('../services/autonomousEngineService');
 const { discoverTopics } = require('../services/topicDiscoveryService');
-const publishService = require('../services/publishService');
+const { processPublishJob, processDuePublishJobs } = require('../services/publishJobRunner');
 const PublishJob = require('../models/PublishJob');
-const Content = require('../models/Content');
-const User = require('../models/User');
 const Workspace = require('../models/Workspace');
 const logger = require('../utils/logger');
 
@@ -37,57 +35,8 @@ const startWorkers = () => {
     topicQueue.add({ daily: true }, { repeat: { cron: '0 4 * * *' } }).catch(() => {});
   }
 
-  if (publishQueue) {
-    publishQueue.process(async (job) => {
-      const publishJob = await PublishJob.findOneAndUpdate(
-        { _id: job.data.publishJobId, status: { $in: ['queued', 'processing'] } },
-        { $set: { status: 'processing' }, $inc: { attempts: 1 } },
-        { new: true }
-      ).populate('content');
-
-      if (!publishJob) return;
-      if (!publishJob.content) {
-        publishJob.status = 'failed';
-        publishJob.error = 'Content not found';
-        await publishJob.save();
-        return;
-      }
-
-      try {
-        const user = await User.findById(publishJob.content.createdBy);
-        const socialAccount = user?.socialAccounts?.find(a => a.platform === publishJob.platform);
-
-        if (!socialAccount) {
-          publishJob.status = 'failed';
-          publishJob.error = `No ${publishJob.platform} account connected`;
-          await publishJob.save();
-          return;
-        }
-
-        const result = await publishService.publish({
-          content: publishJob.content,
-          socialAccount,
-          platform: publishJob.platform,
-        });
-
-        publishJob.status = 'published';
-        publishJob.publishedAt = new Date();
-        publishJob.externalId = result?.id || result?.postId || result?.platformPostId;
-        await publishJob.save();
-
-        await Content.findByIdAndUpdate(publishJob.content._id, {
-          status: 'published',
-          publishedAt: new Date(),
-        });
-      } catch (err) {
-        publishJob.status = publishJob.attempts >= 3 ? 'failed' : 'queued';
-        publishJob.error = err.message;
-        await publishJob.save();
-        if (publishJob.attempts < 3) throw err;
-      }
-    });
-
-    setInterval(async () => {
+  const pollDuePublishJobs = async () => {
+    if (publishQueue) {
       const due = await PublishJob.find({
         status: 'queued',
         scheduledAt: { $lte: new Date() },
@@ -96,10 +45,25 @@ const startWorkers = () => {
       for (const job of due) {
         await addJob(QUEUE_NAMES.PUBLISH, { publishJobId: job._id.toString() }, { jobId: job._id.toString() });
       }
-    }, 60_000);
+      return;
+    }
+
+    await processDuePublishJobs();
+  };
+
+  if (publishQueue) {
+    publishQueue.process(async (job) => {
+      await processPublishJob(job.data.publishJobId);
+    });
   }
 
-  logger.info('Queue workers started');
+  setInterval(() => {
+    pollDuePublishJobs().catch((err) => logger.error(`Publish poll failed: ${err.message}`));
+  }, 60_000);
+
+  pollDuePublishJobs().catch(() => {});
+
+  logger.info(`Queue workers started${publishQueue ? '' : ' (publish: in-process fallback)'}`);
 };
 
 const enqueueAutonomousRun = async (runId) => {

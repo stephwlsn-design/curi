@@ -5,11 +5,6 @@ import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
 import ThemeToggle from '../components/ThemeToggle'
 
-const TEST_CREDENTIALS = {
-  email: 'demo@curi.app',
-  password: 'Test1234!',
-}
-
 export default function Auth() {
   const [searchParams] = useSearchParams()
   const location = useLocation()
@@ -60,11 +55,6 @@ export default function Auth() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const fillTestCredentials = () => {
-    setForm(f => ({ ...f, email: TEST_CREDENTIALS.email, password: TEST_CREDENTIALS.password }))
-    setMode('login')
   }
 
   return (
@@ -136,20 +126,6 @@ export default function Auth() {
               <div className="font-bold text-curi-pink mb-0.5">Team invitation</div>
               <div className="text-theme-muted/60">Use <strong>{inviteInfo.email}</strong> to join this workspace.</div>
             </div>
-          )}
-
-          {mode === 'login' && !inviteToken && (
-            <button
-              type="button"
-              onClick={fillTestCredentials}
-              className="w-full mb-6 p-3 rounded-2xl border border-dashed border-curi-blue/40 bg-curi-blue/5 hover:bg-curi-blue/10 transition-colors text-left"
-            >
-              <div className="text-xs font-bold text-curi-blue mb-1">Demo Account</div>
-              <div className="text-sm text-theme-text font-semibold">{TEST_CREDENTIALS.email}</div>
-              <div className="text-xs text-theme-muted/50 font-medium mt-0.5">
-                Click to fill credentials · password: {TEST_CREDENTIALS.password}
-              </div>
-            </button>
           )}
 
           <form onSubmit={handle} className="space-y-4">

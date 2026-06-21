@@ -15,6 +15,8 @@ const UserPreferences = require('../models/UserPreferences');
 const Strategy = require('../models/Strategy');
 const CalendarEntry = require('../models/CalendarEntry');
 const { runIdFilter } = require('./approvalService');
+const { normalizePlatform: resolvePublishPlatform } = require('./socialAccountService');
+const { enqueuePublishJob } = require('./publishEnqueue');
 const { applyDesignIdeaToDesign } = require('./designService');
 const { buildStoredDesignIdeaContext, mergeDesignIdeaSources } = require('../utils/designIdea');
 const { compactDesignMetadataForStorage, hydrateDesignContent } = require('../utils/designStorage');
@@ -815,16 +817,18 @@ const advanceAutonomousPipeline = async (runId) => {
           const scheduledAt = predictPublishTime(entry.platform, entry.day, entry.publishTime);
           content.scheduledAt = scheduledAt;
           content.status = 'scheduled';
+          content.platform = resolvePublishPlatform(entry.platform || content.platform);
           await content.save();
-          await PublishJob.create({
+          const job = await PublishJob.create({
             workspace: run.workspace,
             content: content._id,
-            platform: entry.platform,
+            platform: content.platform,
             scheduledAt,
             predictedBestTime: scheduledAt,
             status: 'queued',
             autonomousRun: run._id,
           });
+          await enqueuePublishJob(job);
           entry.status = 'scheduled';
           await entry.save();
           scheduledCount++;
@@ -932,6 +936,8 @@ const runAutonomousPipeline = async ({ runId }) => {
 
 const submitRunForApproval = async (runId, userId) => {
   const { submitAutonomousRunForApproval } = require('./approvalService');
+const { normalizePlatform: resolvePublishPlatform } = require('./socialAccountService');
+const { enqueuePublishJob } = require('./publishEnqueue');
   return submitAutonomousRunForApproval({ runId, userId });
 };
 

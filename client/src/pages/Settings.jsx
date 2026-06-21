@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { API, useAuth } from '../context/AuthContext'
 import { PageShell, PageHeader } from '../components/layout/PageShell'
+import PublishingSettings from '../components/settings/PublishingSettings'
 import toast from 'react-hot-toast'
-import { User, Users, Copy, Trash2, UserPlus, Mail } from 'lucide-react'
+import { User, Users, Copy, Trash2, UserPlus, Mail, Share2 } from 'lucide-react'
 
 const ROLES = [
   { id: 'admin', label: 'Admin' },
@@ -13,12 +15,15 @@ const ROLES = [
 
 const TABS = [
   { id: 'account', label: 'Account', icon: User },
+  { id: 'publishing', label: 'Publishing', icon: Share2 },
   { id: 'team', label: 'Team & Users', icon: Users },
 ]
 
 export default function Settings() {
   const { user, workspaceId, fetchMe } = useAuth()
-  const [tab, setTab] = useState('account')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab') || 'account'
+  const [tab, setTab] = useState(initialTab)
   const [name, setName] = useState(user?.name || '')
   const [saving, setSaving] = useState(false)
   const [team, setTeam] = useState({ owner: null, members: [], pendingInvites: [] })
@@ -28,6 +33,23 @@ export default function Settings() {
   const [showCreate, setShowCreate] = useState(false)
 
   useEffect(() => { setName(user?.name || '') }, [user?.name])
+
+  useEffect(() => {
+    const next = searchParams.get('tab')
+    if (next && next !== tab) setTab(next)
+  }, [searchParams])
+
+  const selectTab = (id) => {
+    setTab(id)
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', id)
+    next.delete('connected')
+    next.delete('error')
+    setSearchParams(next, { replace: true })
+  }
+
+  const oauthConnected = searchParams.get('connected')
+  const oauthError = searchParams.get('error')
 
   const loadTeam = async () => {
     if (!workspaceId) return
@@ -139,7 +161,7 @@ export default function Settings() {
             <button
               key={t.id}
               type="button"
-              onClick={() => setTab(t.id)}
+              onClick={() => selectTab(t.id)}
               className={`px-4 py-2.5 rounded-xl text-base font-bold flex items-center gap-2 transition-all ${
                 tab === t.id ? 'bg-curi-gradient text-white' : 'bg-theme-subtle/5 text-theme-muted/60 hover:text-theme-text'
               }`}
@@ -172,6 +194,10 @@ export default function Settings() {
             </button>
           </form>
         </div>
+      )}
+
+      {tab === 'publishing' && (
+        <PublishingSettings oauthConnected={oauthConnected} oauthError={oauthError} />
       )}
 
       {tab === 'team' && (

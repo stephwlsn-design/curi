@@ -1,28 +1,63 @@
 const Content = require('../models/Content');
 const PublishJob = require('../models/PublishJob');
+const { normalizePlatform } = require('./socialAccountService');
 
 const toPublicUrl = (filename) => `/api/uploads/user-designs/${filename}`;
 
 const scheduleContent = async ({
-  content, platform, scheduledAt, workspaceId, autonomousRun,
+  content,
+  contentId,
+  platform,
+  scheduledAt,
+  workspaceId,
+  autonomousRun,
+  userId,
 }) => {
-  const when = new Date(scheduledAt);
-  content.status = 'scheduled';
-  content.scheduledAt = when;
-  content.platform = platform || content.platform || 'universal';
-  await content.save();
+  let item = content;
+  if (!item && contentId) {
+    item = await Content.findById(contentId);
+  }
+  if (!item) {
+    const err = new Error('Content not found');
+    err.status = 404;
+    throw err;
+  }
 
-  await PublishJob.create({
-    workspace: workspaceId,
-    content: content._id,
-    platform: content.platform,
+  const when = new Date(scheduledAt);
+  if (Number.isNaN(when.getTime())) {
+    const err = new Error('Invalid scheduledAt');
+    err.status = 400;
+    throw err;
+  }
+
+  item.status = 'scheduled';
+  item.scheduledAt = when;
+  item.platform = normalizePlatform(platform || item.platform || item.metadata?.suggestedPlatform);
+  if (userId && !item.approvedAt) {
+    item.approvedBy = userId;
+    item.approvedAt = new Date();
+  }
+  await item.save();
+
+  await PublishJob.updateMany(
+    { content: item._id, status: { $in: ['queued', 'processing'] } },
+    { $set: { status: 'cancelled' } },
+  );
+
+  const job = await PublishJob.create({
+    workspace: workspaceId || item.workspace,
+    content: item._id,
+    platform: item.platform,
     scheduledAt: when,
     predictedBestTime: when,
     status: 'queued',
     autonomousRun: autonomousRun || undefined,
   });
 
-  return content;
+  const { enqueuePublishJob } = require('./publishEnqueue');
+  await enqueuePublishJob(job);
+
+  return { content: item, job };
 };
 
 const createUploadedDesign = async ({

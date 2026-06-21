@@ -148,7 +148,11 @@ export default function Create() {
     scheduledAt.setDate(scheduledAt.getDate() + 1)
     scheduledAt.setHours(9, 0, 0, 0)
     try {
-      await API.post('/publish/schedule', { contentId: result._id, scheduledAt })
+      await API.post('/publish/schedule', {
+        contentId: result._id,
+        scheduledAt: scheduledAt.toISOString(),
+        platform,
+      })
       toast.success('Scheduled for tomorrow at 9 AM')
     } catch (err) {
       toast.error(err.response?.data?.error || 'Schedule failed')

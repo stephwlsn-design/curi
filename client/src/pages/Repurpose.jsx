@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { API, useAuth } from '../context/AuthContext'
 import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
@@ -8,12 +9,15 @@ const SOURCE_TYPES = ['blog', 'article', 'newsletter', 'video_script', 'podcast_
 
 export default function Repurpose() {
   const { workspaceId } = useAuth()
+  const navigate = useNavigate()
   const [sourceType, setSourceType] = useState('blog')
   const [sourceContent, setSourceContent] = useState('')
   const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [formats, setFormats] = useState([])
 
   const generate = async () => {
+    if (!workspaceId) return toast.error('Select a workspace first')
     if (!sourceContent.trim()) return toast.error('Paste your source content first')
     setLoading(true)
     try {
@@ -23,6 +27,18 @@ export default function Repurpose() {
     } catch (err) {
       toast.error(err.response?.data?.error || 'Repurpose failed')
     } finally { setLoading(false) }
+  }
+
+  const saveAll = async () => {
+    if (!formats.length) return
+    setSaving(true)
+    try {
+      const { data } = await API.post('/repurpose/save', { workspaceId, formats, sourceType })
+      toast.success(data.message || 'Saved to content library')
+      navigate('/dashboard#brand-hub')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Save failed')
+    } finally { setSaving(false) }
   }
 
   const copy = (text) => {
@@ -56,25 +72,32 @@ export default function Repurpose() {
         />
         <div className="flex flex-wrap justify-between items-center gap-3 mt-4">
           <span className="text-sm text-theme-muted/50">5 credits</span>
-          <button onClick={generate} disabled={loading} className="btn-primary text-base px-6 py-3">
+          <button onClick={generate} disabled={loading || !workspaceId} className="btn-primary text-base px-6 py-3">
             {loading ? 'Repurposing...' : 'Repurpose to 10 Formats'}
           </button>
         </div>
       </div>
 
       {formats.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {formats.map((f, i) => (
-            <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="page-card">
-              <div className="flex justify-between items-start mb-2">
-                <span className="badge bg-curi-blue/15 text-curi-blue capitalize">{f.type?.replace(/_/g, ' ')}</span>
-                <button onClick={() => copy(f.content)} className="text-sm text-theme-muted/50 hover:text-curi-pink font-bold">Copy</button>
-              </div>
-              {f.title && <div className="font-bold text-theme-text text-base mb-2">{f.title}</div>}
-              <p className="text-theme-muted/60 text-sm whitespace-pre-wrap line-clamp-6">{f.content}</p>
-            </motion.div>
-          ))}
-        </div>
+        <>
+          <div className="flex justify-end mb-4">
+            <button type="button" onClick={saveAll} disabled={saving} className="btn-primary text-sm">
+              {saving ? 'Saving…' : 'Save all to Brand Hub →'}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {formats.map((f, i) => (
+              <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="page-card">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="badge bg-curi-blue/15 text-curi-blue capitalize">{f.type?.replace(/_/g, ' ')}</span>
+                  <button onClick={() => copy(f.content)} className="text-sm text-theme-muted/50 hover:text-curi-pink font-bold">Copy</button>
+                </div>
+                {f.title && <div className="font-bold text-theme-text text-base mb-2">{f.title}</div>}
+                <p className="text-theme-muted/60 text-sm whitespace-pre-wrap line-clamp-6">{f.content}</p>
+              </motion.div>
+            ))}
+          </div>
+        </>
       )}
     </PageShell>
   )

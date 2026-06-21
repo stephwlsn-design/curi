@@ -1,94 +1,147 @@
 import { useState, useEffect } from 'react'
 import { useAuth, API } from '../context/AuthContext'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { PageShell, PageHeader } from '../components/layout/PageShell'
+import BrandHubSection from '../components/brand/BrandHubSection'
 import { motion } from 'framer-motion'
+import { BarChart3, TrendingUp } from 'lucide-react'
 
-const MODULES = [
-  { path: '/discover', label: 'Curi Discover', desc: 'Extract your brand DNA from any URL', color: 'from-curi-pink/20 to-curi-blue/20', badge: null },
-  { path: '/create', label: 'Curi Create', desc: 'Generate posts for every platform', color: 'from-curi-blue/20 to-curi-yellow/20', badge: null },
-  { path: '/design', label: 'Curi Design', desc: 'AI-generated on-brand creatives', color: 'from-curi-blue/20 to-curi-pink/20', badge: null },
-  { path: '/video', label: 'Curi Video', desc: 'Product videos and social reels', color: 'from-curi-green/20 to-curi-blue/20', badge: null },
-  { path: '/mail', label: 'Curi Mail', desc: 'Email flows and campaigns', color: 'from-curi-yellow/20 to-curi-green/20', badge: null },
-  { path: '/launch', label: 'Curi Launch', desc: '20 posts + ads + emails in one click', color: 'from-curi-pink/20 to-curi-yellow/20', badge: 'HOT' },
-  { path: '/autonomous', label: 'Autonomous Engine', desc: 'Generate your next 30 days automatically', color: 'from-curi-pink/20 to-curi-blue/20', badge: 'NEW' },
-  { path: '/calendar', label: 'Curi Calendar', desc: '90-day auto content calendar', color: 'from-curi-blue/20 to-curi-yellow/20', badge: null },
-  { path: '/repurpose', label: 'Curi Repurpose', desc: '1 blog to 10 formats instantly', color: 'from-curi-green/20 to-curi-blue/20', badge: null },
-  { path: '/trends', label: 'Curi Trends', desc: 'Viral topics tailored to your brand', color: 'from-curi-yellow/20 to-curi-pink/20', badge: null },
-  { path: '/competitor', label: 'Competitor Watch', desc: 'Track and outperform competitors', color: 'from-curi-blue/20 to-curi-green/20', badge: null },
-]
-
-const STATS_DEFAULT = [
+const STAT_CARDS = [
   { label: 'Posts Generated', key: 'postsGenerated', color: 'text-curi-pink' },
   { label: 'Images Created', key: 'imagesCreated', color: 'text-curi-blue' },
   { label: 'Videos Made', key: 'videosMade', color: 'text-curi-green' },
   { label: 'Published', key: 'published', color: 'text-curi-yellow' },
+  { label: 'Scheduled', key: 'scheduled', color: 'text-curi-blue' },
+  { label: 'Autonomous Runs', key: 'autonomousRuns', color: 'text-curi-pink' },
+]
+
+const QUICK_START = [
+  { path: '/discover', label: 'Discover', desc: 'Brand DNA' },
+  { path: '/create', label: 'Create', desc: 'New post' },
+  { path: '/design/studio', label: 'Design', desc: 'Creative' },
+  { path: '/autonomous', label: 'Autonomous', desc: '30-day plan' },
 ]
 
 export default function Dashboard() {
   const { user, workspaceId } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [stats, setStats] = useState({})
+  const [topContent, setTopContent] = useState([])
+
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
 
   useEffect(() => {
     if (!workspaceId) return
-    API.get(`/analytics?workspaceId=${workspaceId}`).then(r => setStats(r.data.stats || {})).catch(() => {})
+    API.get(`/analytics?workspaceId=${workspaceId}`)
+      .then((r) => {
+        setStats(r.data.stats || {})
+        setTopContent(r.data.topContent || [])
+      })
+      .catch(() => {})
   }, [workspaceId])
+
+  useEffect(() => {
+    if (location.hash !== '#brand-hub') return
+    const el = document.getElementById('brand-hub')
+    if (!el) return
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [location.hash, location.pathname])
 
   return (
     <PageShell>
       <PageHeader
         title={`${greeting}, ${user?.name?.split(' ')[0]}`}
-        description="What are you creating today?"
+        description="Workspace overview — stats, performance, and all your saved brand assets."
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        {STATS_DEFAULT.map((s, i) => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }} className="page-card">
-            <div className={`text-3xl font-black ${s.color} mb-0.5`}>{stats[s.key] ?? 0}</div>
-            <div className="text-theme-muted/50 text-sm font-medium">{s.label}</div>
-          </motion.div>
-        ))}
-      </div>
-
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-xl font-bold text-theme-text">Curi Modules</h2>
-        <span className="text-theme-muted/40 text-sm font-medium">{MODULES.length} agents</span>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-        {MODULES.map((m, i) => (
-          <motion.button
-            key={m.path}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: i * 0.04 }}
-            onClick={() => navigate(m.path)}
-            className="page-card text-left hover:border-theme-border hover:scale-[1.02] transition-all duration-200 group relative overflow-hidden"
-          >
-            <div className={`absolute inset-0 bg-gradient-to-br ${m.color} opacity-0 group-hover:opacity-100 transition-opacity`} />
-            <div className="relative">
-              {m.badge && (
-                <span className={`badge mb-3 ${m.badge === 'HOT' ? 'bg-curi-pink/20 text-curi-pink' : 'bg-curi-blue/20 text-curi-blue'}`}>{m.badge}</span>
-              )}
-              <div className="font-bold text-theme-text text-base mb-1">{m.label}</div>
-              <div className="text-theme-muted/50 text-sm leading-relaxed font-medium">{m.desc}</div>
-            </div>
-          </motion.button>
-        ))}
-      </div>
-
-      <div className="mt-8 page-card bg-gradient-to-r from-curi-pink/10 to-curi-blue/10 border-curi-pink/20">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="w-1 h-12 rounded-full bg-curi-gradient flex-shrink-0" />
-          <div className="flex-1 min-w-[200px]">
-            <div className="font-bold text-theme-text text-base mb-0.5">Autonomous Content Engine</div>
-            <div className="text-theme-muted/60 text-sm font-medium">Generate your next 30 days — topics, strategy, content, designs, videos, scoring, and scheduling in one click.</div>
-          </div>
-          <button onClick={() => navigate('/autonomous')} className="btn-primary flex-shrink-0 text-base px-6 py-3">Generate Next 30 Days</button>
+      <section className="mb-10">
+        <div className="flex items-center gap-2 mb-4">
+          <BarChart3 size={18} className="text-curi-pink" />
+          <h2 className="text-lg font-bold text-theme-text">Statistics & analytics</h2>
         </div>
-      </div>
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+          {STAT_CARDS.map((s, i) => (
+            <motion.div
+              key={s.label}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04 }}
+              className="page-card"
+            >
+              <div className={`text-2xl lg:text-3xl font-black ${s.color} mb-0.5`}>
+                {stats[s.key] ?? 0}
+              </div>
+              <div className="text-theme-muted/50 text-xs lg:text-sm font-medium">{s.label}</div>
+            </motion.div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="page-card lg:col-span-2">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp size={16} className="text-curi-green" />
+              <span className="text-sm font-bold text-theme-text">Top performing content</span>
+            </div>
+            {topContent.length > 0 ? (
+              <ul className="space-y-2">
+                {topContent.map((item) => (
+                  <li key={item.id} className="flex items-center justify-between gap-3 text-sm py-2 border-b border-theme-border/50 last:border-0">
+                    <span className="font-medium text-theme-text truncate">{item.title || 'Untitled'}</span>
+                    <span className="text-xs text-theme-muted/50 capitalize flex-shrink-0">
+                      {item.platform || 'universal'}
+                      {item.analytics?.impressions != null && ` · ${item.analytics.impressions} views`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-theme-muted/55">
+                Publish content to start tracking performance. Curi learns from what you approve and ship.
+              </p>
+            )}
+          </div>
+
+          <div className="page-card">
+            <div className="text-sm font-bold text-theme-text mb-3">Quick start</div>
+            <div className="grid grid-cols-2 gap-2">
+              {QUICK_START.map((item) => (
+                <button
+                  key={item.path}
+                  type="button"
+                  onClick={() => navigate(item.path)}
+                  className="text-left p-3 rounded-xl border border-theme-border hover:border-curi-pink/30 hover:bg-curi-pink/5 transition-all"
+                >
+                  <div className="text-xs font-bold text-theme-text">{item.label}</div>
+                  <div className="text-[10px] text-theme-muted/50">{item.desc}</div>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/analytics')}
+              className="btn-secondary w-full text-xs mt-3"
+            >
+              Full analytics report
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section id="brand-hub" className="scroll-mt-6 pt-2 border-t border-theme-border/60">
+        <div className="flex flex-wrap items-end justify-between gap-3 mb-6 pt-8">
+          <div>
+            <h2 className="text-xl font-bold text-theme-text">Brand Hub</h2>
+            <p className="text-sm text-theme-muted/55 mt-1 max-w-2xl">
+              Brand colors, saved designs, templates, content, videos, and workflow drafts in one place.
+            </p>
+          </div>
+        </div>
+        <BrandHubSection workspaceId={workspaceId} />
+      </section>
     </PageShell>
   )
 }

@@ -139,6 +139,17 @@ export default function Approvals() {
     }
   }
 
+  const approveAll = async () => {
+    if (!window.confirm('Approve and schedule all items with suggested publish dates?')) return
+    try {
+      const { data } = await API.post('/approvals/approve-all', { workspaceId })
+      toast.success(data.message || `Scheduled ${data.scheduled} items`)
+      load(tab)
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Bulk approve failed')
+    }
+  }
+
   const reject = async (id) => {
     try {
       await API.post(`/approvals/reject/${id}`, { reason: 'Needs revision', workspaceId })
@@ -213,6 +224,11 @@ export default function Approvals() {
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           Refresh
         </button>
+        {tab === 'review' && (statusCounts.review || 0) > 0 && (
+          <button type="button" onClick={approveAll} className="btn-primary text-sm px-3 py-2">
+            Approve & schedule all
+          </button>
+        )}
       </div>
 
       <div className="page-card mb-4 space-y-3">

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   LayoutTemplate, Image, Film, Type, Layers, Sparkles, Search, Loader2, CheckCircle2,
-  ChevronLeft, ChevronRight, GripVertical, Volume2, Lightbulb, Mic,
+  ChevronLeft, ChevronRight, GripVertical, Volume2, Lightbulb, Mic, FolderOpen,
 } from 'lucide-react'
 import { API, useAuth } from '../context/AuthContext'
 import DesignStepGuide, { DESIGN_STEPS } from '../components/DesignStepGuide'
@@ -18,6 +18,7 @@ import { isDraftDesign } from '../utils/localDesign'
 import { buildDesignFromInspiration, buildCarouselFromInspiration } from '../utils/inspirationCanvas'
 import { buildOwnDesignCanvas } from '../utils/inspirationSpec'
 import DesignSchedulePanel from '../components/DesignSchedulePanel'
+import DesignSavedPanel from '../components/DesignSavedPanel'
 import { getPostFormat } from '../constants/postFormats'
 import { applyCharacterToCanvas, applyTalkingCharacterToCanvas } from '../utils/characterCanvas'
 import { applyAudioToCanvas } from '../utils/audioCanvas'
@@ -26,6 +27,7 @@ import toast from 'react-hot-toast'
 const PANELS = [
   { id: 'inspiration', label: 'Inspire', icon: Lightbulb, step: 1 },
   { id: 'templates', label: 'Templates', icon: LayoutTemplate, step: 2 },
+  { id: 'saved', label: 'Saved', icon: FolderOpen, step: 2 },
   { id: 'photos', label: 'Photos', icon: Image, step: 3 },
   { id: 'videos', label: 'Videos', icon: Film, step: 3 },
   { id: 'characters', label: 'Talk', icon: Mic, step: 3 },
@@ -56,6 +58,7 @@ export default function DesignStudio() {
   const splitRef = useRef(null)
   const resizeDragRef = useRef(null)
   const panelWidthRef = useRef(ASSET_PANEL_DEFAULT)
+  const pendingDesignIdRef = useRef(null)
 
   const [assetPanelWidth, setAssetPanelWidth] = useState(readStoredPanelWidth)
   const [panelCollapsed, setPanelCollapsed] = useState(false)
@@ -139,10 +142,12 @@ export default function DesignStudio() {
   const loadDesign = useCallback(async (id) => {
     if (!workspaceId || !id) return null
     try {
-      const { data } = await API.get(`/design/library?workspaceId=${workspaceId}`)
-      return (data.designs || []).find(d => String(d._id) === String(id)) || null
-    } catch {
-      toast.error('Could not load design')
+      const { data } = await API.get(`/design/${id}?workspaceId=${workspaceId}`)
+      return data.design || null
+    } catch (err) {
+      if (err.response?.status !== 404) {
+        toast.error('Could not load design')
+      }
       return null
     }
   }, [workspaceId])
@@ -151,6 +156,7 @@ export default function DesignStudio() {
     if (!created) return
     setDesign(created)
     if (!isDraftDesign(created) && created._id) {
+      pendingDesignIdRef.current = String(created._id)
       navigate(`/design/studio/${created._id}`, { replace: true })
     }
   }
@@ -166,17 +172,26 @@ export default function DesignStudio() {
   useEffect(() => {
     if (!workspaceId || !designId || String(designId).startsWith('draft-')) return
     if (design && isDraftDesign(design)) return
-    if (design && String(design._id) === String(designId)) return
+    if (design && String(design._id) === String(designId)) {
+      pendingDesignIdRef.current = null
+      return
+    }
+    if (pendingDesignIdRef.current === String(designId)) return
+
     let cancelled = false
     setLoadingDesign(true)
     loadDesign(designId).then((found) => {
       if (cancelled) return
-      if (found) setDesign(found)
-      else if (!design) toast.error('Design not found — pick a template to start')
+      if (found) {
+        setDesign(found)
+        pendingDesignIdRef.current = null
+      } else if (pendingDesignIdRef.current !== String(designId)) {
+        toast.error('Design not found — pick a template to start')
+      }
       setLoadingDesign(false)
     })
     return () => { cancelled = true }
-  }, [workspaceId, designId, loadDesign])
+  }, [workspaceId, designId, loadDesign, design])
 
   useEffect(() => {
     const onPointerMove = (e) => {
@@ -263,6 +278,22 @@ export default function DesignStudio() {
       setPanel('photos')
     }
   }
+
+  const openSavedDesign = (saved) => {
+    if (!saved) return
+    applyDesign({ ...saved, _local: false })
+    setStep(4)
+    setPanel('text')
+    toast.success('Design loaded')
+  }
+
+  useEffect(() => {
+    const userTemplateId = searchParams.get('userTemplate')
+    if (!userTemplateId || !userTemplates.length) return
+    const template = userTemplates.find((t) => String(t._id) === String(userTemplateId))
+    if (!template) return
+    handleUserTemplate(template)
+  }, [searchParams, userTemplates])
 
   const handlePhoto = async (item, useAs) => {
     if (editorRef.current && design) {
@@ -364,7 +395,10 @@ export default function DesignStudio() {
       source: 'user-upload',
     }
     setDesign(created)
-    if (uploaded._id) navigate(`/design/studio/${uploaded._id}`, { replace: true })
+    if (uploaded._id) {
+      pendingDesignIdRef.current = String(uploaded._id)
+      navigate(`/design/studio/${uploaded._id}`, { replace: true })
+    }
     setStep(5)
     setPanel('finalize')
     toast.success(uploaded.scheduledAt ? 'Design uploaded and scheduled' : 'Your design is ready — review and schedule below')
@@ -503,6 +537,7 @@ export default function DesignStudio() {
   const handleDesignSaved = (updated) => {
     setDesign(prev => ({ ...prev, ...updated, _local: false }))
     if (updated._id && !isDraftDesign(updated)) {
+      pendingDesignIdRef.current = String(updated._id)
       navigate(`/design/studio/${updated._id}`, { replace: true })
     }
   }
@@ -694,6 +729,15 @@ export default function DesignStudio() {
               />
             )}
 
+            {panel === 'saved' && (
+              <DesignSavedPanel
+                embedded
+                workspaceId={workspaceId}
+                onOpenDesign={openSavedDesign}
+                onUseTemplate={handleUserTemplate}
+              />
+            )}
+
             {panel === 'photos' && (
               <DesignMediaPanel
                 workspaceId={workspaceId}
@@ -745,7 +789,7 @@ export default function DesignStudio() {
             {panel === 'text' && (
               <div className="space-y-3">
                 <p className="text-xs text-theme-muted/60">
-                  Select text on the canvas to edit headline, subheadline, and CTA. Or add a new text layer.
+                  Click a text layer on the canvas, then press Enter or double-click to edit. Arrow keys nudge position; Tab cycles layers.
                 </p>
                 <div>
                   <div className="text-[10px] font-bold text-theme-muted/50 uppercase tracking-wider mb-2">Font styles</div>

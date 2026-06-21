@@ -381,6 +381,20 @@ router.get('/media/videos', async (req, res) => {
   }
 });
 
+router.get('/:id', async (req, res) => {
+  try {
+    const { getDesignById } = require('../services/designSaveService');
+    const design = await getDesignById({
+      user: req.user,
+      designId: req.params.id,
+      workspaceId: req.query.workspaceId,
+    });
+    res.json({ design });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'Could not load design' });
+  }
+});
+
 router.post('/from-media', checkCredits(2), async (req, res) => {
   const {
     workspaceId,
@@ -697,23 +711,40 @@ router.post('/:id/schedule', async (req, res) => {
   const { workspaceId, scheduledAt, platform } = req.body;
   if (!scheduledAt) return res.status(400).json({ error: 'scheduledAt is required' });
 
+  const workspace = await findAccessibleWorkspace(workspaceId, req.user._id);
+  if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+
   const item = await Content.findOne({
     _id: req.params.id,
-    workspace: workspaceId,
-    createdBy: req.user._id,
+    workspace: workspace._id,
     type: 'image',
   });
   if (!item) return res.status(404).json({ error: 'Design not found' });
 
-  await scheduleContent({
+  const targetPlatform = (platform || item.platform || 'instagram').replace(/^x$/i, 'twitter');
+  if (targetPlatform === 'universal') {
+    return res.status(400).json({ error: 'Choose a platform (instagram, linkedin, twitter, facebook) before scheduling' });
+  }
+
+  const { resolveSocialAccount, normalizePlatform } = require('../services/socialAccountService');
+  const resolvedPlatform = normalizePlatform(targetPlatform);
+  const socialAccount = resolveSocialAccount(req.user, resolvedPlatform);
+  if (!socialAccount) {
+    return res.status(400).json({
+      error: `No ${resolvedPlatform} account connected — connect in Settings → Publishing`,
+    });
+  }
+
+  const { content } = await scheduleContent({
     content: item,
-    platform: platform || item.platform,
+    platform: resolvedPlatform,
     scheduledAt,
-    workspaceId,
+    workspaceId: workspace._id,
+    userId: req.user._id,
   });
 
   res.json({
-    design: item,
+    design: content,
     message: 'Design scheduled for publishing',
   });
 });

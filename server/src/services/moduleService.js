@@ -39,12 +39,15 @@ Return JSON: { "trends": [{ "topic": "...", "platform": "linkedin|twitter|reddit
   });
 };
 
-const analyzeCompetitor = async ({ brandProfile, competitorUrl, competitorName }) => {
+const analyzeCompetitor = async ({ brandProfile, competitorUrl, competitorName, competitorIntel }) => {
+  const intelBlock = competitorIntel
+    ? `\nScraped competitor intel:\n${JSON.stringify(competitorIntel, null, 2)}`
+    : '';
   return generateJSON({
     label: 'Competitor',
     system: 'Return ONLY valid JSON.',
     user: `${brandCtx(brandProfile)}
-Analyze competitor: ${competitorName || competitorUrl}
+Analyze competitor: ${competitorName || competitorUrl}${intelBlock}
 Return JSON: { "competitor": "name", "strengths": [], "weaknesses": [], "contentStrategy": "...", "recommendations": [{ "action": "...", "impact": "high|medium|low", "priority": 1 }], "score": 72 }`,
   });
 };

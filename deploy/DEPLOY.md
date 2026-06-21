@@ -177,6 +177,8 @@ Set redirect URLs in each provider console to:
 
 - `https://curi.corpcrunch.io/api/publish/callback/linkedin`
 - `https://curi.corpcrunch.io/api/publish/callback/twitter`
+- `https://curi.corpcrunch.io/api/publish/callback/facebook` (Instagram + Facebook)
+- `http://localhost:5001/api/publish/callback/facebook` (local Meta OAuth)
 - (etc. per platform)
 
 ## Staging with demo user

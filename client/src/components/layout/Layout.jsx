@@ -5,8 +5,12 @@ import ThemeToggle from '../ThemeToggle'
 import SaveDraftButton from '../SaveDraftButton'
 import SidebarCoreSteps from './SidebarCoreSteps'
 
+const PRIMARY_NAV = [
+  { path: '/dashboard', label: 'Dashboard', hash: '' },
+  { path: '/dashboard', label: 'Brand Hub', hash: '#brand-hub' },
+]
+
 const SECONDARY_NAV = [
-  { path: '/dashboard', label: 'Dashboard', section: null },
   { path: '/drafts', label: 'Drafts', section: 'CORE' },
   { path: '/scheduled', label: 'Scheduled Posts', section: 'CORE' },
   { path: '/calendar', label: 'Curi Calendar', section: 'GROWTH' },
@@ -24,6 +28,18 @@ export default function Layout() {
 
   let lastSection = null
 
+  const isPrimaryActive = (item) => {
+    if (location.pathname !== '/dashboard' && location.pathname !== '/brand-hub') return false
+    if (item.hash === '#brand-hub') {
+      return location.hash === '#brand-hub' || location.pathname === '/brand-hub'
+    }
+    return location.pathname === '/dashboard' && location.hash !== '#brand-hub'
+  }
+
+  const goPrimary = (item) => {
+    navigate(`${item.path}${item.hash || ''}`)
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-theme-bg relative">
       <div className="blob-bg w-72 h-72 bg-curi-pink top-[-4rem] right-[20%] animate-float" />
@@ -33,7 +49,7 @@ export default function Layout() {
       <aside className="w-72 flex-shrink-0 bg-theme-surface border-r border-theme-border flex flex-col relative z-10">
         <div className="p-5 border-b border-theme-border">
           <div className="flex items-center justify-between gap-3">
-            <Link to="/" className="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity">
+            <Link to="/dashboard" className="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity">
               <img
                 src="/images/curi-mascot.png"
                 alt="Curi mascot"
@@ -63,6 +79,24 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+          <div className="pb-2">
+            <div className="text-xs font-bold text-theme-muted/30 tracking-widest uppercase px-1 pb-2">
+              Home
+            </div>
+            {PRIMARY_NAV.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => goPrimary(item)}
+                className={`sidebar-link w-full ${isPrimaryActive(item) ? 'active' : ''}`}
+              >
+                <span className="flex-1 text-left">{item.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="border-t border-theme-border/60 my-2" />
+
           <SidebarCoreSteps />
 
           <div className="border-t border-theme-border/60 my-3" />
@@ -114,7 +148,7 @@ export default function Layout() {
       <main className="flex-1 overflow-y-auto relative z-10">
         <AnimatePresence mode="wait">
           <motion.div
-            key={location.pathname}
+            key={location.pathname + location.hash}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}

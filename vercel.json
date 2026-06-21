@@ -16,6 +16,9 @@
       "includeFiles": "{server/**,shared/**}"
     }
   },
+  "crons": [
+    { "path": "/api/cron/publish", "schedule": "* * * * *" }
+  ],
   "headers": [
     {
       "source": "/index.html",

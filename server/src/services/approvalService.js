@@ -3,6 +3,7 @@ const CalendarEntry = require('../models/CalendarEntry');
 const Campaign = require('../models/Campaign');
 const mongoose = require('mongoose');
 const { findAccessibleWorkspace } = require('../utils/workspaceAccess');
+const { scheduleContent: enqueueSchedule } = require('./designUploadService');
 
 const runIdFilter = (runId) => ({
   $or: [
@@ -70,11 +71,16 @@ const approveContent = async ({ contentId, workspaceId, userId, schedule = true 
 
   const suggestedAt = item.metadata?.suggestedScheduledAt;
   if (schedule && suggestedAt) {
-    item.status = 'scheduled';
-    item.scheduledAt = new Date(suggestedAt);
-  } else {
-    item.status = 'approved';
+    const { content: scheduled } = await enqueueSchedule({
+      content: item,
+      platform: item.metadata?.suggestedPlatform || item.platform,
+      scheduledAt: suggestedAt,
+      workspaceId: item.workspace,
+      userId,
+    });
+    return scheduled;
   }
+  item.status = 'approved';
   item.approvedBy = userId;
   item.approvedAt = new Date();
   await item.save();
@@ -95,14 +101,14 @@ const rejectContent = async ({ contentId, workspaceId, userId, reason = 'Needs r
   return item;
 };
 
-const scheduleContent = async ({ contentId, workspaceId, userId, scheduledAt }) => {
+const scheduleContent = async ({ contentId, workspaceId, userId, scheduledAt, platform }) => {
   const item = await Content.findOne({
     _id: contentId,
     workspace: workspaceId,
-    status: { $in: ['approved', 'review'] },
+    status: { $in: ['approved', 'review', 'draft', 'scheduled'] },
   });
   if (!item) {
-    const err = new Error('Content not found or not approvable');
+    const err = new Error('Content not found or not schedulable');
     err.status = 404;
     throw err;
   }
@@ -112,14 +118,15 @@ const scheduleContent = async ({ contentId, workspaceId, userId, scheduledAt }) 
     err.status = 404;
     throw err;
   }
-  item.status = 'scheduled';
-  item.scheduledAt = scheduledAt ? new Date(scheduledAt) : new Date();
-  if (!item.approvedAt) {
-    item.approvedBy = userId;
-    item.approvedAt = new Date();
-  }
-  await item.save();
-  return item;
+  const when = scheduledAt ? new Date(scheduledAt) : new Date();
+  const { content } = await enqueueSchedule({
+    content: item,
+    platform: platform || item.metadata?.suggestedPlatform || item.platform,
+    scheduledAt: when,
+    workspaceId: workspace._id,
+    userId,
+  });
+  return content;
 };
 
 const submitAutonomousRunForApproval = async ({ runId, userId }) => {
@@ -230,6 +237,40 @@ const submitLaunchCampaignForApproval = async ({ campaignId, userId }) => {
   return { reviewCount, campaign };
 };
 
+const approveAllScheduled = async ({ workspaceId, userId, runId }) => {
+  const filter = {
+    workspace: workspaceId,
+    status: 'review',
+    'metadata.suggestedScheduledAt': { $exists: true, $ne: null },
+  };
+  if (runId) filter['metadata.runId'] = String(runId);
+
+  const items = await Content.find(filter).sort({ 'metadata.suggestedScheduledAt': 1 }).limit(100);
+  if (!items.length) {
+    const err = new Error('No review items with suggested publish dates found');
+    err.status = 404;
+    throw err;
+  }
+
+  let scheduled = 0;
+  const errors = [];
+  for (const item of items) {
+    try {
+      await approveContent({
+        contentId: item._id,
+        workspaceId,
+        userId,
+        schedule: true,
+      });
+      scheduled += 1;
+    } catch (err) {
+      errors.push({ contentId: item._id, error: err.message });
+    }
+  }
+
+  return { scheduled, total: items.length, errors };
+};
+
 const predictPublishTime = (platform, day, baseTime = '09:00') => {
   const offsets = { linkedin: 8, instagram: 11, twitter: 12, tiktok: 18, facebook: 10 };
   const hour = offsets[platform] || parseInt(String(baseTime).split(':')[0], 10);
@@ -243,6 +284,7 @@ module.exports = {
   getQueue,
   submitForReview,
   approveContent,
+  approveAllScheduled,
   rejectContent,
   scheduleContent,
   submitAutonomousRunForApproval,

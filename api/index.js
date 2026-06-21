@@ -76,6 +76,7 @@ const isDesignFastRequest = (req) => {
   if (pathOnly === '/api/design/character/speak' && req.method === 'POST') return true;
   if (pathOnly === '/api/design/character/lipsync' && req.method === 'POST') return true;
   if (/^\/api\/design\/character\/lipsync\/[^/]+$/.test(pathOnly) && req.method === 'GET') return true;
+  if (req.method === 'GET' && /^\/api\/design\/[a-f0-9]{24}$/i.test(pathOnly)) return true;
   if (req.method === 'PATCH' && /^\/api\/design\/[^/]+$/.test(pathOnly)) return true;
   return false;
 };
@@ -454,7 +455,7 @@ const handleAutonomousFast = async (req, res) => {
 const handleDesignFast = async (req, res) => {
   const { connectDB } = require('../server/src/config/database');
   const {
-    saveDesignDraft, patchDesign, listDesignLibrary,
+    saveDesignDraft, patchDesign, getDesignById, listDesignLibrary,
   } = require('../server/src/services/designSaveService');
   const DesignTemplate = require('../server/src/models/DesignTemplate');
   const { findAccessibleWorkspace } = require('../server/src/utils/workspaceAccess');
@@ -468,6 +469,20 @@ const handleDesignFast = async (req, res) => {
   if (pathOnly === '/api/design/library' && req.method === 'GET') {
     const designs = await listDesignLibrary(q.workspaceId);
     return sendJson(res, 200, { designs });
+  }
+
+  const getDesignMatch = pathOnly.match(/^\/api\/design\/([a-f0-9]{24})$/i);
+  if (getDesignMatch && req.method === 'GET') {
+    try {
+      const design = await getDesignById({
+        user,
+        designId: getDesignMatch[1],
+        workspaceId: q.workspaceId,
+      });
+      return sendJson(res, 200, { design });
+    } catch (err) {
+      return sendJson(res, err.status || 404, { error: err.message || 'Design not found' });
+    }
   }
 
   if (pathOnly === '/api/design/templates' && req.method === 'GET') {
@@ -774,6 +789,8 @@ const handleDesignUpload = async (req, res) => {
 const authenticateRequest = async (req) => {
   const jwt = require('jsonwebtoken');
   const User = require('../server/src/models/User');
+  const { connectDB } = require('../server/src/config/database');
+  await connectDB();
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) {
     const err = new Error('No token provided');
@@ -928,8 +945,11 @@ const formatUser = (user) => ({
 const handleLogin = async (req, res) => {
   const jwt = require('jsonwebtoken');
   const User = require('../server/src/models/User');
+  const { connectDB } = require('../server/src/config/database');
   const { findAccessibleWorkspace } = require('../server/src/utils/workspaceAccess');
   const { seedTestUser, TEST_USER } = require('../server/src/utils/seedTestUser');
+
+  await connectDB();
 
   if (!process.env.JWT_SECRET) {
     return sendJson(res, 503, { error: 'JWT_SECRET is not configured' });
@@ -984,7 +1004,10 @@ const handleRegister = async (req, res) => {
   const jwt = require('jsonwebtoken');
   const User = require('../server/src/models/User');
   const Workspace = require('../server/src/models/Workspace');
+  const { connectDB } = require('../server/src/config/database');
   const { acceptPendingInvite } = require('../server/src/services/userService');
+
+  await connectDB();
 
   if (!process.env.JWT_SECRET) {
     return sendJson(res, 503, { error: 'JWT_SECRET is not configured' });
@@ -1209,6 +1232,8 @@ module.exports = async (req, res) => {
     try {
       normalizeRequestUrl(req);
       if (req.method !== 'GET') await parseRequestBody(req);
+      const { connectDB } = require('../server/src/config/database');
+      await connectDB();
       const user = await authenticateRequest(req);
       const {
         getApprovalQueue,
@@ -1283,11 +1308,11 @@ module.exports = async (req, res) => {
     try {
       normalizeRequestUrl(req);
       if (req.method === 'POST') await parseRequestBody(req);
+      const { connectDB } = require('../server/src/config/database');
+      await connectDB();
       const user = await authenticateRequest(req);
       const pathOnly = requestPath(req);
       const Campaign = require('../server/src/models/Campaign');
-      const { connectDB } = require('../server/src/config/database');
-      await connectDB();
 
       const submitMatch = pathOnly.match(/^\/api\/launch\/campaign\/([^/]+)\/submit-for-approval$/);
       if (submitMatch && req.method === 'POST') {

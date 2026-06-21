@@ -1,6 +1,14 @@
 const Content = require('../models/Content');
 const { findAccessibleWorkspace } = require('../utils/workspaceAccess');
 
+const DESIGN_MODULE_FILTER = {
+  $or: [
+    { 'metadata.module': 'design' },
+    { 'metadata.module': 'autonomous' },
+    { 'metadata.module': 'upload' },
+  ],
+};
+
 const formatDesign = (saved) => ({
   ...(saved.metadata?.toObject?.() ?? saved.metadata ?? {}),
   _id: saved._id,
@@ -51,13 +59,43 @@ async function saveDesignDraft({ user, workspaceId, body }) {
   return formatDesign(saved);
 }
 
-async function patchDesign({ user, designId, body }) {
-  const { workspaceId, canvasLayout, headline, subheadline, cta, layout } = body;
+async function getDesignById({ user, designId, workspaceId }) {
+  const workspace = await findAccessibleWorkspace(workspaceId, user._id);
+  if (!workspace) {
+    const err = new Error('Workspace not found');
+    err.status = 404;
+    throw err;
+  }
+
   const item = await Content.findOne({
     _id: designId,
-    workspace: workspaceId,
-    createdBy: user._id,
+    workspace: workspace._id,
     type: 'image',
+    ...DESIGN_MODULE_FILTER,
+  });
+  if (!item) {
+    const err = new Error('Design not found');
+    err.status = 404;
+    throw err;
+  }
+
+  return formatDesign(item);
+}
+
+async function patchDesign({ user, designId, body }) {
+  const { workspaceId, canvasLayout, headline, subheadline, cta, layout } = body;
+  const workspace = await findAccessibleWorkspace(workspaceId, user._id);
+  if (!workspace) {
+    const err = new Error('Workspace not found');
+    err.status = 404;
+    throw err;
+  }
+
+  const item = await Content.findOne({
+    _id: designId,
+    workspace: workspace._id,
+    type: 'image',
+    ...DESIGN_MODULE_FILTER,
   });
   if (!item) {
     const err = new Error('Design not found');
@@ -85,14 +123,12 @@ async function listDesignLibrary(workspaceId) {
   const designs = await Content.find({
     workspace: workspaceId,
     type: 'image',
-    $or: [
-      { 'metadata.module': 'design' },
-      { 'metadata.module': 'autonomous' },
-      { 'metadata.module': 'upload' },
-    ],
+    ...DESIGN_MODULE_FILTER,
   }).sort({ createdAt: -1 }).limit(50);
 
   return designs.map(formatDesign);
 }
 
-module.exports = { saveDesignDraft, patchDesign, listDesignLibrary };
+module.exports = {
+  saveDesignDraft, patchDesign, getDesignById, listDesignLibrary,
+};

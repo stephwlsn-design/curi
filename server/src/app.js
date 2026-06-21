@@ -56,6 +56,7 @@ const mountRoutes = (app) => {
   app.use('/api/repurpose', authenticate, require('./routes/repurpose'));
   app.use('/api/trends', authenticate, require('./routes/trends'));
   app.use('/api/competitor', authenticate, require('./routes/competitor'));
+  app.use('/api/publish', require('./routes/publish').publicRouter);
   app.use('/api/publish', authenticate, require('./routes/publish'));
   app.use('/api/analytics', authenticate, require('./routes/analytics'));
   app.use('/api/billing', authenticate, require('./routes/billing'));
@@ -123,6 +124,16 @@ const createApp = async () => {
     db: conn.connection.readyState === 1 ? 'connected' : 'disconnected',
     timestamp: new Date(),
   }));
+
+  app.get('/api/cron/publish', async (req, res) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const { processDuePublishJobs } = require('./services/publishJobRunner');
+    const results = await processDuePublishJobs();
+    res.json({ processed: results.length, results });
+  });
 
   mountRoutes(app);
   return app;

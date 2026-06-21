@@ -4,6 +4,7 @@ const {
   getQueue,
   submitForReview,
   approveContent,
+  approveAllScheduled,
   rejectContent,
   scheduleContent,
 } = require('../services/approvalService');
@@ -40,6 +41,22 @@ router.post('/approve/:id', async (req, res) => {
       schedule: req.body.schedule !== false,
     });
     res.json({ item });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.post('/approve-all', async (req, res) => {
+  try {
+    const result = await approveAllScheduled({
+      workspaceId: req.body.workspaceId,
+      userId: req.user._id,
+      runId: req.body.runId,
+    });
+    res.json({
+      ...result,
+      message: `${result.scheduled} of ${result.total} items approved and scheduled`,
+    });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }

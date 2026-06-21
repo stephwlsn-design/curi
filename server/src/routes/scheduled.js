@@ -121,7 +121,6 @@ router.get('/', async (req, res) => {
       .limit(100),
     Content.find({
       workspace: workspaceId,
-      createdBy: req.user._id,
       status: 'scheduled',
     })
       .populate(contentPopulate)

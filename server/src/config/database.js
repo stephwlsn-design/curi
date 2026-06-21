@@ -53,6 +53,8 @@ const connectDB = async () => {
     );
   }
 
+  if (mongoose.connection.readyState === 1) return mongoose.connection;
+
   const existing = globalCache.mongoose?.conn;
   if (existing?.connection?.readyState === 1) return existing;
   if (existing) resetMongoCache();
@@ -64,9 +66,12 @@ const connectDB = async () => {
   if (!globalCache.mongoose.promise) {
     globalCache.mongoose.promise = mongoose.connect(uri, {
       autoIndex: !process.env.VERCEL,
-      serverSelectionTimeoutMS: 10000,
-      connectTimeoutMS: 10000,
-      bufferCommands: false,
+      serverSelectionTimeoutMS: process.env.VERCEL ? 15000 : 10000,
+      connectTimeoutMS: process.env.VERCEL ? 15000 : 10000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: process.env.VERCEL ? 10 : 20,
+      bufferCommands: true,
+      bufferTimeoutMS: 20000,
     })
       .then((conn) => {
         logger.info(`MongoDB connected: ${conn.connection.host}`);
@@ -115,4 +120,4 @@ const connectDB = async () => {
   }
 };
 
-module.exports = { connectDB };
+module.exports = { connectDB, ensureDB: connectDB };
