@@ -11,6 +11,20 @@ let authHandler;
 let handlerPromise;
 
 const requestPath = (req) => {
+  const original = req.headers['x-vercel-original-path']
+    || req.headers['x-invoke-path']
+    || req.headers['x-forwarded-uri'];
+  if (original) {
+    const value = String(original).split('?')[0];
+    if (value && value !== '/api') return value;
+  }
+
+  if (req.query?.path) {
+    const segment = String(req.query.path).replace(/^\/+/, '');
+    if (segment === 'health') return '/health';
+    return `/api/${segment}`;
+  }
+
   const rawUrl = req.url || req.path || '';
   const queryPath = (() => {
     try {
@@ -26,12 +40,7 @@ const requestPath = (req) => {
     return `/api/${queryPath}`;
   }
 
-  const candidates = [
-    req.headers['x-vercel-original-path'],
-    req.headers['x-invoke-path'],
-    req.headers['x-forwarded-uri'],
-    rawUrl,
-  ].filter(Boolean);
+  const candidates = [rawUrl].filter(Boolean);
 
   for (const raw of candidates) {
     const value = String(raw).split('?')[0];
@@ -44,11 +53,18 @@ const requestPath = (req) => {
 
 const normalizeRequestUrl = (req) => {
   const pathOnly = requestPath(req);
-  if (pathOnly.startsWith('/api/')) {
-    req.url = pathOnly;
-  } else if (pathOnly === '/health') {
-    req.url = '/health';
+  if (!pathOnly.startsWith('/api/') && pathOnly !== '/health') return;
+
+  let query = '';
+  try {
+    const url = new URL(req.url || '', 'http://vercel.local');
+    url.searchParams.delete('path');
+    query = url.searchParams.toString();
+  } catch {
+    query = '';
   }
+
+  req.url = query ? `${pathOnly}?${query}` : pathOnly;
 };
 
 const getQueryParams = (req) => {
