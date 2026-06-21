@@ -1,5 +1,4 @@
 const path = require('path');
-const serverless = require('serverless-http');
 
 module.paths.unshift(
   path.join(__dirname, '..', 'server', 'node_modules'),
@@ -9,6 +8,24 @@ module.paths.unshift(
 let handler;
 let authHandler;
 let handlerPromise;
+
+const invokeExpress = (app, req, res) => new Promise((resolve, reject) => {
+  const finish = () => resolve();
+  res.once('finish', finish);
+  res.once('close', finish);
+  try {
+    app(req, res, (err) => {
+      if (err) reject(err);
+      else if (!res.headersSent) {
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Not found' }));
+      }
+    });
+  } catch (err) {
+    reject(err);
+  }
+});
 
 const requestPath = (req) => {
   const original = req.headers['x-vercel-original-path']
@@ -1126,7 +1143,7 @@ const handleAuth = async (req, res) => {
     const app = express();
     app.set('trust proxy', 1);
     app.use('/api/auth', require('../server/src/routes/auth'));
-    authHandler = serverless(app);
+    authHandler = (req, res) => invokeExpress(app, req, res);
   }
 
   return await authHandler(req, res);
@@ -1380,7 +1397,7 @@ module.exports = async (req, res) => {
         handlerPromise = (async () => {
           const { getApp } = require('../server/src/app');
           const app = await getApp();
-          handler = serverless(app, { binary: ['image/*', 'multipart/form-data'] });
+          handler = (req, res) => invokeExpress(app, req, res);
           return handler;
         })().catch((err) => {
           handlerPromise = null;
