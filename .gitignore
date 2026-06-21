@@ -13,3 +13,4 @@ server/uploads/design-ideas/*
 !server/uploads/design-ideas/.gitkeep
 server/uploads/user-designs/*
 !server/uploads/user-designs/.gitkeep
+.vercel
