@@ -140,9 +140,19 @@ const createApp = async () => {
 };
 
 let cachedApp;
+let appPromise;
 const getApp = async () => {
-  if (!cachedApp) cachedApp = await createApp();
-  return cachedApp;
+  if (cachedApp) return cachedApp;
+  if (!appPromise) {
+    appPromise = createApp().then((app) => {
+      cachedApp = app;
+      return app;
+    }).catch((err) => {
+      appPromise = null;
+      throw err;
+    });
+  }
+  return appPromise;
 };
 
 module.exports = { createApp, getApp };

@@ -8,6 +8,7 @@ module.paths.unshift(
 
 let handler;
 let authHandler;
+let handlerPromise;
 
 const requestPath = (req) => {
   const rawUrl = req.url || req.path || '';
@@ -1359,9 +1360,18 @@ module.exports = async (req, res) => {
       await parseRequestBody(req);
     }
     if (!handler) {
-      const { getApp } = require('../server/src/app');
-      const app = await getApp();
-      handler = serverless(app, { binary: ['image/*', 'multipart/form-data'] });
+      if (!handlerPromise) {
+        handlerPromise = (async () => {
+          const { getApp } = require('../server/src/app');
+          const app = await getApp();
+          handler = serverless(app, { binary: ['image/*', 'multipart/form-data'] });
+          return handler;
+        })().catch((err) => {
+          handlerPromise = null;
+          throw err;
+        });
+      }
+      await handlerPromise;
     }
     return await handler(req, res);
   } catch (err) {
