@@ -115,7 +115,18 @@ const createApp = async () => {
   });
   app.use('/api/uploads/design-ideas', express.static(UPLOAD_DIR));
   app.use('/api/uploads/user-designs', express.static(USER_DESIGN_DIR));
-  app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200, message: 'Too many requests' }));
+  app.use(rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+    message: 'Too many requests',
+    validate: { ip: false },
+    keyGenerator: (req) => (
+      req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+      || req.headers['x-real-ip']
+      || req.socket?.remoteAddress
+      || 'vercel'
+    ),
+  }));
 
   app.get('/health', (req, res) => res.json({
     status: 'ok',
