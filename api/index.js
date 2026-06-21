@@ -8,6 +8,24 @@ module.paths.unshift(
 
 let handler;
 let authHandler;
+let lastPublishTick = 0;
+
+const maybeProcessDuePublishJobs = () => {
+  if (!process.env.VERCEL) return;
+  const now = Date.now();
+  if (now - lastPublishTick < 90_000) return;
+  lastPublishTick = now;
+  setImmediate(async () => {
+    try {
+      const { connectDB } = require('../server/src/config/database');
+      await connectDB();
+      const { processDuePublishJobs } = require('../server/src/services/publishJobRunner');
+      await processDuePublishJobs(5);
+    } catch (err) {
+      console.warn('[api] publish tick failed:', err.message);
+    }
+  });
+};
 
 const requestPath = (req) => {
   const rawUrl = req.url || req.path || '';
@@ -1117,6 +1135,9 @@ const handleAuth = async (req, res) => {
 
 module.exports = async (req, res) => {
   const pathOnly = requestPath(req);
+  if (pathOnly !== '/health' && pathOnly !== '/api/health' && !pathOnly.startsWith('/api/cron/')) {
+    maybeProcessDuePublishJobs();
+  }
 
   if (pathOnly === '/health' || pathOnly === '/api/health') {
     try {
