@@ -113,7 +113,7 @@ Return JSON:
       label: 'Design Idea Analysis',
       imagePath: idea.imagePath,
       once: true,
-      timeoutMs: process.env.VERCEL ? 18_000 : 22_000,
+      timeoutMs: process.env.VERCEL ? 48_000 : 28_000,
     });
 
     const spec = normalizeSpec(parsed);

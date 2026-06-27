@@ -11,7 +11,15 @@ const {
 const { designToCanvas, buildCanvasWithDesignIdea, buildMinimalAestheticSpec } = require('../utils/designCanvas');
 const logger = require('../utils/logger');
 
-const ANALYSIS_TIMEOUT_MS = process.env.VERCEL ? 22_000 : 25_000;
+const ANALYSIS_TIMEOUT_MS = process.env.VERCEL ? 54_000 : 30_000;
+
+const isWeakInspirationSpec = (spec) => {
+  if (!spec) return true;
+  if (spec.source === 'brand-fallback') return true;
+  if (spec.source === 'local-extract' || spec.source === 'gemini') return false;
+  const bg = String(spec.backgroundColor || spec.colorPalette?.[0] || '').toLowerCase();
+  return bg === '#ff6b9d' && !spec.decorElements?.length;
+};
 
 const processFromInspiration = async ({ user, body, creditCost = 2 }) => {
   const {
@@ -94,6 +102,7 @@ const processFromInspiration = async ({ user, body, creditCost = 2 }) => {
   }
 
   if (ideaContext?.spec || ideaContext?.direction) {
+    const specToSave = isWeakInspirationSpec(ideaContext.spec) ? undefined : ideaContext.spec;
     workspace.brandProfile = workspace.brandProfile || {};
     workspace.brandProfile.designIdea = {
       ...(workspace.brandProfile.designIdea || {}),
@@ -102,8 +111,8 @@ const processFromInspiration = async ({ user, body, creditCost = 2 }) => {
       imageUrl: ideaContext.imageUrl || preparedIdea.imageUrl || designIdea.imageUrl,
       previewDataUrl: preparedIdea.previewDataUrl || designIdea.previewDataUrl
         || workspace.brandProfile.designIdea?.previewDataUrl,
-      analyzedDirection: ideaContext.direction,
-      analyzedSpec: ideaContext.spec,
+      analyzedDirection: specToSave ? ideaContext.direction : undefined,
+      analyzedSpec: specToSave,
       uploadedAt: workspace.brandProfile.designIdea?.uploadedAt || new Date(),
     };
     await workspace.save();

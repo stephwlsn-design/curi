@@ -1,4 +1,9 @@
-import { enrichDesignIdeaWithPreview } from './inspirationImage'
+import {
+  enrichDesignIdeaWithPreview,
+  extractLocalAestheticSpec,
+  mergeInspirationSpecs,
+  isWeakInspirationSpec,
+} from './inspirationImage'
 import { designToCanvas } from './designCanvas'
 import { LAYOUT_TO_TEMPLATE } from '../constants/designTemplates'
 import { buildAestheticBackground } from './aestheticBackground'
@@ -66,6 +71,7 @@ export const buildCanvasWithDesignIdea = (design, ideaContext, dimensionId = '10
 
 export const hasUsableInspirationSpec = (designIdea) => (
   designIdea?.analyzedSpec?.inspirationAnalyzed === true
+  && !isWeakInspirationSpec(designIdea.analyzedSpec)
 )
 
 export const mergeDesignIdeaSources = (primary, fallback) => {
@@ -117,40 +123,67 @@ export const resolveInspirationForCanvas = async ({
   templateId,
 }) => {
   const merged = await enrichDesignIdeaWithPreview(mergeDesignIdeaRefs(designIdea, imageRef))
-  const hasImage = Boolean(
-    merged?.filename
-    || merged?.imageUrl
-    || merged?.previewDataUrl,
-  )
+  const localSpec = merged?.previewDataUrl
+    ? await extractLocalAestheticSpec(merged.previewDataUrl)
+    : null
 
   if (hasUsableInspirationSpec(merged) && merged.analyzedDirection) {
+    const spec = isWeakInspirationSpec(merged.analyzedSpec) && localSpec
+      ? mergeInspirationSpecs(localSpec, merged.analyzedSpec)
+      : merged.analyzedSpec
     return {
-      designIdea: merged,
+      designIdea: { ...merged, analyzedSpec: spec },
       ideaContext: {
-        spec: merged.analyzedSpec,
+        spec,
         direction: merged.analyzedDirection,
       },
     }
   }
 
-  const { data } = await api.post('/design/from-inspiration', {
-    workspaceId,
-    designIdea: merged,
-    prompt: brief,
-    dimensionId,
-    postFormat,
-    creativeType,
-    templateId,
-    analyzeOnly: true,
-  }, { timeout: 45000 })
+  let ideaContext = localSpec
+    ? { direction: 'Match the uploaded reference aesthetic', spec: localSpec }
+    : null
 
-  const enriched = data.designIdea || merged
-  const ideaContext = data.ideaContext || {
-    spec: enriched.analyzedSpec,
-    direction: enriched.analyzedDirection,
+  try {
+    const { previewDataUrl, ...ideaForApi } = merged
+    const { data } = await api.post('/design/from-inspiration', {
+      workspaceId,
+      designIdea: ideaForApi,
+      prompt: brief,
+      dimensionId,
+      postFormat,
+      creativeType,
+      templateId,
+      analyzeOnly: true,
+    }, { timeout: 55000 })
+
+    const enriched = data.designIdea
+      ? await enrichDesignIdeaWithPreview({
+        ...data.designIdea,
+        previewDataUrl: data.designIdea.previewDataUrl || merged.previewDataUrl,
+      })
+      : merged
+    const aiSpec = data.ideaContext?.spec || enriched.analyzedSpec
+    const mergedSpec = mergeInspirationSpecs(localSpec, aiSpec)
+
+    ideaContext = {
+      direction: data.ideaContext?.direction || enriched.analyzedDirection || ideaContext?.direction,
+      spec: mergedSpec,
+    }
+
+    return {
+      designIdea: { ...enriched, analyzedSpec: mergedSpec, analyzedDirection: ideaContext.direction },
+      ideaContext,
+    }
+  } catch (err) {
+    if (ideaContext?.spec) {
+      return {
+        designIdea: { ...merged, analyzedSpec: ideaContext.spec },
+        ideaContext,
+      }
+    }
+    throw err
   }
-
-  return { designIdea: enriched, ideaContext }
 }
 
 export const buildDesignFromInspiration = ({
@@ -167,7 +200,10 @@ export const buildDesignFromInspiration = ({
   const palette = brandColors?.length
     ? brandColors
     : ['#FF6B9D', '#4DA8EE', '#1A2B48']
-  const spec = ideaContext?.spec || designIdea?.analyzedSpec || buildMinimalAestheticSpec(palette)
+  const rawSpec = ideaContext?.spec || designIdea?.analyzedSpec
+  const spec = (rawSpec && !isWeakInspirationSpec(rawSpec))
+    ? rawSpec
+    : buildMinimalAestheticSpec(palette)
   const promptLines = prompt.split('\n').map((line) => line.trim()).filter(Boolean)
   const baseHeadline = promptLines[0]?.slice(0, 80)
     || designIdea?.notes?.split('\n').map((l) => l.trim()).filter(Boolean)[0]?.slice(0, 80)

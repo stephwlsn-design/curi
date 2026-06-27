@@ -79,6 +79,7 @@ const normalizeSpec = (parsed) => {
     aestheticOnly: true,
     mood: parsed.mood || null,
     inspirationAnalyzed: true,
+    source: 'gemini',
   };
 };
 

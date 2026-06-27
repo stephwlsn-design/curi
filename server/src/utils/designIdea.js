@@ -3,7 +3,7 @@ const fs = require('fs');
 const { UPLOAD_DIR } = require('../middleware/upload');
 
 const MAX_PREVIEW_BYTES = 900_000;
-const ANALYSIS_TIMEOUT_MS = process.env.VERCEL ? 18_000 : 30_000;
+const ANALYSIS_TIMEOUT_MS = process.env.VERCEL ? 52_000 : 30_000;
 
 const buildImageDataUrl = (buffer, mime = 'image/jpeg') => (
   `data:${mime};base64,${buffer.toString('base64')}`
@@ -88,6 +88,13 @@ const ensureDesignIdeaForAnalysis = (designIdea = {}) => {
   return designIdea;
 };
 
+const isUsableStoredSpec = (spec) => (
+  spec?.inspirationAnalyzed
+  && spec?.source !== 'brand-fallback'
+  && !(String(spec.backgroundColor || spec.colorPalette?.[0] || '').toLowerCase() === '#ff6b9d'
+    && !spec.decorElements?.length)
+);
+
 const buildStoredDesignIdeaContext = (designIdea) => {
   if (!designIdea) return null;
   const idea = normalizeDesignIdea(designIdea);
@@ -95,9 +102,9 @@ const buildStoredDesignIdeaContext = (designIdea) => {
     return null;
   }
   if (
-    designIdea.analyzedSpec?.inspirationAnalyzed
+    isUsableStoredSpec(designIdea.analyzedSpec)
     && designIdea.analyzedSpec?.aestheticOnly
-    && designIdea.analyzedSpec.backgroundMode
+    && designIdea.analyzedSpec?.backgroundMode
     && Array.isArray(designIdea.analyzedSpec.decorElements)
   ) {
     return {
@@ -112,7 +119,7 @@ const buildStoredDesignIdeaContext = (designIdea) => {
       direction: [designIdea.analyzedDirection, idea.notes].filter(Boolean).join('\n'),
       imagePath: idea.imagePath,
       imageUrl: idea.previewDataUrl || idea.imageUrl,
-      spec: designIdea.analyzedSpec?.inspirationAnalyzed ? designIdea.analyzedSpec : null,
+      spec: isUsableStoredSpec(designIdea.analyzedSpec) ? designIdea.analyzedSpec : null,
     };
   }
   if (idea.hasImage || idea.imageUrl || idea.previewDataUrl) {
@@ -212,7 +219,8 @@ const buildFallbackIdeaContext = (designIdea, brandColors = []) => {
       decorElements: [],
       iconElements: [],
       aestheticOnly: true,
-      inspirationAnalyzed: true,
+      inspirationAnalyzed: false,
+      source: 'brand-fallback',
     },
   };
 };
