@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { API, useAuth } from '../context/AuthContext'
 import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
@@ -195,7 +195,11 @@ const ApprovalLine = ({ approval, fallback }) => {
 export default function Scheduled() {
   const { workspaceId } = useAuth()
   const navigate = useNavigate()
-  const [tab, setTab] = useState('all')
+  const [searchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab')
+  const [tab, setTab] = useState(
+    TABS.some((t) => t.id === initialTab) ? initialTab : 'all',
+  )
   const [allPosts, setAllPosts] = useState([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState(EMPTY_FILTERS)

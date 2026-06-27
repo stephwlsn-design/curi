@@ -6,8 +6,9 @@ const designService = require('../services/designService');
 const Content = require('../models/Content');
 const { findAccessibleWorkspace } = require('../utils/workspaceAccess');
 const DesignTemplate = require('../models/DesignTemplate');
-const { toPublicImageUrl, normalizeDesignIdea, attachPreviewFromBuffer, analyzeDesignIdeaIfNeeded } = require('../utils/designIdea');
-const { designToCanvas, BUILTIN_TEMPLATES, buildCanvasWithDesignIdea } = require('../utils/designCanvas');
+const { toPublicImageUrl, normalizeDesignIdea, attachPreviewFromBuffer, analyzeDesignIdeaIfNeeded, buildStoredDesignIdeaContext, buildFallbackIdeaContext, mergeDesignIdeaSources } = require('../utils/designIdea');
+const logger = require('../utils/logger');
+const { designToCanvas, BUILTIN_TEMPLATES, buildCanvasWithDesignIdea, buildMinimalAestheticSpec } = require('../utils/designCanvas');
 const { getGraphicTemplate, buildGraphicCanvas } = require('../utils/graphicCanvas');
 const pexelsService = require('../services/pexelsService');
 const { createUploadedDesign, scheduleContent } = require('../services/designUploadService');
@@ -45,15 +46,26 @@ router.post('/idea', uploadDesignIdea.single('image'), async (req, res) => {
 
   workspace.brandProfile = workspace.brandProfile || {};
   workspace.brandProfile.designIdea = designIdea;
-
-  if (designIdea.previewDataUrl || (designIdea.imageUrl && req.file)) {
-    designIdea = await analyzeDesignIdeaIfNeeded(designIdea, designService);
-    workspace.brandProfile.designIdea = designIdea;
-  }
-
   await workspace.save();
 
+  const needsAnalysis = Boolean(designIdea.previewDataUrl || (designIdea.imageUrl && req.file));
   res.json({ designIdea });
+
+  if (needsAnalysis) {
+    const savedIdea = { ...designIdea };
+    setImmediate(async () => {
+      try {
+        const ws = await findAccessibleWorkspace(workspaceId, req.user._id);
+        if (!ws) return;
+        const analyzed = await analyzeDesignIdeaIfNeeded(savedIdea, designService);
+        ws.brandProfile = ws.brandProfile || {};
+        ws.brandProfile.designIdea = analyzed;
+        await ws.save();
+      } catch (err) {
+        logger.warn(`[design] background idea analysis skipped: ${err.message}`);
+      }
+    });
+  }
 });
 
 router.post('/from-inspiration', checkCredits(2), async (req, res) => {
@@ -68,25 +80,63 @@ router.post('/from-inspiration', checkCredits(2), async (req, res) => {
     postFormat = 'social_post',
     creativeType = 'social_post',
     templateId,
+    analyzeOnly = false,
   } = req.body;
 
   const workspace = await findAccessibleWorkspace(workspaceId, req.user._id);
   if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
 
-  const rawIdea = designIdeaInput || workspace.brandProfile?.designIdea || {};
+  const rawIdea = mergeDesignIdeaSources(designIdeaInput, workspace.brandProfile?.designIdea) || {};
   const designIdea = normalizeDesignIdea(rawIdea);
 
-  if (!designIdea.notes && !designIdea.hasImage && !rawIdea.imageUrl) {
+  if (!designIdea.notes && !designIdea.hasImage && !rawIdea.imageUrl && !rawIdea.previewDataUrl) {
     return res.status(400).json({ error: 'Upload a design inspiration image or add creative notes first' });
   }
 
   try {
-    const ideaContext = await designService.resolveDesignIdeaContext({
-      ...rawIdea,
-      ...designIdea,
-      analyzedSpec: rawIdea.analyzedSpec,
-      analyzedDirection: rawIdea.analyzedDirection,
-    });
+    const brandColors = workspace.brandProfile?.colors?.palette || ['#FF6B9D', '#4DA8EE', '#1A2B48'];
+    let ideaContext = buildStoredDesignIdeaContext(rawIdea);
+
+    const hasVisualReference = Boolean(
+      designIdea.hasImage || rawIdea.imageUrl || rawIdea.previewDataUrl,
+    );
+    const specIsAnalyzed = ideaContext?.spec?.inspirationAnalyzed === true;
+    let analysisRan = false;
+
+    if (hasVisualReference && !specIsAnalyzed) {
+      analysisRan = true;
+      try {
+        ideaContext = await Promise.race([
+          designService.resolveDesignIdeaContext({
+            ...rawIdea,
+            ...designIdea,
+            analyzedSpec: rawIdea.analyzedSpec,
+            analyzedDirection: rawIdea.analyzedDirection,
+          }),
+          new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Style analysis timed out')), 25_000);
+          }),
+        ]);
+      } catch (err) {
+        logger.warn(`[design] from-inspiration analysis fallback: ${err.message}`);
+        ideaContext = buildFallbackIdeaContext({ ...rawIdea, ...designIdea }, brandColors);
+      }
+    }
+
+    if (!ideaContext && (designIdea.notes || designIdea.hasImage)) {
+      ideaContext = buildFallbackIdeaContext({ ...rawIdea, ...designIdea }, brandColors);
+    }
+
+    const palette = workspace.brandProfile?.colors?.palette
+      || ideaContext?.spec?.colorPalette
+      || brandColors;
+
+    if (ideaContext && !ideaContext.spec) {
+      ideaContext = {
+        ...ideaContext,
+        spec: buildMinimalAestheticSpec(palette),
+      };
+    }
 
     if (ideaContext?.spec || ideaContext?.direction) {
       workspace.brandProfile = workspace.brandProfile || {};
@@ -95,6 +145,8 @@ router.post('/from-inspiration', checkCredits(2), async (req, res) => {
         notes: rawIdea.notes || designIdea.notes,
         filename: rawIdea.filename || designIdea.filename,
         imageUrl: ideaContext.imageUrl || rawIdea.imageUrl || designIdea.imageUrl,
+        previewDataUrl: rawIdea.previewDataUrl || designIdea.previewDataUrl
+          || workspace.brandProfile.designIdea?.previewDataUrl,
         analyzedDirection: ideaContext.direction,
         analyzedSpec: ideaContext.spec,
         uploadedAt: workspace.brandProfile.designIdea?.uploadedAt || new Date(),
@@ -102,9 +154,17 @@ router.post('/from-inspiration', checkCredits(2), async (req, res) => {
       await workspace.save();
     }
 
-    const brandColors = workspace.brandProfile?.colors?.palette
-      || ideaContext?.spec?.colorPalette
-      || ['#FF6B9D', '#4DA8EE', '#1A2B48'];
+    if (analyzeOnly) {
+      if (analysisRan) await req.user.deductCredits(req.creditCost);
+      return res.json({
+        designIdea: workspace.brandProfile?.designIdea,
+        ideaContext: ideaContext ? {
+          direction: ideaContext.direction,
+          spec: ideaContext.spec,
+          imageUrl: ideaContext.imageUrl,
+        } : null,
+      });
+    }
 
     const design = {
       headline: headline || prompt.split('\n')[0]?.slice(0, 80) || 'Your Headline',
@@ -112,19 +172,18 @@ router.post('/from-inspiration', checkCredits(2), async (req, res) => {
       cta: cta || 'Learn More',
       layout: ideaContext?.spec?.layout || 'centered',
       dimensions: { id: dimensionId },
-      colorPalette: ideaContext?.spec?.colorPalette || brandColors,
+      colorPalette: ideaContext?.spec?.colorPalette || palette,
       name: 'Inspired Design',
-      referenceImageUrl: ideaContext?.imageUrl,
       designIdeaApplied: true,
       postFormat,
       creativeType,
       compositionNotes: ideaContext?.direction
-        ? `Aesthetic extracted (text stripped): ${ideaContext.direction.slice(0, 200)}`
+        ? `Aesthetic replica (text stripped): ${ideaContext.direction.slice(0, 200)}`
         : undefined,
     };
 
     const enriched = designService.applyDesignIdeaToDesign(design, ideaContext);
-    const canvasLayout = (ideaContext?.imageUrl || ideaContext?.spec)
+    const canvasLayout = ideaContext?.spec
       ? buildCanvasWithDesignIdea(enriched, ideaContext, dimensionId, templateId)
       : designToCanvas(enriched, templateId);
 
@@ -141,11 +200,11 @@ router.post('/from-inspiration', checkCredits(2), async (req, res) => {
         canvasLayout,
         designIdea: {
           notes: rawIdea.notes || designIdea.notes,
-          imageUrl: ideaContext?.imageUrl || rawIdea.imageUrl,
-          referenceImageUrl: ideaContext?.imageUrl,
+          analyzedDirection: ideaContext?.direction,
+          analyzedSpec: ideaContext?.spec,
         },
-        referenceImageUrl: ideaContext?.imageUrl,
         inspirationExtracted: true,
+        aestheticOnly: true,
       },
       status: 'draft',
     });

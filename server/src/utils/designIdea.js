@@ -55,7 +55,13 @@ const toPublicImageUrl = (filename) => `/api/uploads/design-ideas/${path.basenam
 
 const normalizeDesignIdea = (designIdea = {}) => {
   const notes = String(designIdea.notes || '').trim();
-  const filename = designIdea.filename ? path.basename(designIdea.filename) : null;
+  let filename = designIdea.filename ? path.basename(designIdea.filename) : null;
+  if (!filename && designIdea.imageUrl) {
+    const fromUrl = String(designIdea.imageUrl).split('/').pop()?.split('?')[0];
+    if (fromUrl && /\.(jpe?g|png|webp|gif)$/i.test(fromUrl)) {
+      filename = fromUrl;
+    }
+  }
   const imagePath = materializeDesignIdeaImage({ ...designIdea, filename })
     || resolveDesignIdeaPath({ ...designIdea, filename });
   const hasStoredImage = Boolean(designIdea.previewDataUrl || designIdea.imageDataUrl);
@@ -78,7 +84,8 @@ const buildStoredDesignIdeaContext = (designIdea) => {
     return null;
   }
   if (
-    designIdea.analyzedSpec?.aestheticOnly
+    designIdea.analyzedSpec?.inspirationAnalyzed
+    && designIdea.analyzedSpec?.aestheticOnly
     && designIdea.analyzedSpec.backgroundMode
     && Array.isArray(designIdea.analyzedSpec.decorElements)
   ) {
@@ -94,7 +101,7 @@ const buildStoredDesignIdeaContext = (designIdea) => {
       direction: [designIdea.analyzedDirection, idea.notes].filter(Boolean).join('\n'),
       imagePath: idea.imagePath,
       imageUrl: idea.previewDataUrl || idea.imageUrl,
-      spec: designIdea.analyzedSpec || null,
+      spec: designIdea.analyzedSpec?.inspirationAnalyzed ? designIdea.analyzedSpec : null,
     };
   }
   if (idea.hasImage || idea.imageUrl || idea.previewDataUrl) {
@@ -120,9 +127,9 @@ const analyzeDesignIdeaIfNeeded = async (designIdea, designService) => {
   const normalized = normalizeDesignIdea(designIdea);
   if (!normalized.hasImage && !designIdea.notes?.trim()) return designIdea;
   if (
-    designIdea.analyzedSpec?.aestheticOnly
+    designIdea.analyzedSpec?.inspirationAnalyzed
+    && designIdea.analyzedSpec?.aestheticOnly
     && designIdea.analyzedSpec.backgroundMode
-    && designIdea.analyzedDirection
   ) {
     return designIdea;
   }
@@ -163,8 +170,38 @@ const mergeDesignIdeaSources = (runIdea, workspaceIdea) => {
     imageUrl: a.imageUrl || b.imageUrl,
     previewDataUrl: a.previewDataUrl || b.previewDataUrl,
     analyzedDirection: a.analyzedDirection || b.analyzedDirection,
-    analyzedSpec: a.analyzedSpec || b.analyzedSpec,
+    analyzedSpec: a.analyzedSpec?.inspirationAnalyzed
+      ? a.analyzedSpec
+      : (b.analyzedSpec?.inspirationAnalyzed ? b.analyzedSpec : (a.analyzedSpec || b.analyzedSpec)),
     uploadedAt: a.uploadedAt || b.uploadedAt,
+  };
+};
+
+const buildFallbackIdeaContext = (designIdea, brandColors = []) => {
+  const idea = normalizeDesignIdea(designIdea);
+  if (!idea.hasImage && !idea.notes) return null;
+  const palette = brandColors?.length
+    ? brandColors
+    : ['#FF6B9D', '#4DA8EE', '#1A2B48'];
+  return {
+    direction: designIdea?.analyzedDirection || idea.notes || 'Match the reference aesthetic',
+    imagePath: idea.imagePath,
+    imageUrl: idea.previewDataUrl || idea.imageUrl,
+    spec: {
+      colorPalette: palette,
+      backgroundColor: palette[0],
+      secondaryBackgroundColor: palette[1] || palette[0],
+      layout: 'centered',
+      backgroundMode: 'aesthetic',
+      textColor: '#ffffff',
+      subtextColor: 'rgba(255,255,255,0.85)',
+      ctaBackground: '#ffffff',
+      ctaTextColor: palette[0],
+      overlayOpacity: 0.1,
+      decorElements: [],
+      iconElements: [],
+      aestheticOnly: true,
+    },
   };
 };
 
@@ -176,6 +213,7 @@ module.exports = {
   toPublicImageUrl,
   normalizeDesignIdea,
   buildStoredDesignIdeaContext,
+  buildFallbackIdeaContext,
   attachPreviewFromBuffer,
   analyzeDesignIdeaIfNeeded,
   mergeDesignIdeaSources,

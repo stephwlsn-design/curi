@@ -1,6 +1,6 @@
 const { generateJSON } = require('./llmService');
 const { CHANNELS, DIMENSIONS } = require('../constants/creative');
-const { normalizeDesignIdea } = require('../utils/designIdea');
+const { normalizeDesignIdea, buildFallbackIdeaContext } = require('../utils/designIdea');
 const { normalizeSpec } = require('../utils/inspirationTypography');
 
 const scoreDesign = (design) => ({
@@ -28,7 +28,8 @@ const resolveDesignIdeaContext = async (designIdea) => {
   if (!idea.notes && !idea.hasImage) return null;
 
   if (
-    designIdea?.analyzedSpec?.aestheticOnly
+    designIdea?.analyzedSpec?.inspirationAnalyzed
+    && designIdea.analyzedSpec?.aestheticOnly
     && designIdea.analyzedSpec.backgroundMode
     && Array.isArray(designIdea.analyzedSpec.decorElements)
     && (designIdea?.analyzedDirection || !idea.hasImage)
@@ -50,8 +51,9 @@ const resolveDesignIdeaContext = async (designIdea) => {
     };
   }
 
-  const parsed = await generateJSON({
-    system: `You are a senior creative director reverse-engineering a reference design into reusable AESTHETIC specs.
+  try {
+    const parsed = await generateJSON({
+      system: `You are a senior creative director reverse-engineering a reference design into reusable AESTHETIC specs.
 Study the attached reference image pixel-by-pixel. Return ONLY valid JSON.
 
 CRITICAL RULES:
@@ -60,9 +62,9 @@ CRITICAL RULES:
 - List ALL accent colors, shapes, lines, blobs, badges, and graphic elements in decorElements.
 - List decorative icons/symbols (arrows, stars, checkmarks, social icons) in iconElements using emoji in the "emoji" field.
 - Use normalized 0-1 coordinates for x, y, width, height relative to image dimensions.
-- backgroundMode: "reference-photo" for photo/graphic designs, "solid" for flat-color backgrounds, "reference-blur" for textured refs.
-- overlayOpacity should be LOW (0.05-0.15) for reference-photo so the design stays visible.`,
-    user: `Analyze this reference design. Extract every visual aesthetic element WITHOUT copying text.
+- backgroundMode must be "solid" or "aesthetic" ONLY — never embed the reference image in the output.
+- overlayOpacity is optional subtle tint on gradient backgrounds (0–0.15).`,
+      user: `Analyze this reference design. Extract every visual aesthetic element WITHOUT copying text.
 
 User notes: ${idea.notes || 'None'}
 
@@ -74,7 +76,7 @@ Return JSON:
   "secondaryBackgroundColor": "#secondary area hex",
   "colorPalette": ["#bg", "#accent1", "#accent2", "#accent3"],
   "layout": "centered|split|grid|hero|minimal",
-  "backgroundMode": "reference-photo|solid|reference-blur",
+  "backgroundMode": "solid|aesthetic",
   "textColor": "#hex",
   "subtextColor": "#hex or rgba",
   "ctaBackground": "#hex",
@@ -102,33 +104,35 @@ Return JSON:
     "cta": { "x": 0.32, "y": 0.72, "width": 0.36, "fontSize": 14 }
   }
 }`,
-    temperature: 0.1,
-    label: 'Design Idea Analysis',
-    imagePath: idea.imagePath,
-    once: Boolean(process.env.VERCEL),
-    timeoutMs: process.env.VERCEL ? 18_000 : 30_000,
-  });
+      temperature: 0.1,
+      label: 'Design Idea Analysis',
+      imagePath: idea.imagePath,
+      once: true,
+      timeoutMs: process.env.VERCEL ? 18_000 : 22_000,
+    });
 
-  const spec = normalizeSpec(parsed);
-
-  const direction = [parsed.direction, idea.notes ? `User notes: ${idea.notes}` : ''].filter(Boolean).join('\n');
-  return {
-    direction,
-    imagePath: idea.imagePath,
-    imageUrl: idea.previewDataUrl || idea.imageUrl,
-    spec,
-  };
+    const spec = normalizeSpec(parsed);
+    const direction = [parsed.direction, idea.notes ? `User notes: ${idea.notes}` : ''].filter(Boolean).join('\n');
+    return {
+      direction,
+      imagePath: idea.imagePath,
+      imageUrl: idea.previewDataUrl || idea.imageUrl,
+      spec,
+    };
+  } catch (err) {
+    return buildFallbackIdeaContext(designIdea);
+  }
 };
 
 const applyDesignIdeaToDesign = (design, ideaContext) => {
   if (!ideaContext?.spec && !ideaContext?.imageUrl) return design;
-  const { spec, imageUrl } = ideaContext;
+  const { spec } = ideaContext;
   return {
     ...design,
     layout: spec?.layout || design.layout,
     colorPalette: spec?.colorPalette || design.colorPalette,
     typography: spec?.typography || design.typography,
-    referenceImageUrl: imageUrl || design.referenceImageUrl,
+    referenceImageUrl: undefined,
     designIdeaApplied: true,
     compositionNotes: ideaContext.direction
       ? `Based on uploaded reference: ${ideaContext.direction.slice(0, 200)}`

@@ -1,52 +1,130 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { API, useAuth } from '../context/AuthContext'
 import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
+import { Loader2, RefreshCw, Sparkles } from 'lucide-react'
+import LoadingMascot from '../components/LoadingMascot'
 
 export default function Competitor() {
-  const { workspaceId, workspace } = useAuth()
+  const { workspaceId, workspace, loading: authLoading } = useAuth()
   const navigate = useNavigate()
-  const [competitorUrl, setCompetitorUrl] = useState('')
-  const [competitorName, setCompetitorName] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [activeCompetitor, setActiveCompetitor] = useState('')
+  const [profileCompetitors, setProfileCompetitors] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [analysis, setAnalysis] = useState(null)
   const [scraped, setScraped] = useState(false)
+  const [competitorUrl, setCompetitorUrl] = useState('')
+  const [competitorName, setCompetitorName] = useState('')
+  const [error, setError] = useState('')
 
-  const competitors = workspace?.brandProfile?.competitors || []
+  const applyAnalysisPayload = (data, nameOverride) => {
+    setAnalysis(data.analysis)
+    setScraped(Boolean(data.scraped))
+    setCompetitorUrl(data.competitorUrl || '')
+    setCompetitorName(data.competitorName || data.analysis?.competitor || '')
+    setActiveCompetitor(data.competitorName || data.analysis?.competitor || nameOverride || '')
+    if (data.competitors?.length) setProfileCompetitors(data.competitors)
+  }
+
+  const loadInitial = useCallback(async () => {
+    if (!workspaceId) return
+    setLoading(true)
+    setError('')
+    try {
+      try {
+        const { data: savedRes } = await API.get(`/competitor/saved?workspaceId=${workspaceId}`, { timeout: 15000 })
+        if (savedRes.analysis) {
+          applyAnalysisPayload(savedRes)
+          return
+        }
+        if (savedRes.competitors?.length) setProfileCompetitors(savedRes.competitors)
+      } catch { /* fall through to preview */ }
+
+      const { data } = await API.get(`/competitor/preview?workspaceId=${workspaceId}`, { timeout: 15000 })
+      applyAnalysisPayload(data)
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Could not load competitor analysis')
+    } finally {
+      setLoading(false)
+    }
+  }, [workspaceId])
 
   useEffect(() => {
-    if (!competitorName && !competitorUrl && competitors[0]) {
-      setCompetitorName(competitors[0])
+    if (authLoading) return
+    if (!workspaceId) {
+      setLoading(false)
+      return
     }
-  }, [competitors, competitorName, competitorUrl])
+    loadInitial()
+  }, [authLoading, workspaceId, loadInitial])
 
-  const analyze = async () => {
-    if (!workspaceId) return toast.error('Select a workspace first')
-    if (!competitorUrl.trim() && !competitorName.trim()) return toast.error('Enter a competitor URL or name')
-    setLoading(true)
+  const refreshWithAi = async (nameOverride) => {
+    if (!workspaceId) return
+    setRefreshing(true)
+    setError('')
     try {
-      const { data } = await API.post('/competitor/analyze', { workspaceId, competitorUrl, competitorName })
-      setAnalysis(data.analysis)
-      setScraped(Boolean(data.scraped))
-      toast.success(data.scraped ? 'Analysis complete (site scraped)' : 'Competitor analysis complete')
+      const payload = { workspaceId }
+      if (nameOverride) payload.competitorName = nameOverride
+
+      const { data } = await API.post('/competitor/analyze', payload, { timeout: 30000 })
+      applyAnalysisPayload(data, nameOverride)
+      if (data.warning) toast(data.warning, { icon: '⚠️' })
+      else toast.success(data.scraped ? 'Live analysis complete (site scraped)' : 'Live analysis complete')
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Analysis failed')
-    } finally { setLoading(false) }
+      const msg = err.response?.data?.error || err.message || 'Analysis failed'
+      toast.error(msg)
+      if (!analysis) setError(msg)
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   const saveAnalysis = async () => {
     if (!analysis) return
     setSaving(true)
     try {
-      const { data } = await API.post('/competitor/save', { workspaceId, analysis, competitorUrl, competitorName })
+      const { data } = await API.post('/competitor/save', {
+        workspaceId,
+        analysis,
+        competitorUrl,
+        competitorName,
+      })
       toast.success(data.message || 'Saved')
       navigate('/dashboard#brand-hub')
     } catch (err) {
       toast.error(err.response?.data?.error || 'Save failed')
     } finally { setSaving(false) }
+  }
+
+  const competitors = profileCompetitors.length
+    ? profileCompetitors
+    : (workspace?.brandProfile?.competitors || workspace?.onboarding?.competitors || [])
+
+  const targetLabel = activeCompetitor || competitorName || competitors[0] || 'your top competitor'
+
+  if (authLoading) {
+    return (
+      <PageShell>
+        <div className="flex items-center justify-center py-24">
+          <LoadingMascot size="lg" />
+        </div>
+      </PageShell>
+    )
+  }
+
+  if (!workspaceId) {
+    return (
+      <PageShell>
+        <PageHeader title="Competitor Watch" description="Analyze competitor content strategy, identify gaps, and get actionable recommendations to outperform them." />
+        <div className="page-card text-sm text-theme-muted/60">
+          We couldn&apos;t load your workspace yet. Try refreshing or complete onboarding in Brand Hub first.
+        </div>
+      </PageShell>
+    )
   }
 
   return (
@@ -56,16 +134,47 @@ export default function Competitor() {
         description="Analyze competitor content strategy, identify gaps, and get actionable recommendations to outperform them."
       />
 
-      {competitors.length > 0 && (
+      <div className="page-card mb-6 flex flex-wrap justify-between items-center gap-3">
+        <div>
+          <p className="text-sm text-theme-muted/60">
+            Report for <span className="font-semibold text-theme-text">{targetLabel}</span>
+            {workspace?.brandProfile?.name ? ` vs ${workspace.brandProfile.name}` : ''}
+          </p>
+          <p className="text-xs text-theme-muted/45 mt-1">
+            {refreshing ? 'Running live AI analysis…' : 'Loaded from your Brand Hub profile — no input needed.'}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => refreshWithAi(activeCompetitor || undefined)}
+            disabled={refreshing || loading}
+            className="btn-primary text-sm flex items-center gap-2"
+          >
+            {refreshing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+            {refreshing ? 'Analyzing…' : 'Live AI analysis'}
+          </button>
+          <span className="text-sm text-theme-muted/50">
+            10 credits {scraped ? '· scraped' : ''}
+          </span>
+        </div>
+      </div>
+
+      {competitors.length > 1 && (
         <div className="page-card mb-5">
-          <div className="section-label mb-2">From your brand profile</div>
+          <div className="section-label mb-2">Other competitors in your profile</div>
           <div className="flex flex-wrap gap-2">
             {competitors.map((name) => (
               <button
                 key={name}
                 type="button"
-                onClick={() => { setCompetitorName(name); setCompetitorUrl('') }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-bold ${competitorName === name ? 'bg-curi-pink/15 text-curi-pink' : 'bg-theme-subtle/5 text-theme-muted/60'}`}
+                onClick={() => refreshWithAi(name)}
+                disabled={refreshing || loading}
+                className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${
+                  activeCompetitor === name
+                    ? 'bg-curi-pink/15 text-curi-pink'
+                    : 'bg-theme-subtle/5 text-theme-muted/60 hover:text-theme-text'
+                }`}
               >
                 {name}
               </button>
@@ -74,29 +183,26 @@ export default function Competitor() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
-        <div className="page-card">
-          <div className="section-label mb-2">Competitor URL</div>
-          <input className="input" placeholder="https://competitor.com" value={competitorUrl} onChange={e => setCompetitorUrl(e.target.value)} />
+      {loading && (
+        <div className="page-card flex flex-col items-center justify-center gap-3 py-16 text-theme-muted/60">
+          <Loader2 size={24} className="animate-spin text-curi-pink" />
+          <span className="text-sm font-medium">Loading competitive intelligence…</span>
         </div>
-        <div className="page-card">
-          <div className="section-label mb-2">Or Name</div>
-          <input className="input" placeholder="Competitor brand name" value={competitorName} onChange={e => setCompetitorName(e.target.value)} />
-        </div>
-      </div>
+      )}
 
-      <div className="page-card mb-8">
-        <div className="flex flex-wrap justify-between items-center gap-3">
-          <span className="text-sm text-theme-muted/50">10 credits {scraped ? '· site data included' : ''}</span>
-          <button onClick={analyze} disabled={loading || !workspaceId} className="btn-primary text-base px-6 py-3">
-            {loading ? 'Analyzing...' : 'Analyze Competitor'}
-          </button>
+      {error && !loading && !analysis && (
+        <div className="page-card text-center py-12">
+          <p className="text-sm text-red-400 mb-4">{error}</p>
+          <button type="button" onClick={loadInitial} className="btn-primary text-sm">Try again</button>
         </div>
-      </div>
+      )}
 
-      {analysis && (
+      {!loading && analysis && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={loadInitial} disabled={loading || refreshing} className="btn-secondary text-sm flex items-center gap-2">
+              <RefreshCw size={14} /> Reload
+            </button>
             <button type="button" onClick={saveAnalysis} disabled={saving} className="btn-secondary text-sm">
               {saving ? 'Saving…' : 'Save to Brand Hub drafts'}
             </button>

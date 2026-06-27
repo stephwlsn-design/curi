@@ -51,17 +51,13 @@ export default function DesignInspirationPanel({
       if (file) formData.append('image', file)
 
       const { data } = await API.post('/design/idea', formData, {
-        timeout: 55000,
+        timeout: 20000,
       })
       onChange?.(data.designIdea)
       if (file) {
         if (localPreview?.startsWith('blob:')) URL.revokeObjectURL(localPreview)
         setLocalPreview(null)
-        toast.success(
-          data.designIdea?.analyzedSpec
-            ? 'Inspiration uploaded — style extracted'
-            : 'Inspiration uploaded — you can create your design',
-        )
+        toast.success('Inspiration uploaded — pick a format and create your design')
       }
       return data.designIdea
     } catch (err) {
@@ -106,15 +102,17 @@ export default function DesignInspirationPanel({
   }
 
   const handleExtract = () => {
-    if (!previewUrl && !notes.trim()) {
+    const imageRef = previewUrl || value?.previewDataUrl || value?.imageUrl
+    if (!imageRef && !notes.trim() && !value?.notes?.trim()) {
       toast.error('Upload an inspiration image or add notes first')
       return
     }
+    const idea = value || (notes.trim() ? { notes: notes.trim(), imageUrl: imageRef } : null)
     if (postFormat === 'carousel') {
-      onExtractCarousel?.(value)
+      onExtractCarousel?.(idea || { notes: notes.trim(), imageUrl: imageRef, previewDataUrl: imageRef })
       return
     }
-    onExtract?.(value)
+    onExtract?.(idea || { notes: notes.trim(), imageUrl: imageRef, previewDataUrl: imageRef })
   }
 
   return (
@@ -155,7 +153,7 @@ export default function DesignInspirationPanel({
           <h3 className="text-base font-bold text-theme-text">Design inspiration</h3>
         </div>
         <p className="text-sm text-theme-muted/60 leading-relaxed">
-          Upload a reference image. We extract colors, layout, and typography style only — all text from the reference is removed. Your brief supplies the copy.
+          Upload a reference image. We extract colors, shapes, layout, and typography only — then build a new design replica with your copy. The original upload is never placed on the canvas.
         </p>
       </div>
 
@@ -179,7 +177,7 @@ export default function DesignInspirationPanel({
           {uploading && (
             <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2">
               <Loader2 size={24} className="animate-spin text-white" />
-              <span className="text-xs font-bold text-white">Uploading & analyzing…</span>
+              <span className="text-xs font-bold text-white">Uploading…</span>
             </div>
           )}
           <button
@@ -203,7 +201,7 @@ export default function DesignInspirationPanel({
         >
           {uploading ? <Loader2 size={28} className="animate-spin text-curi-pink" /> : <Upload size={28} className="text-theme-muted/40" />}
           <span className="text-sm font-bold text-theme-muted/60">
-            {uploading ? 'Uploading & analyzing…' : 'Upload design inspiration'}
+            {uploading ? 'Uploading…' : 'Upload design inspiration'}
           </span>
         </button>
       )}

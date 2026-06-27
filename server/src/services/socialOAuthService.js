@@ -16,12 +16,12 @@ const consumeState = (state) => {
   return entry;
 };
 
-const getLinkedInAuthUrl = (userId) => {
+const getLinkedInAuthUrl = (userId, options = {}) => {
   const clientId = PLATFORM_ENV_KEYS.linkedin.clientId();
   if (!clientId) throw new Error('LinkedIn OAuth is not configured');
 
   const state = crypto.randomBytes(24).toString('hex');
-  rememberState(state, { userId, platform: 'linkedin' });
+  rememberState(state, { userId, platform: 'linkedin', returnTo: options.returnTo });
 
   const params = new URLSearchParams({
     response_type: 'code',
@@ -34,7 +34,7 @@ const getLinkedInAuthUrl = (userId) => {
   return `https://www.linkedin.com/oauth/v2/authorization?${params}`;
 };
 
-const getTwitterAuthUrl = (userId) => {
+const getTwitterAuthUrl = (userId, options = {}) => {
   const clientId = PLATFORM_ENV_KEYS.twitter.clientId();
   if (!clientId) throw new Error('X / Twitter OAuth is not configured');
 
@@ -45,7 +45,7 @@ const getTwitterAuthUrl = (userId) => {
     .update(codeVerifier)
     .digest('base64url');
 
-  rememberState(state, { userId, platform: 'twitter', codeVerifier });
+  rememberState(state, { userId, platform: 'twitter', codeVerifier, returnTo: options.returnTo });
 
   const params = new URLSearchParams({
     response_type: 'code',
@@ -145,12 +145,12 @@ const getMetaAppCredentials = () => ({
   clientSecret: PLATFORM_ENV_KEYS.instagram.clientSecret(),
 });
 
-const getMetaAuthUrl = (userId) => {
+const getMetaAuthUrl = (userId, options = {}) => {
   const { clientId } = getMetaAppCredentials();
   if (!clientId) throw new Error('Meta/Facebook OAuth is not configured');
 
   const state = crypto.randomBytes(24).toString('hex');
-  rememberState(state, { userId, platform: 'meta' });
+  rememberState(state, { userId, platform: 'meta', returnTo: options.returnTo });
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -235,10 +235,10 @@ const exchangeMetaCode = async (code) => {
   return accounts;
 };
 
-const getOAuthUrl = (platform, userId) => {
-  if (platform === 'linkedin') return getLinkedInAuthUrl(userId);
-  if (platform === 'twitter') return getTwitterAuthUrl(userId);
-  if (platform === 'instagram' || platform === 'facebook') return getMetaAuthUrl(userId);
+const getOAuthUrl = (platform, userId, options = {}) => {
+  if (platform === 'linkedin') return getLinkedInAuthUrl(userId, options);
+  if (platform === 'twitter') return getTwitterAuthUrl(userId, options);
+  if (platform === 'instagram' || platform === 'facebook') return getMetaAuthUrl(userId, options);
   throw new Error(`OAuth is not available for ${platform} yet — connect manually with an access token`);
 };
 

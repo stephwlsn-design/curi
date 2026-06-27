@@ -6,6 +6,7 @@ const QUEUE_NAMES = {
   AUTONOMOUS: 'autonomous-pipeline',
   TOPIC_DISCOVERY: 'topic-discovery',
   PUBLISH: 'publish-jobs',
+  LAUNCH: 'launch-campaign',
 };
 
 const queues = {};
@@ -38,6 +39,13 @@ const getQueue = (name) => {
       lockDuration: 900000,
       stalledInterval: 300000,
       maxStalledCount: 1,
+    };
+  }
+  if (name === QUEUE_NAMES.LAUNCH) {
+    queueOpts.settings = {
+      lockDuration: 600000,
+      stalledInterval: 120000,
+      maxStalledCount: 2,
     };
   }
 

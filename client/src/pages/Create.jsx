@@ -101,6 +101,7 @@ export default function Create() {
         contentId: contentDoc._id,
         contentText: contentDoc.content,
         topic,
+        platform,
         saved: true,
       })
       setHistory(h => [contentDoc, ...h.slice(0, 4)])

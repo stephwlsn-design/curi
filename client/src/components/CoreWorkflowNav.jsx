@@ -8,22 +8,24 @@ export default function CoreWorkflowNav({
   proceedLabel = 'Next',
   onBeforeNext,
   hideNext = false,
+  nextPath,
 }) {
   const navigate = useNavigate()
   const current = CORE_WORKFLOW_STEPS.find(s => s.id === stepId)
   const next = getNextStep(stepId)
   const prev = getPrevStep(stepId)
   const isOptional = current?.optional
+  const destination = nextPath || next?.path
 
   const goTo = (path) => navigate(path)
 
   const handleNext = async () => {
-    if (!next) return
+    if (!destination) return
     if (onBeforeNext) {
       const ok = await onBeforeNext()
       if (!ok) return
     }
-    navigate(next.path)
+    navigate(destination)
   }
 
   return (
@@ -77,7 +79,7 @@ export default function CoreWorkflowNav({
               Skip
             </button>
           )}
-          {!hideNext && next && (
+          {!hideNext && (next || nextPath) && (
             <button
               type="button"
               onClick={handleNext}

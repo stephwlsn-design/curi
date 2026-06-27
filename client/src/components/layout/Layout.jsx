@@ -7,6 +7,7 @@ import SidebarCoreSteps from './SidebarCoreSteps'
 
 const PRIMARY_NAV = [
   { path: '/dashboard', label: 'Dashboard', hash: '' },
+  { path: '/channels', label: 'Social Channels' },
   { path: '/dashboard', label: 'Brand Hub', hash: '#brand-hub' },
 ]
 
@@ -29,14 +30,23 @@ export default function Layout() {
   let lastSection = null
 
   const isPrimaryActive = (item) => {
+    if (item.path === '/channels') {
+      return location.pathname === '/channels'
+    }
     if (location.pathname !== '/dashboard' && location.pathname !== '/brand-hub') return false
     if (item.hash === '#brand-hub') {
-      return location.hash === '#brand-hub' || location.pathname === '/brand-hub'
+      return location.hash === '#brand-hub'
+        || location.hash === '#brand-hub-channels'
+        || location.pathname === '/brand-hub'
     }
-    return location.pathname === '/dashboard' && location.hash !== '#brand-hub'
+    return location.pathname === '/dashboard' && !location.hash.startsWith('#brand-hub')
   }
 
   const goPrimary = (item) => {
+    if (item.path === '/channels') {
+      navigate('/channels')
+      return
+    }
     navigate(`${item.path}${item.hash || ''}`)
   }
 

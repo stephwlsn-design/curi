@@ -72,12 +72,13 @@ const normalizeSpec = (parsed) => {
     subheadlineWeight: parsed.subheadlineWeight ?? 500,
     ctaWeight: parsed.ctaWeight ?? 700,
     letterSpacing: parsed.letterSpacing ?? null,
-    backgroundMode: parsed.backgroundMode || 'reference-photo',
+    backgroundMode: (parsed.backgroundMode === 'solid') ? 'solid' : 'aesthetic',
     decorElements: Array.isArray(parsed.decorElements) ? parsed.decorElements.slice(0, 14) : [],
     iconElements: Array.isArray(parsed.iconElements) ? parsed.iconElements.slice(0, 10) : [],
     placements: parsed.placements || null,
     aestheticOnly: true,
     mood: parsed.mood || null,
+    inspirationAnalyzed: true,
   };
 };
 

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { API } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
-import { Link2, Unlink, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Link2, Unlink, CheckCircle2, AlertCircle, Share2 } from 'lucide-react'
 
 const PLATFORMS = [
   { id: 'linkedin', label: 'LinkedIn', oauth: true },
@@ -10,16 +11,15 @@ const PLATFORMS = [
   { id: 'facebook', label: 'Facebook', oauth: true, meta: true },
 ]
 
-export default function PublishingSettings({ oauthConnected, oauthError }) {
+export default function SocialChannelsPanel({ compact = false, oauthReturnTo, onAccountsChange }) {
+  const navigate = useNavigate()
   const [accounts, setAccounts] = useState([])
   const [oauthAvailable, setOauthAvailable] = useState([])
-  const [configuredPlatforms, setConfiguredPlatforms] = useState([])
+  const [metaOAuth, setMetaOAuth] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [connecting, setConnecting] = useState(null)
   const [manualPlatform, setManualPlatform] = useState(null)
   const [manualForm, setManualForm] = useState({ accessToken: '', accountId: '', accountName: '' })
-  const [metaOAuth, setMetaOAuth] = useState(false)
-
-  const [connecting, setConnecting] = useState(null)
 
   const loadAccounts = async () => {
     setLoading(true)
@@ -27,10 +27,10 @@ export default function PublishingSettings({ oauthConnected, oauthError }) {
       const { data } = await API.get('/publish/accounts')
       setAccounts(data.accounts || [])
       setOauthAvailable(data.oauthAvailable || [])
-      setConfiguredPlatforms(data.configuredPlatforms || [])
       setMetaOAuth(Boolean(data.metaOAuth))
+      onAccountsChange?.()
     } catch {
-      toast.error('Could not load publishing accounts')
+      toast.error('Could not load connected channels')
     } finally {
       setLoading(false)
     }
@@ -38,22 +38,10 @@ export default function PublishingSettings({ oauthConnected, oauthError }) {
 
   useEffect(() => { loadAccounts() }, [])
 
-  useEffect(() => {
-    if (oauthConnected) {
-      const names = oauthConnected.split(',').map((p) => p.trim()).filter(Boolean)
-      toast.success(names.length > 1 ? `${names.join(' & ')} connected` : `${oauthConnected} connected`)
-      loadAccounts()
-    }
-  }, [oauthConnected])
-
-  useEffect(() => {
-    if (oauthError) toast.error(oauthError)
-  }, [oauthError])
-
   const connectOAuth = async (platform) => {
     setConnecting(platform)
     try {
-      const { data } = await API.get(`/publish/oauth/${platform}`)
+      const { data } = await API.get(`/publish/oauth/${platform}${oauthReturnTo ? `?returnTo=${oauthReturnTo}` : ''}`)
       window.location.href = data.url
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not start OAuth flow')
@@ -76,7 +64,7 @@ export default function PublishingSettings({ oauthConnected, oauthError }) {
   }
 
   const disconnect = async (platform) => {
-    if (!confirm(`Disconnect your ${platform} account? Workspace defaults will still apply if configured.`)) return
+    if (!confirm(`Disconnect your ${platform} account?`)) return
     try {
       const { data } = await API.delete(`/publish/disconnect/${platform}`)
       setAccounts(data.accounts || [])
@@ -87,21 +75,35 @@ export default function PublishingSettings({ oauthConnected, oauthError }) {
   }
 
   const accountFor = (platform) => accounts.find((a) => a.platform === platform)
+  const connectedCount = accounts.filter((a) => a.connected).length
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className={compact ? 'space-y-4' : 'space-y-6 max-w-2xl'}>
       <div className="page-card">
-        <h2 className="font-bold text-theme-text text-lg mb-2">Publishing Accounts</h2>
-        <p className="text-sm text-theme-muted/50 mb-6">
-          Connect social accounts to publish and schedule content. LinkedIn and X use OAuth.
-          Instagram and Facebook connect together via one Facebook login — your Page and linked
-          Instagram Business account are configured automatically.
-        </p>
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Share2 size={18} className="text-curi-pink" />
+              <h3 className="font-bold text-theme-text text-lg">Social channels</h3>
+            </div>
+            <p className="text-sm text-theme-muted/50">
+              Connect platforms here so Curi Launch can publish to your selected channels.
+              {connectedCount > 0
+                ? ` ${connectedCount} channel${connectedCount === 1 ? '' : 's'} connected.`
+                : ' No channels connected yet.'}
+            </p>
+          </div>
+          {!compact && (
+            <button type="button" onClick={() => navigate('/settings?tab=publishing')} className="btn-secondary text-sm shrink-0">
+              Full settings
+            </button>
+          )}
+        </div>
 
         {metaOAuth && !loading && (
-          <div className="mb-6 p-4 rounded-xl bg-curi-blue/10 border border-curi-blue/20">
-            <div className="font-bold text-theme-text mb-1">Instagram + Facebook</div>
-            <p className="text-sm text-theme-muted/50 mb-3">
+          <div className="mb-4 p-4 rounded-xl bg-curi-blue/10 border border-curi-blue/20">
+            <div className="font-bold text-theme-text mb-1 text-sm">Instagram + Facebook</div>
+            <p className="text-xs text-theme-muted/50 mb-3">
               One Meta login connects your Facebook Page and linked Instagram Business account.
             </p>
             <button
@@ -111,36 +113,32 @@ export default function PublishingSettings({ oauthConnected, oauthError }) {
               className="btn-primary text-sm flex items-center gap-1.5"
             >
               <Link2 size={14} />
-              {connecting === 'facebook' ? 'Redirecting to Facebook...' : 'Connect Instagram & Facebook'}
+              {connecting === 'facebook' ? 'Redirecting…' : 'Connect Instagram & Facebook'}
             </button>
           </div>
         )}
 
         {loading ? (
-          <p className="text-sm text-theme-muted/40">Loading accounts...</p>
+          <p className="text-sm text-theme-muted/40">Loading channels…</p>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {PLATFORMS.map((p) => {
               const acc = accountFor(p.id)
               const canOAuth = p.oauth && oauthAvailable.includes(p.id) && !p.meta
-              const workspaceReady = configuredPlatforms.includes(p.id) && acc?.source === 'workspace'
 
               return (
                 <div key={p.id} className="p-4 rounded-xl bg-theme-subtle/5 border border-theme-subtle/10">
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-bold text-theme-text">{p.label}</div>
+                      <div className="font-bold text-theme-text text-sm">{p.label}</div>
                       {acc?.connected ? (
-                        <div className="flex items-center gap-1.5 text-sm text-curi-green mt-1">
-                          <CheckCircle2 size={14} />
+                        <div className="flex items-center gap-1.5 text-xs text-curi-green mt-1">
+                          <CheckCircle2 size={13} />
                           {acc.accountName || 'Connected'}
-                          {acc.source === 'workspace' && (
-                            <span className="badge bg-curi-blue/15 text-curi-blue text-[10px] ml-1">Workspace</span>
-                          )}
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1.5 text-sm text-theme-muted/50 mt-1">
-                          <AlertCircle size={14} /> Not connected
+                        <div className="flex items-center gap-1.5 text-xs text-theme-muted/50 mt-1">
+                          <AlertCircle size={13} /> Not connected
                         </div>
                       )}
                     </div>
@@ -150,10 +148,10 @@ export default function PublishingSettings({ oauthConnected, oauthError }) {
                           type="button"
                           onClick={() => connectOAuth(p.id)}
                           disabled={connecting === p.id}
-                          className="btn-primary text-sm flex items-center gap-1.5"
+                          className="btn-primary text-xs flex items-center gap-1"
                         >
-                          <Link2 size={14} />
-                          {connecting === p.id ? 'Redirecting...' : 'Connect with OAuth'}
+                          <Link2 size={12} />
+                          {connecting === p.id ? '…' : 'Connect'}
                         </button>
                       )}
                       <button
@@ -162,65 +160,51 @@ export default function PublishingSettings({ oauthConnected, oauthError }) {
                           setManualPlatform(manualPlatform === p.id ? null : p.id)
                           setManualForm({ accessToken: '', accountId: '', accountName: '' })
                         }}
-                        className="btn-secondary text-sm"
+                        className="btn-secondary text-xs"
                       >
-                        {manualPlatform === p.id ? 'Cancel' : 'Manual token'}
+                        {manualPlatform === p.id ? 'Cancel' : 'Token'}
                       </button>
                       {acc?.connected && acc.source === 'user' && (
                         <button
                           type="button"
                           onClick={() => disconnect(p.id)}
-                          className="btn-secondary text-sm flex items-center gap-1.5 text-red-400"
+                          className="btn-secondary text-xs flex items-center gap-1 text-red-400"
                         >
-                          <Unlink size={14} /> Disconnect
+                          <Unlink size={12} />
                         </button>
                       )}
                     </div>
                   </div>
 
                   {manualPlatform === p.id && (
-                    <form onSubmit={connectManual} className="mt-4 pt-4 border-t border-theme-subtle/10 grid gap-3">
+                    <form onSubmit={connectManual} className="mt-3 pt-3 border-t border-theme-subtle/10 grid gap-2">
                       <input
-                        className="input text-sm"
+                        className="input text-xs"
                         placeholder="Access token"
                         value={manualForm.accessToken}
                         onChange={(e) => setManualForm((f) => ({ ...f, accessToken: e.target.value }))}
                         required
                       />
                       <input
-                        className="input text-sm"
-                        placeholder={p.id === 'linkedin' ? 'LinkedIn person ID (sub from profile)' : 'Account / page ID'}
+                        className="input text-xs"
+                        placeholder="Account / page ID"
                         value={manualForm.accountId}
                         onChange={(e) => setManualForm((f) => ({ ...f, accountId: e.target.value }))}
                       />
                       <input
-                        className="input text-sm"
+                        className="input text-xs"
                         placeholder="Display name (optional)"
                         value={manualForm.accountName}
                         onChange={(e) => setManualForm((f) => ({ ...f, accountName: e.target.value }))}
                       />
-                      <button type="submit" className="btn-primary text-sm w-fit">Save connection</button>
+                      <button type="submit" className="btn-primary text-xs w-fit">Save</button>
                     </form>
-                  )}
-
-                  {workspaceReady && (
-                    <p className="text-xs text-theme-muted/40 mt-3">
-                      Using workspace credentials from server environment — no user action needed.
-                    </p>
                   )}
                 </div>
               )
             })}
           </div>
         )}
-      </div>
-
-      <div className="page-card text-sm text-theme-muted/50">
-        <p className="font-semibold text-theme-text mb-2">Scheduling</p>
-        <p>
-          Scheduled posts appear under Scheduled Posts and publish automatically at the chosen time.
-          LinkedIn and X support text posts; Instagram and Facebook require an image on the content.
-        </p>
       </div>
     </div>
   )

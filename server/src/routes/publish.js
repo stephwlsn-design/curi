@@ -9,9 +9,12 @@ const { listAccountsForUser, resolveSocialAccount, normalizePlatform } = require
 const { getOAuthUrl, exchangeOAuthCode, consumeState, saveAccountsOnUser } = require('../services/socialOAuthService');
 const { isPlatformConfigured, isOAuthConfigured, listConfiguredPlatforms } = require('../config/social');
 
-const settingsRedirect = (params = {}) => {
+const settingsRedirect = (params = {}, statePayload = null) => {
   const base = (process.env.CLIENT_URL || 'http://localhost:5173').split(',')[0].replace(/\/$/, '');
   const qs = new URLSearchParams(params).toString();
+  if (statePayload?.returnTo === 'channels') {
+    return `${base}/channels${qs ? `?${qs}` : ''}`;
+  }
   return `${base}/settings?tab=publishing${qs ? `&${qs}` : ''}`;
 };
 
@@ -31,31 +34,31 @@ publicRouter.get('/callback/:platform', async (req, res) => {
   const statePayload = consumeState(state);
   const metaCallback = platform === 'facebook' && statePayload?.platform === 'meta';
   if (!statePayload || (!metaCallback && statePayload.platform !== platform)) {
-    return res.redirect(settingsRedirect({ error: 'OAuth session expired — try connecting again' }));
+    return res.redirect(settingsRedirect({ error: 'OAuth session expired — try connecting again' }, statePayload));
   }
 
   try {
     const user = await User.findById(statePayload.userId);
-    if (!user) return res.redirect(settingsRedirect({ error: 'User not found' }));
+    if (!user) return res.redirect(settingsRedirect({ error: 'User not found' }, statePayload));
 
     if (metaCallback) {
       const accounts = await exchangeOAuthCode('meta', code, statePayload);
       saveAccountsOnUser(user, accounts);
       await user.save();
       const connected = accounts.map((a) => a.platform).join(',');
-      return res.redirect(settingsRedirect({ connected }));
+      return res.redirect(settingsRedirect({ connected }, statePayload));
     }
 
     const account = await exchangeOAuthCode(platform, code, statePayload);
     saveAccountsOnUser(user, [account]);
     await user.save();
 
-    return res.redirect(settingsRedirect({ connected: platform }));
+    return res.redirect(settingsRedirect({ connected: platform }, statePayload));
   } catch (err) {
     const message = err.response?.data?.error_description
       || err.response?.data?.error
       || err.message;
-    return res.redirect(settingsRedirect({ error: message }));
+    return res.redirect(settingsRedirect({ error: message }, statePayload));
   }
 });
 
@@ -70,11 +73,24 @@ router.get('/accounts', async (req, res) => {
 
 router.get('/oauth/:platform', async (req, res) => {
   const platform = normalizePlatform(req.params.platform);
+  const returnTo = req.query.returnTo;
   try {
-    const url = getOAuthUrl(platform, req.user._id.toString());
+    const url = getOAuthUrl(platform, req.user._id.toString(), { returnTo });
     res.json({ url });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/social-stats', async (req, res) => {
+  const { workspaceId } = req.query;
+  if (!workspaceId) return res.status(400).json({ error: 'workspaceId is required' });
+  try {
+    const { getSocialStats } = require('../services/socialInsightsService');
+    const data = await getSocialStats({ workspaceId, user: req.user });
+    res.json(data);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 

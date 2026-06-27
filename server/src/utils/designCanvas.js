@@ -226,13 +226,12 @@ function applySpecPlacements(canvas, spec) {
 
 const { normalizeSpec, applyInspirationSpec } = require('./inspirationTypography');
 
-function buildAestheticBackground(spec, referenceImageUrl) {
+function buildAestheticBackground(spec) {
   const colors = spec?.colorPalette?.length
     ? spec.colorPalette
     : [spec?.backgroundColor || '#FF6B9D', spec?.secondaryBackgroundColor || '#4DA8EE', '#1A2B48'];
-  const mode = spec?.backgroundMode || (referenceImageUrl ? 'reference-photo' : 'solid');
-  const overlayOpacity = spec?.overlayOpacity ?? (mode === 'reference-photo' ? 0.1 : 0.15);
   const underlay = spec?.backgroundColor || colors[0];
+  const mode = spec?.backgroundMode === 'solid' ? 'solid' : 'aesthetic';
 
   if (mode === 'solid') {
     return {
@@ -242,57 +241,58 @@ function buildAestheticBackground(spec, referenceImageUrl) {
     };
   }
 
-  if (mode === 'reference-photo' && referenceImageUrl) {
-    return {
-      type: 'image',
-      url: referenceImageUrl,
-      underlayColor: underlay,
-      overlay: spec?.overlayColor || `rgba(0,0,0,${overlayOpacity})`,
-      objectFit: 'cover',
-    };
-  }
-
-  if (mode === 'reference-blur' && referenceImageUrl) {
-    return {
-      type: 'aesthetic',
-      colors: [underlay, ...colors.slice(1)],
-      angle: spec?.gradientAngle ?? 135,
-      textureUrl: referenceImageUrl,
-      textureOpacity: spec?.textureOpacity ?? 0.55,
-      textureBlur: spec?.textureBlur ?? 12,
-      overlay: `rgba(0,0,0,${overlayOpacity})`,
-      underlayColor: underlay,
-    };
-  }
-
   return {
     type: 'aesthetic',
-    colors: [underlay, ...colors.slice(1)],
+    colors: [underlay, ...colors.slice(1).filter(Boolean)],
     angle: spec?.gradientAngle ?? 135,
-    textureUrl: referenceImageUrl || null,
-    textureOpacity: spec?.textureOpacity ?? (referenceImageUrl ? 0.4 : 0.25),
-    textureBlur: spec?.textureBlur ?? 20,
-    overlay: `rgba(0,0,0,${overlayOpacity})`,
+    overlay: spec?.overlayOpacity != null
+      ? `rgba(0,0,0,${spec.overlayOpacity})`
+      : undefined,
     underlayColor: underlay,
   };
 }
 
+function buildMinimalAestheticSpec(brandColors = []) {
+  const palette = brandColors?.length
+    ? brandColors
+    : ['#FF6B9D', '#4DA8EE', '#1A2B48'];
+  const accent = palette[1] || palette[0];
+  return {
+    colorPalette: palette,
+    backgroundColor: palette[0],
+    secondaryBackgroundColor: accent,
+    layout: 'centered',
+    backgroundMode: 'aesthetic',
+    textColor: '#ffffff',
+    subtextColor: 'rgba(255,255,255,0.85)',
+    ctaBackground: '#ffffff',
+    ctaTextColor: palette[0],
+    gradientAngle: 135,
+    decorElements: [
+      { shape: 'rect', x: 0, y: 0, width: 1, height: 0.06, fill: accent, borderRadius: 0 },
+      { shape: 'circle', x: 0.82, y: 0.06, width: 0.14, height: 0.14, fill: `${palette[2] || accent}44` },
+      { shape: 'rect', x: 0.06, y: 0.88, width: 0.22, height: 0.04, fill: 'rgba(255,255,255,0.2)', borderRadius: 8 },
+    ],
+    iconElements: [],
+    aestheticOnly: true,
+  };
+}
+
 function buildCanvasWithDesignIdea(design, ideaContext, dimensionId, templateIdOverride) {
-  const templateId = templateIdOverride || (ideaContext?.spec?.layout
-    ? ({ centered: 'centered-hero', split: 'split-left', grid: 'bottom-stack', hero: 'centered-hero', minimal: 'minimal-top' }[ideaContext.spec.layout] || 'centered-hero')
+  const spec = ideaContext?.spec;
+  if (!spec?.colorPalette?.length && !spec?.backgroundColor) {
+    return designToCanvas(design, templateIdOverride);
+  }
+
+  const templateId = templateIdOverride || (spec?.layout
+    ? ({ centered: 'centered-hero', split: 'split-left', grid: 'bottom-stack', hero: 'centered-hero', minimal: 'minimal-top' }[spec.layout] || 'centered-hero')
     : undefined);
   const canvas = designToCanvas(design, templateId);
-  if (!ideaContext?.imageUrl && !ideaContext?.spec?.colorPalette) return canvas;
-
-  canvas.background = buildAestheticBackground(ideaContext.spec, ideaContext.imageUrl);
-  canvas.referenceImageUrl = ideaContext.imageUrl;
+  canvas.background = buildAestheticBackground(spec);
   canvas.designIdeaBased = true;
   canvas.aestheticOnly = true;
 
-  if (ideaContext.spec) {
-    return applyInspirationSpec(canvas, ideaContext.spec);
-  }
-  return canvas;
+  return applyInspirationSpec(canvas, spec);
 }
 
-module.exports = { designToCanvas, BUILTIN_TEMPLATES, buildCanvasWithDesignIdea };
+module.exports = { designToCanvas, BUILTIN_TEMPLATES, buildCanvasWithDesignIdea, buildMinimalAestheticSpec };

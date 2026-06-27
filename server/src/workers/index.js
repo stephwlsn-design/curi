@@ -1,6 +1,7 @@
 const { getQueue, QUEUE_NAMES, addJob } = require('../config/queue');
 const { runAutonomousPipeline } = require('../services/autonomousEngineService');
 const { discoverTopics } = require('../services/topicDiscoveryService');
+const { generateCampaign, advanceLaunchCampaign } = require('../services/launchService');
 const { processPublishJob, processDuePublishJobs } = require('../services/publishJobRunner');
 const PublishJob = require('../models/PublishJob');
 const Workspace = require('../models/Workspace');
@@ -10,6 +11,14 @@ const startWorkers = () => {
   const autonomousQueue = getQueue(QUEUE_NAMES.AUTONOMOUS);
   const topicQueue = getQueue(QUEUE_NAMES.TOPIC_DISCOVERY);
   const publishQueue = getQueue(QUEUE_NAMES.PUBLISH);
+  const launchQueue = getQueue(QUEUE_NAMES.LAUNCH);
+
+  if (launchQueue) {
+    launchQueue.process(async (job) => {
+      logger.info(`Processing launch campaign job ${job.id}`);
+      await generateCampaign(job.data);
+    });
+  }
 
   if (autonomousQueue) {
     autonomousQueue.process(async (job) => {
@@ -84,4 +93,22 @@ const enqueueTopicDiscovery = async (workspaceId) => {
   }
 };
 
-module.exports = { startWorkers, enqueueAutonomousRun, enqueueTopicDiscovery };
+const enqueueLaunchCampaign = async (payload) => {
+  const run = () => advanceLaunchCampaign({
+    campaignId: payload.campaignId,
+    userId: payload.userId,
+    maxSteps: Infinity,
+    maxMs: process.env.VERCEL ? 50_000 : 120_000,
+  }).catch((err) => {
+    logger.error(`Launch generation failed: ${err.message}`);
+  });
+
+  // Always run in-process — launch must not depend on a separate worker consuming Redis.
+  if (typeof setImmediate === 'function') {
+    setImmediate(run);
+  } else {
+    run();
+  }
+};
+
+module.exports = { startWorkers, enqueueAutonomousRun, enqueueTopicDiscovery, enqueueLaunchCampaign };

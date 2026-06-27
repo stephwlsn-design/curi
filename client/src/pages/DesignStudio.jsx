@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   LayoutTemplate, Image, Film, Type, Layers, Sparkles, Search, Loader2, CheckCircle2,
-  ChevronLeft, ChevronRight, GripVertical, Volume2, Lightbulb, Mic, FolderOpen,
+  ChevronLeft, ChevronRight, GripVertical, Volume2, Lightbulb, Mic, FolderOpen, Rocket, Clock,
 } from 'lucide-react'
 import { API, useAuth } from '../context/AuthContext'
+import { useCoreWorkflow } from '../context/CoreWorkflowContext'
 import DesignStepGuide, { DESIGN_STEPS } from '../components/DesignStepGuide'
 import DesignInspirationPanel from '../components/DesignInspirationPanel'
 import DesignTemplateGallery from '../components/DesignTemplateGallery'
@@ -15,16 +16,19 @@ import DesignCanvasEditor from '../components/DesignCanvasEditor'
 import { CANVAS_FONTS } from '../constants/canvasFonts'
 import { useDesignCreation } from '../hooks/useDesignCreation'
 import { isDraftDesign } from '../utils/localDesign'
-import { buildDesignFromInspiration, buildCarouselFromInspiration } from '../utils/inspirationCanvas'
+import { buildDesignFromInspiration, buildCarouselFromInspiration, resolveInspirationForCanvas, mergeDesignIdeaSources } from '../utils/inspirationCanvas'
 import { buildOwnDesignCanvas } from '../utils/inspirationSpec'
 import DesignSchedulePanel from '../components/DesignSchedulePanel'
 import DesignSavedPanel from '../components/DesignSavedPanel'
+import DesignRecentPanel from '../components/DesignRecentPanel'
 import { getPostFormat } from '../constants/postFormats'
 import { applyCharacterToCanvas, applyTalkingCharacterToCanvas } from '../utils/characterCanvas'
 import { applyAudioToCanvas } from '../utils/audioCanvas'
+import { canvasToDesignFields } from '../utils/designCanvas'
 import toast from 'react-hot-toast'
 
 const PANELS = [
+  { id: 'recent', label: 'Recent', icon: Clock, step: 1 },
   { id: 'inspiration', label: 'Inspire', icon: Lightbulb, step: 1 },
   { id: 'templates', label: 'Templates', icon: LayoutTemplate, step: 2 },
   { id: 'saved', label: 'Saved', icon: FolderOpen, step: 2 },
@@ -34,6 +38,7 @@ const PANELS = [
   { id: 'audio', label: 'Audio', icon: Volume2, step: 3 },
   { id: 'text', label: 'Text', icon: Type, step: 4 },
   { id: 'elements', label: 'Elements', icon: Layers, step: 4 },
+  { id: 'finalize', label: 'Launch', icon: Rocket, step: 5 },
 ]
 
 const STEP_PANEL = { 1: 'inspiration', 2: 'templates', 3: 'photos', 4: 'text', 5: 'finalize' }
@@ -42,6 +47,7 @@ const ASSET_PANEL_MIN = 220
 const ASSET_PANEL_MAX = 560
 const ASSET_PANEL_DEFAULT = 320
 const ASSET_PANEL_WIDTH_KEY = 'curi_design_asset_panel_width'
+const SESSION_KEY_PREFIX = 'curi_design_session_'
 
 const readStoredPanelWidth = () => {
   const w = Number(localStorage.getItem(ASSET_PANEL_WIDTH_KEY))
@@ -54,11 +60,14 @@ export default function DesignStudio() {
   const { designId } = useParams()
   const [searchParams] = useSearchParams()
   const { workspace, fetchMe, loading: authLoading, user } = useAuth()
+  const { addDesign } = useCoreWorkflow()
   const editorRef = useRef(null)
   const splitRef = useRef(null)
   const resizeDragRef = useRef(null)
   const panelWidthRef = useRef(ASSET_PANEL_DEFAULT)
   const pendingDesignIdRef = useRef(null)
+  const carouselIndexRef = useRef(0)
+  const appliedUserTemplateRef = useRef(null)
 
   const [assetPanelWidth, setAssetPanelWidth] = useState(readStoredPanelWidth)
   const [panelCollapsed, setPanelCollapsed] = useState(false)
@@ -85,6 +94,7 @@ export default function DesignStudio() {
   const [loadingDesign, setLoadingDesign] = useState(false)
   const [characterPanelFocus, setCharacterPanelFocus] = useState(null)
   const [characterTalkContext, setCharacterTalkContext] = useState(null)
+  const [recentRefreshToken, setRecentRefreshToken] = useState(0)
 
   const clearCharacterFocus = useCallback(() => {
     setCharacterPanelFocus(null)
@@ -124,6 +134,33 @@ export default function DesignStudio() {
     if (authLoading || workspaceId || !user) return
     fetchMe?.()
   }, [authLoading, workspaceId, user, fetchMe])
+
+  useEffect(() => {
+    if (!workspaceId) return
+    try {
+      const raw = localStorage.getItem(`${SESSION_KEY_PREFIX}${workspaceId}`)
+      if (!raw) return
+      const session = JSON.parse(raw)
+      if (session.brief) setBrief((prev) => prev || session.brief)
+      if (session.postFormat) setPostFormat(session.postFormat)
+      if (session.dimensionId) setDimensionId(session.dimensionId)
+    } catch { /* ignore */ }
+  }, [workspaceId])
+
+  useEffect(() => {
+    if (!workspaceId) return
+    try {
+      localStorage.setItem(`${SESSION_KEY_PREFIX}${workspaceId}`, JSON.stringify({
+        brief,
+        postFormat,
+        dimensionId,
+      }))
+    } catch { /* ignore */ }
+  }, [workspaceId, brief, postFormat, dimensionId])
+
+  useEffect(() => {
+    carouselIndexRef.current = carouselIndex
+  }, [carouselIndex])
 
   const completedSteps = useMemo(() => {
     const done = []
@@ -171,8 +208,7 @@ export default function DesignStudio() {
   // Load existing design when opening a shared /studio/:id URL
   useEffect(() => {
     if (!workspaceId || !designId || String(designId).startsWith('draft-')) return
-    if (design && isDraftDesign(design)) return
-    if (design && String(design._id) === String(designId)) {
+    if (design && String(design._id) === String(designId) && !isDraftDesign(design)) {
       pendingDesignIdRef.current = null
       return
     }
@@ -254,6 +290,10 @@ export default function DesignStudio() {
 
   const handlePanelChange = (panelId) => {
     setPanel(panelId)
+    if (panelId === 'finalize') {
+      setStep(5)
+      return
+    }
     const match = PANELS.find(p => p.id === panelId)
     if (match) setStep(match.step)
   }
@@ -281,6 +321,8 @@ export default function DesignStudio() {
 
   const openSavedDesign = (saved) => {
     if (!saved) return
+    setCarouselDesigns([])
+    setCarouselIndex(0)
     applyDesign({ ...saved, _local: false })
     setStep(4)
     setPanel('text')
@@ -290,8 +332,10 @@ export default function DesignStudio() {
   useEffect(() => {
     const userTemplateId = searchParams.get('userTemplate')
     if (!userTemplateId || !userTemplates.length) return
+    if (appliedUserTemplateRef.current === userTemplateId) return
     const template = userTemplates.find((t) => String(t._id) === String(userTemplateId))
     if (!template) return
+    appliedUserTemplateRef.current = userTemplateId
     handleUserTemplate(template)
   }, [searchParams, userTemplates])
 
@@ -405,18 +449,33 @@ export default function DesignStudio() {
   }
 
   const handleExtractInspiration = async (idea = designIdea) => {
-    if (!idea?.imageUrl && !idea?.notes) {
+    const imageRef = idea?.imageUrl || idea?.previewDataUrl
+    if (!imageRef && !idea?.notes) {
       return toast.error('Upload an inspiration image or add notes first')
     }
     setExtracting(true)
     setCarouselDesigns([])
     try {
       const format = getPostFormat(postFormat)
-      const useLocal = idea.analyzedSpec?.aestheticOnly && idea.imageUrl
 
-      if (useLocal) {
+      if (imageRef) {
+        const mergedIdea = mergeDesignIdeaSources(idea, designIdea)
+        const { designIdea: enrichedIdea, ideaContext } = await resolveInspirationForCanvas({
+          api: API,
+          workspaceId,
+          designIdea: mergedIdea,
+          imageRef: mergedIdea?.imageUrl || mergedIdea?.previewDataUrl,
+          brief,
+          dimensionId,
+          postFormat,
+          creativeType: format.creativeType,
+          templateId: format.templateId,
+        })
+        if (enrichedIdea) setDesignIdea(enrichedIdea)
+        fetchMe?.()
         const created = buildDesignFromInspiration({
-          designIdea: idea,
+          designIdea: enrichedIdea,
+          ideaContext,
           brandColors: workspace?.brandProfile?.colors?.palette,
           prompt: brief,
           dimensionId,
@@ -426,7 +485,7 @@ export default function DesignStudio() {
         setSelectedTemplateId(created.templateId)
         setStep(4)
         setPanel('text')
-        toast.success(`${format.label} created — aesthetics only, your copy on canvas`)
+        toast.success(`${format.label} created — aesthetic replica with your copy`)
         return
       }
 
@@ -438,7 +497,7 @@ export default function DesignStudio() {
         postFormat,
         creativeType: format.creativeType,
         templateId: format.templateId,
-      })
+      }, { timeout: 35000 })
       if (data.design) {
         applyDesign(data.design)
         if (data.designIdea) setDesignIdea(data.designIdea)
@@ -449,20 +508,71 @@ export default function DesignStudio() {
         fetchMe?.()
       }
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not extract design from inspiration')
+      const msg = err.code === 'ECONNABORTED'
+        ? 'Request timed out — try again with a smaller image'
+        : (err.response?.data?.error || 'Could not extract design from inspiration')
+      toast.error(msg)
     } finally {
       setExtracting(false)
     }
   }
 
+  const switchCarouselSlide = useCallback(async (index) => {
+    if (!carouselDesigns[index] || index === carouselIndex) return
+
+    const fromIndex = carouselIndex
+    let slides = [...carouselDesigns]
+    const savedSlide = editorRef.current?.saveDesign
+      ? await editorRef.current.saveDesign({ silent: true, slideIndex: fromIndex })
+      : null
+
+    if (savedSlide) {
+      slides[fromIndex] = { ...slides[fromIndex], ...savedSlide, _local: false }
+    } else {
+      const liveCanvas = editorRef.current?.getCanvas?.()
+      if (liveCanvas && design) {
+        const fields = canvasToDesignFields(liveCanvas)
+        slides[fromIndex] = {
+          ...slides[fromIndex],
+          ...design,
+          ...fields,
+          canvasLayout: liveCanvas,
+        }
+      }
+    }
+
+    setCarouselDesigns(slides)
+    setCarouselIndex(index)
+    setDesign(slides[index])
+  }, [carouselDesigns, carouselIndex, design])
+
   const handleExtractCarousel = async (idea = designIdea) => {
-    if (!idea?.imageUrl && !idea?.notes) {
-      return toast.error('Upload an inspiration image first')
+    const mergedIdea = mergeDesignIdeaSources(idea, designIdea)
+    const imageRef = mergedIdea?.imageUrl || mergedIdea?.previewDataUrl
+    if (!imageRef && !mergedIdea?.notes) {
+      return toast.error('Upload an inspiration image or add notes first')
     }
     setExtracting(true)
     try {
+      const format = getPostFormat('carousel')
+      const { designIdea: enrichedIdea, ideaContext } = await resolveInspirationForCanvas({
+        api: API,
+        workspaceId,
+        designIdea: mergedIdea,
+        imageRef,
+        brief,
+        dimensionId,
+        postFormat: 'carousel',
+        creativeType: format.creativeType,
+        templateId: format.templateId,
+      })
+
+      if (enrichedIdea) setDesignIdea(enrichedIdea)
+      fetchMe?.()
+
       const slides = buildCarouselFromInspiration({
-        designIdea: idea,
+        designIdea: enrichedIdea,
+        ideaContext,
         brandColors: workspace?.brandProfile?.colors?.palette,
         prompt: brief,
         dimensionId,
@@ -471,22 +581,16 @@ export default function DesignStudio() {
       })
       setCarouselDesigns(slides)
       setCarouselIndex(0)
-      applyDesign(slides[0])
+      setDesign(slides[0])
       setSelectedTemplateId(slides[0].templateId)
       setStep(4)
       setPanel('text')
-      toast.success(`Created ${slides.length} carousel slides — editing slide 1`)
+      toast.success(`Created ${slides.length} carousel slides from your inspiration`)
     } catch (err) {
       toast.error(err.message || 'Could not create carousel')
     } finally {
       setExtracting(false)
     }
-  }
-
-  const switchCarouselSlide = (index) => {
-    if (!carouselDesigns[index]) return
-    setCarouselIndex(index)
-    applyDesign(carouselDesigns[index])
   }
 
   const handleGenerate = async () => {
@@ -534,11 +638,82 @@ export default function DesignStudio() {
     }
   }
 
-  const handleDesignSaved = (updated) => {
-    setDesign(prev => ({ ...prev, ...updated, _local: false }))
+  const handleProceedToLaunch = async () => {
+    try {
+      let slides = carouselDesigns
+      const liveCanvas = editorRef.current?.getCanvas?.()
+      if (carouselDesigns.length > 1 && liveCanvas && design) {
+        slides = [...carouselDesigns]
+        const fields = canvasToDesignFields(liveCanvas)
+        slides[carouselIndex] = {
+          ...slides[carouselIndex],
+          ...design,
+          ...fields,
+          canvasLayout: liveCanvas,
+        }
+        setCarouselDesigns(slides)
+      }
+
+      let saved = design && !isDraftDesign(design) ? design : null
+      if (editorRef.current) {
+        const result = await editorRef.current.saveDesign({ slideIndex: carouselIndex })
+        if (result?._id) saved = result
+      }
+
+      if (slides.length > 1) {
+        const savedSlides = [...slides]
+        for (let i = 0; i < savedSlides.length; i++) {
+          if (i === carouselIndex) {
+            if (saved?._id) savedSlides[i] = saved
+            continue
+          }
+          const slide = savedSlides[i]
+          if (!isDraftDesign(slide)) continue
+          const fields = canvasToDesignFields(slide.canvasLayout)
+          const { data } = await API.post('/design/save', {
+            workspaceId,
+            canvasLayout: slide.canvasLayout,
+            ...fields,
+            name: slide.name,
+            layout: slide.layout,
+          })
+          savedSlides[i] = { ...(data.design || {}), _id: data.design?._id, canvasLayout: slide.canvasLayout, _local: false }
+        }
+        setCarouselDesigns(savedSlides)
+        saved = savedSlides[carouselIndex] || saved
+      }
+
+      if (!saved?._id || isDraftDesign(saved)) {
+        toast.error('Save your design first, then proceed to launch')
+        return
+      }
+      addDesign(saved)
+      toast.success('Design ready — opening Curi Launch')
+      navigate('/launch')
+    } catch {
+      toast.error('Could not save design — try again')
+    }
+  }
+
+  const handleDesignSaved = (updated, meta = {}) => {
+    const { silent = false, slideIndex = carouselIndexRef.current } = meta
+    setDesign((prev) => ({ ...prev, ...updated, _local: false }))
+    setRecentRefreshToken((n) => n + 1)
+    if (carouselDesigns.length > 1) {
+      setCarouselDesigns((prev) => {
+        const next = [...prev]
+        if (next[slideIndex]) {
+          next[slideIndex] = { ...next[slideIndex], ...updated, _local: false }
+        }
+        return next
+      })
+    }
     if (updated._id && !isDraftDesign(updated)) {
-      pendingDesignIdRef.current = String(updated._id)
-      navigate(`/design/studio/${updated._id}`, { replace: true })
+      addDesign(updated)
+      if (!silent) {
+        pendingDesignIdRef.current = String(updated._id)
+        navigate(`/design/studio/${updated._id}`, { replace: true })
+      }
     }
   }
 
@@ -583,6 +758,7 @@ export default function DesignStudio() {
         currentStep={step}
         onStepChange={handleStepChange}
         completedSteps={completedSteps}
+        onProceedToLaunch={step === 5 ? handleProceedToLaunch : undefined}
       />
 
       <div ref={splitRef} className={`relative flex flex-1 min-h-0 ${isResizing ? 'select-none cursor-col-resize' : ''}`}>
@@ -696,6 +872,15 @@ export default function DesignStudio() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 min-h-0">
+            {panel === 'recent' && (
+              <DesignRecentPanel
+                embedded
+                workspaceId={workspaceId}
+                onOpenDesign={openSavedDesign}
+                refreshToken={recentRefreshToken}
+              />
+            )}
+
             {panel === 'inspiration' && (
               <DesignInspirationPanel
                 embedded
@@ -862,8 +1047,12 @@ export default function DesignStudio() {
                     </div>
                   </div>
                 ))}
-                <button type="button" onClick={handleFinalize} className="btn-primary w-full text-sm">
+                <button type="button" onClick={handleFinalize} className="btn-secondary w-full text-sm">
                   Save final creative
+                </button>
+                <button type="button" onClick={handleProceedToLaunch} className="btn-primary w-full text-sm flex items-center justify-center gap-1.5">
+                  <Rocket size={14} />
+                  Proceed to Launch
                 </button>
                 <DesignSchedulePanel
                   design={design}
@@ -911,10 +1100,58 @@ export default function DesignStudio() {
         </div>
 
         {/* Canvas */}
-        <div className="flex-1 min-w-0 min-h-0">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+          {carouselDesigns.length > 1 && (
+            <div className="flex-shrink-0 border-b border-theme-border bg-theme-surface px-4 py-2.5">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-theme-muted/60 shrink-0">
+                  <Layers size={14} className="text-curi-pink" />
+                  Carousel
+                </div>
+                <button
+                  type="button"
+                  onClick={() => switchCarouselSlide(carouselIndex - 1)}
+                  disabled={carouselIndex <= 0}
+                  className="p-1.5 rounded-lg border border-theme-border text-theme-muted/60 hover:text-theme-text disabled:opacity-30"
+                  aria-label="Previous slide"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <div className="flex flex-1 gap-1.5 overflow-x-auto min-w-0 py-0.5">
+                  {carouselDesigns.map((slide, i) => (
+                    <button
+                      key={slide._id || `slide-${i}`}
+                      type="button"
+                      onClick={() => switchCarouselSlide(i)}
+                      className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                        carouselIndex === i
+                          ? 'bg-curi-pink text-white border-curi-pink shadow-sm'
+                          : 'border-theme-border text-theme-muted/70 hover:border-curi-pink/40 hover:text-theme-text bg-theme-bg'
+                      }`}
+                    >
+                      Slide {i + 1}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => switchCarouselSlide(carouselIndex + 1)}
+                  disabled={carouselIndex >= carouselDesigns.length - 1}
+                  className="p-1.5 rounded-lg border border-theme-border text-theme-muted/60 hover:text-theme-text disabled:opacity-30"
+                  aria-label="Next slide"
+                >
+                  <ChevronRight size={16} />
+                </button>
+                <span className="text-[11px] font-medium text-theme-muted/50 shrink-0 tabular-nums">
+                  {carouselIndex + 1} / {carouselDesigns.length}
+                </span>
+              </div>
+            </div>
+          )}
           {design ? (
+            <div className="flex-1 min-h-0">
             <DesignCanvasEditor
-              key={design._id}
+              key={`slide-${carouselIndex}`}
               ref={editorRef}
               embedded
               hideAssetSidebar
@@ -924,12 +1161,16 @@ export default function DesignStudio() {
               userTemplates={userTemplates}
               onSaved={handleDesignSaved}
               onOpenCharactersPanel={openCharactersPanel}
+              autoSave
+              carouselSlideIndex={carouselIndex}
               showNext={step < 5}
               onNext={() => handleStepChange(step + 1)}
               nextLabel={step === 4 ? 'Finalize' : 'Next'}
+              onProceedToLaunch={step === 5 ? handleProceedToLaunch : undefined}
             />
+            </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center bg-theme-subtle/5 p-8 text-center">
+            <div className="flex-1 flex flex-col items-center justify-center bg-theme-subtle/5 p-8 text-center">
               <LayoutTemplate size={48} className="text-theme-muted/30 mb-4" />
               <h3 className="text-base font-bold text-theme-text mb-2">Start your creative</h3>
               <p className="text-xs text-theme-muted/60 max-w-sm mb-6">

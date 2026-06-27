@@ -6,8 +6,13 @@ const defaultState = {
   contentId: null,
   contentText: '',
   topic: '',
+  createPlatform: '',
   discoverComplete: false,
   createSaved: false,
+  designId: null,
+  designIds: [],
+  designName: '',
+  designSaved: false,
 }
 
 const loadState = () => {
@@ -32,14 +37,29 @@ export const CoreWorkflowProvider = ({ children }) => {
     setWorkflow(prev => ({ ...prev, ...updates }))
   }, [])
 
-  const setContent = useCallback(({ contentId, contentText, topic, saved = true }) => {
+  const setContent = useCallback(({ contentId, contentText, topic, platform, saved = true }) => {
     patch({
       contentId: contentId ?? null,
       contentText: contentText ?? '',
       topic: topic ?? '',
+      createPlatform: platform ?? '',
       createSaved: saved,
     })
   }, [patch])
+
+  const addDesign = useCallback((design) => {
+    if (!design?._id) return
+    setWorkflow((prev) => {
+      const ids = [...new Set([...(prev.designIds || []), design._id].map(String))]
+      return {
+        ...prev,
+        designId: design._id,
+        designName: design.name || design.headline || design.title || 'Design',
+        designIds: ids,
+        designSaved: true,
+      }
+    })
+  }, [])
 
   const markDiscoverComplete = useCallback(() => {
     patch({ discoverComplete: true })
@@ -51,7 +71,7 @@ export const CoreWorkflowProvider = ({ children }) => {
   }, [])
 
   return (
-    <CoreWorkflowContext.Provider value={{ workflow, patch, setContent, markDiscoverComplete, resetWorkflow }}>
+    <CoreWorkflowContext.Provider value={{ workflow, patch, setContent, addDesign, markDiscoverComplete, resetWorkflow }}>
       {children}
     </CoreWorkflowContext.Provider>
   )

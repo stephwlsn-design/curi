@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useMemo, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import BrandColorsPanel from './BrandColorsPanel'
 import {
-  Loader2, RefreshCw, Sparkles, LayoutTemplate, FileText, Film, FolderOpen,
+  Loader2, RefreshCw, Sparkles, LayoutTemplate, FileText, Film, FolderOpen, Share2,
 } from 'lucide-react'
 import { useBrandAssets } from '../../hooks/useBrandAssets'
 import DesignLibraryGrid from './DesignLibraryGrid'
@@ -12,7 +12,7 @@ import ContentLibraryGrid from './ContentLibraryGrid'
 import VideoLibraryGrid from './VideoLibraryGrid'
 import DraftLibraryGrid from './DraftLibraryGrid'
 
-const TABS = [
+const ASSET_TABS = [
   { id: 'all', label: 'All', icon: Sparkles },
   { id: 'designs', label: 'Designs', icon: LayoutTemplate },
   { id: 'templates', label: 'Templates', icon: FolderOpen },
@@ -21,11 +21,25 @@ const TABS = [
   { id: 'drafts', label: 'Drafts', icon: FileText },
 ]
 
-export default function BrandHubSection({ workspaceId }) {
+export default function BrandHubSection({ workspaceId, initialTab = 'all' }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { workspace } = useAuth()
-  const [tab, setTab] = useState('all')
+  const [tab, setTab] = useState(initialTab)
   const { designs, templates, content, videos, drafts, loading, error, reload, counts } = useBrandAssets(workspaceId)
+
+  useEffect(() => {
+    if (location.hash === '#brand-hub-channels') {
+      navigate('/channels', { replace: true })
+      return
+    }
+    setTab(initialTab || 'all')
+  }, [initialTab, location.hash, navigate])
+
+  const selectTab = (id) => {
+    setTab(id)
+    navigate('/dashboard#brand-hub', { replace: true })
+  }
 
   const tabCounts = useMemo(() => ({
     all: counts.all,
@@ -49,7 +63,7 @@ export default function BrandHubSection({ workspaceId }) {
           <section>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-theme-text">Designs</h3>
-              <button type="button" onClick={() => setTab('designs')} className="text-xs font-bold text-curi-pink hover:underline">
+              <button type="button" onClick={() => selectTab('designs')} className="text-xs font-bold text-curi-pink hover:underline">
                 View all ({designs.length})
               </button>
             </div>
@@ -60,7 +74,7 @@ export default function BrandHubSection({ workspaceId }) {
           <section>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-theme-text">Templates</h3>
-              <button type="button" onClick={() => setTab('templates')} className="text-xs font-bold text-curi-pink hover:underline">
+              <button type="button" onClick={() => selectTab('templates')} className="text-xs font-bold text-curi-pink hover:underline">
                 View all ({templates.length})
               </button>
             </div>
@@ -71,7 +85,7 @@ export default function BrandHubSection({ workspaceId }) {
           <section>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-theme-text">Content</h3>
-              <button type="button" onClick={() => setTab('content')} className="text-xs font-bold text-curi-pink hover:underline">
+              <button type="button" onClick={() => selectTab('content')} className="text-xs font-bold text-curi-pink hover:underline">
                 View all ({content.length})
               </button>
             </div>
@@ -82,7 +96,7 @@ export default function BrandHubSection({ workspaceId }) {
           <section>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-theme-text">Videos</h3>
-              <button type="button" onClick={() => setTab('videos')} className="text-xs font-bold text-curi-pink hover:underline">
+              <button type="button" onClick={() => selectTab('videos')} className="text-xs font-bold text-curi-pink hover:underline">
                 View all ({videos.length})
               </button>
             </div>
@@ -93,7 +107,7 @@ export default function BrandHubSection({ workspaceId }) {
           <section>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-theme-text">Workflow drafts</h3>
-              <button type="button" onClick={() => setTab('drafts')} className="text-xs font-bold text-curi-pink hover:underline">
+              <button type="button" onClick={() => selectTab('drafts')} className="text-xs font-bold text-curi-pink hover:underline">
                 View all ({drafts.length})
               </button>
             </div>
@@ -120,13 +134,31 @@ export default function BrandHubSection({ workspaceId }) {
   return (
     <div>
       <BrandColorsPanel brandProfile={workspace?.brandProfile} designs={designs} />
+
+      <button
+        type="button"
+        onClick={() => navigate('/channels')}
+        className="w-full mb-4 p-4 rounded-2xl border text-left transition-all flex items-center gap-4 border-theme-subtle/10 bg-theme-subtle/5 hover:border-curi-blue/30 hover:bg-curi-blue/5"
+      >
+        <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 bg-curi-blue/15 text-curi-blue">
+          <Share2 size={20} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-theme-text">Social channels</div>
+          <p className="text-sm text-theme-muted/55 mt-0.5">
+            Connect accounts, view engagement stats, and publish via Curi Launch
+          </p>
+        </div>
+        <span className="badge shrink-0 bg-theme-subtle/10 text-theme-muted/60">Open</span>
+      </button>
+
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex flex-wrap gap-2">
-          {TABS.map(({ id, label, icon: Icon }) => (
+          {ASSET_TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
-              onClick={() => setTab(id)}
+              onClick={() => selectTab(id)}
               className={`px-3 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 ${
                 tab === id
                   ? 'bg-curi-pink/15 text-curi-pink border border-curi-pink/30'

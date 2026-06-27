@@ -43,7 +43,7 @@ export default function Dashboard() {
   }, [workspaceId])
 
   useEffect(() => {
-    if (location.hash !== '#brand-hub') return
+    if (!location.hash.startsWith('#brand-hub')) return
     const el = document.getElementById('brand-hub')
     if (!el) return
     requestAnimationFrame(() => {
@@ -136,7 +136,7 @@ export default function Dashboard() {
           <div>
             <h2 className="text-xl font-bold text-theme-text">Brand Hub</h2>
             <p className="text-sm text-theme-muted/55 mt-1 max-w-2xl">
-              Brand colors, saved designs, templates, content, videos, and workflow drafts in one place.
+              Brand colors, saved assets, workflow drafts, and social channel connections for publishing.
             </p>
           </div>
         </div>

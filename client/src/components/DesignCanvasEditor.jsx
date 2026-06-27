@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
-import { X, Save, LayoutTemplate, Plus, Trash2, Volume2, Play, Mic, Upload, ChevronRight } from 'lucide-react'
+import { X, Save, LayoutTemplate, Plus, Trash2, Volume2, Play, Mic, Upload, ChevronRight, Rocket, Cloud, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { API } from '../context/AuthContext'
 import DesignCanvasRenderer from './DesignCanvasRenderer'
@@ -30,9 +30,21 @@ export default forwardRef(function DesignCanvasEditor({
   onNext,
   nextLabel = 'Next',
   showNext = false,
+  onProceedToLaunch,
+  autoSave = false,
+  carouselSlideIndex,
 }, ref) {
   const containerRef = useRef(null)
+  const editorRootRef = useRef(null)
   const canvasFocusRef = useRef(null)
+  const keyboardStateRef = useRef({})
+  const canvasSnapshotRef = useRef(null)
+  const historyPastRef = useRef([])
+  const historyFutureRef = useRef([])
+  const clipboardRef = useRef(null)
+  const editorEngagedRef = useRef(true)
+
+  const CORE_LAYER_IDS = ['headline', 'subheadline', 'cta', 'badge']
   const [scale, setScale] = useState(0.45)
   const [canvas, setCanvas] = useState(() => {
     const base = design.canvasLayout || designToCanvas(design)
@@ -40,6 +52,11 @@ export default forwardRef(function DesignCanvasEditor({
   })
   const [selectedId, setSelectedId] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [autoSaveStatus, setAutoSaveStatus] = useState('idle')
+  const autoSaveTimerRef = useRef(null)
+  const skipAutoSaveRef = useRef(true)
+  const lastSavedCanvasRef = useRef(null)
+  const saveInFlightRef = useRef(null)
   const [templateName, setTemplateName] = useState('')
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [sidebarTab, setSidebarTab] = useState('templates')
@@ -52,9 +69,16 @@ export default forwardRef(function DesignCanvasEditor({
   const HANDLE_PX = 10
 
   const selected = canvas.elements.find(e => e.id === selectedId)
+  canvasSnapshotRef.current = canvas
+
+  const recordUndo = useCallback(() => {
+    historyPastRef.current.push(JSON.parse(JSON.stringify(canvasSnapshotRef.current)))
+    if (historyPastRef.current.length > 50) historyPastRef.current.shift()
+    historyFutureRef.current = []
+  }, [])
 
   const focusCanvas = useCallback(() => {
-    canvasFocusRef.current?.focus({ preventScroll: true })
+    editorRootRef.current?.focus({ preventScroll: true })
   }, [])
 
   const updateElement = useCallback((id, patch) => {
@@ -67,7 +91,7 @@ export default forwardRef(function DesignCanvasEditor({
   const selectElement = useCallback((id) => {
     setInlineEditId(null)
     setSelectedId(id)
-    requestAnimationFrame(() => focusCanvas())
+    focusCanvas()
   }, [focusCanvas])
 
   const isTextLikeElement = useCallback((el) => (
@@ -99,8 +123,25 @@ export default forwardRef(function DesignCanvasEditor({
   }, [inlineEditId, inlineEditText, focusCanvas, updateElement])
 
   useEffect(() => {
+    editorEngagedRef.current = true
     focusCanvas()
   }, [focusCanvas])
+
+  useEffect(() => {
+    const onPointerDown = (e) => {
+      if (editorRootRef.current?.contains(e.target)) {
+        editorEngagedRef.current = true
+        return
+      }
+      const tag = e.target?.tagName
+      const skip = e.target?.isContentEditable
+        || e.target?.closest?.('[data-skip-canvas-keys]')
+        || ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)
+      if (!skip) editorEngagedRef.current = false
+    }
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => document.removeEventListener('pointerdown', onPointerDown, true)
+  }, [])
 
   useEffect(() => {
     const fit = () => {
@@ -116,13 +157,14 @@ export default forwardRef(function DesignCanvasEditor({
 
   const onPointerDown = (e, elId) => {
     if (e.button !== 0) return
-    e.preventDefault()
-    e.stopPropagation()
     if (inlineEditId && inlineEditId !== elId) commitInlineEdit()
     selectElement(elId)
+    e.preventDefault()
+    e.stopPropagation()
     const el = canvas.elements.find(x => x.id === elId)
     if (!el) return
     const bounds = getElementBounds(el)
+    let recordedUndo = false
 
     dragRef.current = {
       elId,
@@ -136,6 +178,10 @@ export default forwardRef(function DesignCanvasEditor({
 
     const onMove = (ev) => {
       if (!dragRef.current) return
+      if (!recordedUndo) {
+        recordUndo()
+        recordedUndo = true
+      }
       const dx = (ev.clientX - dragRef.current.startX) / scale
       const dy = (ev.clientY - dragRef.current.startY) / scale
       updateElement(dragRef.current.elId, {
@@ -162,6 +208,7 @@ export default forwardRef(function DesignCanvasEditor({
     const el = canvas.elements.find(x => x.id === elId)
     if (!el) return
     const bounds = getElementBounds(el)
+    let recordedUndo = false
 
     resizeRef.current = {
       elId,
@@ -178,6 +225,10 @@ export default forwardRef(function DesignCanvasEditor({
 
     const onMove = (ev) => {
       if (!resizeRef.current) return
+      if (!recordedUndo) {
+        recordUndo()
+        recordedUndo = true
+      }
       const dx = (ev.clientX - resizeRef.current.startX) / scale
       const dy = (ev.clientY - resizeRef.current.startY) / scale
       const target = canvas.elements.find(x => x.id === resizeRef.current.elId)
@@ -214,59 +265,123 @@ export default forwardRef(function DesignCanvasEditor({
     toast.success('Template applied')
   }
 
-  const saveDesign = async () => {
-    const fields = canvasToDesignFields(canvas)
-    const draft = isDraftDesign(design)
+  const saveDesign = useCallback(async ({ silent = false, slideIndex } = {}) => {
+    if (saveInFlightRef.current) {
+      return saveInFlightRef.current
+    }
 
-    if (draft) {
+    const saveMeta = { silent, slideIndex: slideIndex ?? carouselSlideIndex }
+
+    const runSave = async () => {
+      const fields = canvasToDesignFields(canvas)
+      const draft = isDraftDesign(design)
+
+      if (draft) {
+        setSaving(true)
+        if (silent) setAutoSaveStatus('saving')
+        try {
+          const { data } = await API.post('/design/save', {
+            workspaceId,
+            canvasLayout: canvas,
+            ...fields,
+            name: design.name,
+            layout: design.layout,
+          })
+          const saved = {
+            ...(data.design || {}),
+            _id: data.design?._id,
+            canvasLayout: canvas,
+            _local: false,
+          }
+          onSaved?.(saved, saveMeta)
+          if (!silent) toast.success('Design saved')
+          else setAutoSaveStatus('saved')
+          return saved
+        } catch (err) {
+          if (silent) setAutoSaveStatus('error')
+          else toast.error(err.response?.data?.error || 'Save failed')
+          return null
+        } finally {
+          setSaving(false)
+        }
+      }
+
+      if (!design._id) {
+        const updated = { ...design, ...fields, canvasLayout: canvas }
+        onSaved?.(updated, saveMeta)
+        if (!silent) toast.success('Canvas updated')
+        onClose?.()
+        return updated
+      }
       setSaving(true)
+      if (silent) setAutoSaveStatus('saving')
       try {
-        const { data } = await API.post('/design/save', {
+        const { data } = await API.patch(`/design/${design._id}`, {
           workspaceId,
           canvasLayout: canvas,
           ...fields,
-          name: design.name,
-          layout: design.layout,
         })
-        const saved = {
-          ...(data.design || {}),
-          _id: data.design?._id,
-          canvasLayout: canvas,
-          _local: false,
+        const updated = { ...(data.design.metadata || data.design || {}), _id: data.design._id || design._id, canvasLayout: canvas }
+        onSaved?.(updated, saveMeta)
+        if (!silent) {
+          toast.success('Design saved')
+          onClose?.()
+        } else {
+          setAutoSaveStatus('saved')
         }
-        onSaved?.(saved)
-        toast.success('Design saved')
+        return updated
       } catch (err) {
-        toast.error(err.response?.data?.error || 'Save failed')
+        if (silent) setAutoSaveStatus('error')
+        else toast.error(err.response?.data?.error || 'Save failed')
+        return null
       } finally {
         setSaving(false)
       }
-      return
     }
 
-    if (!design._id) {
-      onSaved?.({ ...design, ...fields, canvasLayout: canvas })
-      toast.success('Canvas updated')
-      onClose?.()
-      return
-    }
-    setSaving(true)
+    const promise = runSave()
+    saveInFlightRef.current = promise
     try {
-      const { data } = await API.patch(`/design/${design._id}`, {
-        workspaceId,
-        canvasLayout: canvas,
-        ...fields,
-      })
-      const updated = { ...(data.design.metadata || data.design || {}), _id: data.design._id || design._id, canvasLayout: canvas }
-      onSaved?.(updated)
-      toast.success('Design saved')
-      onClose?.()
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Save failed')
+      return await promise
     } finally {
-      setSaving(false)
+      if (saveInFlightRef.current === promise) {
+        saveInFlightRef.current = null
+      }
     }
-  }
+  }, [canvas, carouselSlideIndex, design, onClose, onSaved, workspaceId])
+
+  useEffect(() => {
+    skipAutoSaveRef.current = true
+    lastSavedCanvasRef.current = null
+    setAutoSaveStatus('idle')
+  }, [design?._id])
+
+  useEffect(() => {
+    if (!autoSave || !workspaceId || !design) return
+
+    if (skipAutoSaveRef.current) {
+      skipAutoSaveRef.current = false
+      lastSavedCanvasRef.current = JSON.stringify(canvas)
+      return undefined
+    }
+
+    const serialized = JSON.stringify(canvas)
+    if (serialized === lastSavedCanvasRef.current) return undefined
+
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    setAutoSaveStatus('pending')
+
+    autoSaveTimerRef.current = setTimeout(async () => {
+      const result = await saveDesign({ silent: true })
+      if (result) {
+        lastSavedCanvasRef.current = serialized
+      }
+    }, 2000)
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    }
+  }, [autoSave, canvas, design, saveDesign, workspaceId])
 
   const saveAsTemplate = async () => {
     if (!templateName.trim()) return toast.error('Enter a template name')
@@ -301,6 +416,7 @@ export default forwardRef(function DesignCanvasEditor({
   }
 
   const addTextLayer = () => {
+    recordUndo()
     const id = `text-${Date.now()}`
     setCanvas(prev => ({
       ...prev,
@@ -323,16 +439,79 @@ export default forwardRef(function DesignCanvasEditor({
     focusCanvas()
   }
 
-  const deleteSelected = useCallback(() => {
-    if (!selectedId || ['headline', 'subheadline', 'cta', 'badge'].includes(selectedId)) {
-      return toast.error('Core layers cannot be removed')
+  const deleteSelected = useCallback((options = {}) => {
+    const { silent = false } = options
+    if (!selectedId || CORE_LAYER_IDS.includes(selectedId)) {
+      if (!silent) toast.error('Core layers cannot be removed')
+      return false
     }
+    recordUndo()
     setCanvas(prev => ({
       ...prev,
       elements: prev.elements.filter(e => e.id !== selectedId),
     }))
     selectElement(null)
-  }, [selectedId, selectElement])
+    return true
+  }, [selectedId, selectElement, recordUndo])
+
+  const undo = useCallback(() => {
+    if (!historyPastRef.current.length) return false
+    historyFutureRef.current.unshift(JSON.parse(JSON.stringify(canvasSnapshotRef.current)))
+    const prev = historyPastRef.current.pop()
+    setCanvas(prev)
+    return true
+  }, [])
+
+  const redo = useCallback(() => {
+    if (!historyFutureRef.current.length) return false
+    historyPastRef.current.push(JSON.parse(JSON.stringify(canvasSnapshotRef.current)))
+    const next = historyFutureRef.current.shift()
+    setCanvas(next)
+    return true
+  }, [])
+
+  const copySelectedLayer = useCallback(() => {
+    if (!selectedId) return false
+    const el = canvas.elements.find((item) => item.id === selectedId)
+    if (!el) return false
+    clipboardRef.current = JSON.parse(JSON.stringify(el))
+    return true
+  }, [selectedId, canvas.elements])
+
+  const pasteLayer = useCallback(() => {
+    if (!clipboardRef.current) return false
+    recordUndo()
+    const base = clipboardRef.current
+    const id = `${base.type || 'layer'}-${Date.now()}`
+    const copy = {
+      ...base,
+      id,
+      x: Math.round((base.x || 0) + 20),
+      y: Math.round((base.y || 0) + 20),
+    }
+    setCanvas((prev) => ({ ...prev, elements: [...prev.elements, copy] }))
+    setSelectedId(id)
+    focusCanvas()
+    return true
+  }, [recordUndo, focusCanvas])
+
+  const duplicateSelected = useCallback(() => {
+    if (!selectedId) return false
+    const el = canvas.elements.find((item) => item.id === selectedId)
+    if (!el) return false
+    recordUndo()
+    const id = `${el.type || 'layer'}-${Date.now()}`
+    const copy = {
+      ...JSON.parse(JSON.stringify(el)),
+      id,
+      x: Math.round((el.x || 0) + 20),
+      y: Math.round((el.y || 0) + 20),
+    }
+    setCanvas((prev) => ({ ...prev, elements: [...prev.elements, copy] }))
+    setSelectedId(id)
+    focusCanvas()
+    return true
+  }, [selectedId, canvas.elements, recordUndo, focusCanvas])
 
   const getSpeakableLayerContext = useCallback(() => {
     if (!selected) return null
@@ -348,110 +527,187 @@ export default forwardRef(function DesignCanvasEditor({
     }
   }, [selected])
 
-  const shouldHandleCanvasKeys = useCallback((target) => {
-    if (inlineEditId) return false
-    if (!target?.tagName) return Boolean(selectedId)
-    if (target.isContentEditable) return false
-    if (target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.tagName === 'INPUT') {
-      return false
-    }
-    const canvasHost = canvasFocusRef.current
-    if (canvasHost?.contains(target)) return true
-    return Boolean(selectedId)
-  }, [inlineEditId, selectedId])
+  const nudgeSelected = useCallback((dx, dy, targetId = selectedId) => {
+    if (!targetId) return false
+    recordUndo()
+    setCanvas((prev) => ({
+      ...prev,
+      elements: prev.elements.map((el) => {
+        if (el.id !== targetId) return el
+        const bounds = getElementBounds(el)
+        return {
+          ...el,
+          x: Math.round(Math.max(0, Math.min(prev.width - bounds.width, el.x + dx))),
+          y: Math.round(Math.max(0, Math.min(prev.height - bounds.height, el.y + dy))),
+        }
+      }),
+    }))
+    return true
+  }, [selectedId, recordUndo])
 
-  const handleCanvasKeyDown = useCallback((e) => {
-    if (!shouldHandleCanvasKeys(e.target)) return
+  const isFormField = (el) => {
+    if (!el?.tagName) return false
+    if (el.isContentEditable) return true
+    if (el.closest?.('[data-skip-canvas-keys]')) return true
+    return ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)
+  }
 
-    if (inlineEditId) return
+  keyboardStateRef.current = {
+    selectedId,
+    inlineEditId,
+    canvas,
+    isTextLikeElement,
+    saveDesign,
+    selectElement,
+    startInlineEdit,
+    deleteSelected,
+    nudgeSelected,
+    undo,
+    redo,
+    copySelectedLayer,
+    pasteLayer,
+    duplicateSelected,
+  }
 
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+  const handleCanvasKeyboard = useCallback((e) => {
+    if (e.defaultPrevented) return
+
+    const root = editorRootRef.current
+    if (!root) return
+
+    const state = keyboardStateRef.current
+    if (state.inlineEditId) return
+
+    const active = document.activeElement
+    if (isFormField(active) || isFormField(e.target)) return
+
+    const inEditor = (active && root.contains(active)) || (e.target && root.contains(e.target))
+    if (!inEditor && !editorEngagedRef.current && !state.selectedId) return
+
+    const mod = e.metaKey || e.ctrlKey
+    const key = e.key.toLowerCase()
+
+    const markHandled = () => {
       e.preventDefault()
-      saveDesign()
+      e.stopPropagation()
+    }
+
+    if (mod && key === 'z' && !e.shiftKey) {
+      markHandled()
+      if (state.undo?.()) toast.success('Undone')
+      return
+    }
+
+    if (mod && ((key === 'z' && e.shiftKey) || key === 'y')) {
+      markHandled()
+      if (state.redo?.()) toast.success('Redone')
+      return
+    }
+
+    if (mod && key === 'c' && state.selectedId) {
+      markHandled()
+      if (state.copySelectedLayer?.()) toast.success('Layer copied')
+      return
+    }
+
+    if (mod && key === 'v') {
+      markHandled()
+      if (state.pasteLayer?.()) toast.success('Layer pasted')
+      return
+    }
+
+    if (mod && key === 'x' && state.selectedId && !CORE_LAYER_IDS.includes(state.selectedId)) {
+      markHandled()
+      if (state.copySelectedLayer?.()) {
+        state.deleteSelected?.({ silent: true })
+        toast.success('Layer cut')
+      }
+      return
+    }
+
+    if (mod && key === 'd' && state.selectedId) {
+      markHandled()
+      if (state.duplicateSelected?.()) toast.success('Layer duplicated')
+      return
+    }
+
+    if (mod && key === 's') {
+      markHandled()
+      state.saveDesign?.()
       return
     }
 
     if (e.key === 'Escape') {
-      if (selectedId) {
-        e.preventDefault()
-        selectElement(null)
+      if (state.selectedId) {
+        markHandled()
+        state.selectElement?.(null)
       }
       return
     }
 
-    if (e.key === 'Tab' && canvas.elements.length > 0) {
-      e.preventDefault()
-      const visible = canvas.elements.filter((item) => item.visible !== false)
+    if (e.key === 'Tab' && state.canvas?.elements?.length > 0) {
+      markHandled()
+      const visible = state.canvas.elements.filter((item) => item.visible !== false)
       if (!visible.length) return
-      const currentIndex = visible.findIndex((item) => item.id === selectedId)
+      const currentIndex = visible.findIndex((item) => item.id === state.selectedId)
       const nextIndex = e.shiftKey
         ? (currentIndex <= 0 ? visible.length - 1 : currentIndex - 1)
         : (currentIndex < 0 || currentIndex >= visible.length - 1 ? 0 : currentIndex + 1)
-      selectElement(visible[nextIndex].id)
+      state.selectElement?.(visible[nextIndex].id)
       return
     }
 
-    if (e.key === 'Enter' && selectedId && !e.shiftKey) {
-      const el = canvas.elements.find((item) => item.id === selectedId)
-      if (isTextLikeElement(el)) {
-        e.preventDefault()
-        startInlineEdit(selectedId)
+    if (e.key === 'Enter' && state.selectedId && !e.shiftKey) {
+      const el = state.canvas.elements.find((item) => item.id === state.selectedId)
+      if (state.isTextLikeElement?.(el)) {
+        markHandled()
+        state.startInlineEdit?.(state.selectedId)
       }
       return
     }
 
-    if (!selectedId) return
+    if (!state.selectedId) return
 
-    const el = canvas.elements.find((item) => item.id === selectedId)
-    if (!el) return
-
-    const bounds = getElementBounds(el)
     const step = e.shiftKey ? 10 : 1
 
     if (e.key === 'ArrowLeft') {
-      e.preventDefault()
-      updateElement(selectedId, { x: Math.max(0, el.x - step) })
+      markHandled()
+      state.nudgeSelected?.(-step, 0, state.selectedId)
       return
     }
     if (e.key === 'ArrowRight') {
-      e.preventDefault()
-      updateElement(selectedId, { x: Math.min(canvas.width - bounds.width, el.x + step) })
+      markHandled()
+      state.nudgeSelected?.(step, 0, state.selectedId)
       return
     }
     if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      updateElement(selectedId, { y: Math.max(0, el.y - step) })
+      markHandled()
+      state.nudgeSelected?.(0, -step, state.selectedId)
       return
     }
     if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      updateElement(selectedId, { y: Math.min(canvas.height - bounds.height, el.y + step) })
+      markHandled()
+      state.nudgeSelected?.(0, step, state.selectedId)
       return
     }
 
-    if ((e.key === 'Delete' || e.key === 'Backspace') && !['headline', 'subheadline', 'cta', 'badge'].includes(selectedId)) {
-      e.preventDefault()
-      deleteSelected()
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (!CORE_LAYER_IDS.includes(state.selectedId)) {
+        markHandled()
+        state.deleteSelected?.({ silent: true })
+      }
     }
-  }, [
-    shouldHandleCanvasKeys,
-    inlineEditId,
-    selectedId,
-    canvas.elements,
-    canvas.width,
-    canvas.height,
-    updateElement,
-    selectElement,
-    startInlineEdit,
-    isTextLikeElement,
-    deleteSelected,
-    saveDesign,
-  ])
+  }, [])
 
   useEffect(() => {
-    window.addEventListener('keydown', handleCanvasKeyDown)
-    return () => window.removeEventListener('keydown', handleCanvasKeyDown)
-  }, [handleCanvasKeyDown])
+    const onWindowKeyDown = (e) => handleCanvasKeyboard(e)
+    window.addEventListener('keydown', onWindowKeyDown, true)
+    return () => window.removeEventListener('keydown', onWindowKeyDown, true)
+  }, [handleCanvasKeyboard])
+
+  const engageCanvasKeyboard = useCallback(() => {
+    focusCanvas()
+  }, [focusCanvas])
 
   const applyPexelsPhoto = (item, useAs = 'background') => {
     setCanvas((prev) => applyPexelsPhotoToCanvas(prev, item.url, useAs))
@@ -558,20 +814,53 @@ export default forwardRef(function DesignCanvasEditor({
     : 'fixed inset-0 z-50 bg-theme-bg/95 backdrop-blur-sm flex flex-col'
 
   return (
-    <div className={rootClass}>
+    <div
+      ref={editorRootRef}
+      className={`${rootClass} outline-none`}
+      tabIndex={-1}
+      onKeyDown={handleCanvasKeyboard}
+      onPointerDownCapture={() => { editorEngagedRef.current = true }}
+    >
       <div className={`flex items-center justify-between px-4 py-3 border-b border-theme-border bg-theme-bg ${embedded ? 'flex-shrink-0' : ''}`}>
         <div>
           <h2 className="text-base font-bold text-theme-text">{embedded ? design.name || 'Your Design' : 'Canvas Editor'}</h2>
           <p className="text-xs text-theme-muted/50">{canvas.width}×{canvas.height}</p>
         </div>
         <div className="flex items-center gap-2">
+          {autoSave && (
+            <span className="text-[11px] text-theme-muted/50 flex items-center gap-1 mr-1">
+              {autoSaveStatus === 'saving' || autoSaveStatus === 'pending' ? (
+                <>
+                  <Cloud size={14} className="animate-pulse" />
+                  Saving…
+                </>
+              ) : autoSaveStatus === 'saved' ? (
+                <>
+                  <Check size={14} className="text-emerald-500" />
+                  Saved
+                </>
+              ) : autoSaveStatus === 'error' ? (
+                <span className="text-red-400">Save failed</span>
+              ) : (
+                <>
+                  <Cloud size={14} />
+                  Auto-save on
+                </>
+              )}
+            </span>
+          )}
           <button type="button" onClick={() => setShowSaveTemplate(v => !v)} className="btn-secondary text-sm flex items-center gap-1.5">
             <LayoutTemplate size={16} /> Save as Template
           </button>
-          <button type="button" onClick={saveDesign} disabled={saving} className="btn-primary text-sm flex items-center gap-1.5">
+          <button type="button" onClick={() => saveDesign()} disabled={saving} className="btn-secondary text-sm flex items-center gap-1.5">
             <Save size={16} /> {saving ? 'Saving...' : 'Save Design'}
           </button>
-          {showNext && onNext && (
+          {onProceedToLaunch && (
+            <button type="button" onClick={onProceedToLaunch} className="btn-primary text-sm flex items-center gap-1.5">
+              <Rocket size={16} /> Proceed to Launch
+            </button>
+          )}
+          {!onProceedToLaunch && showNext && onNext && (
             <button type="button" onClick={onNext} className="btn-secondary text-sm flex items-center gap-1.5 border-curi-pink/40 text-curi-pink hover:bg-curi-pink/10">
               {nextLabel} <ChevronRight size={16} />
             </button>
@@ -591,6 +880,7 @@ export default forwardRef(function DesignCanvasEditor({
             placeholder="Template name"
             value={templateName}
             onChange={e => setTemplateName(e.target.value)}
+            data-skip-canvas-keys
           />
           <button type="button" onClick={saveAsTemplate} className="btn-primary text-sm">Save Template</button>
         </div>
@@ -685,12 +975,12 @@ export default forwardRef(function DesignCanvasEditor({
           <div className="relative shadow-2xl rounded-lg overflow-hidden ring-1 ring-black/10">
             <div
               ref={canvasFocusRef}
-              tabIndex={0}
+              tabIndex={-1}
               role="application"
               aria-label="Design canvas. Use arrow keys to move the selected layer, Tab to cycle layers, Enter or double-click to edit text."
               className="relative outline-none focus-visible:ring-2 focus-visible:ring-curi-pink/40 rounded-lg"
               onPointerDown={(e) => {
-                focusCanvas()
+                engageCanvasKeyboard()
                 if (e.target === e.currentTarget) selectElement(null)
               }}
             >
@@ -698,7 +988,10 @@ export default forwardRef(function DesignCanvasEditor({
                 canvas={canvas}
                 scale={scale}
                 selectedId={selectedId}
-                onSelect={selectElement}
+                onSelect={(id) => {
+                  engageCanvasKeyboard()
+                  selectElement(id)
+                }}
                 interactive
               />
               {canvas.elements.filter(e => e.visible !== false && e.id !== selectedId).map(el => {
@@ -818,6 +1111,7 @@ export default forwardRef(function DesignCanvasEditor({
                     value={inlineEditText}
                     onChange={(e) => setInlineEditText(e.target.value)}
                     onBlur={commitInlineEdit}
+                    data-skip-canvas-keys
                     onKeyDown={(e) => {
                       e.stopPropagation()
                       if (e.key === 'Escape') {
@@ -855,14 +1149,18 @@ export default forwardRef(function DesignCanvasEditor({
         <div className={`${isSpeakableLayer ? 'w-80' : 'w-64'} border-l border-theme-border p-4 overflow-y-auto flex-shrink-0 space-y-4 transition-all`}>
           <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">Layers</div>
           <p className="text-[10px] text-theme-muted/50 leading-snug -mt-2">
-            Click canvas to focus, then use arrow keys to nudge, Tab to cycle layers, Enter/double-click to edit text, Delete to remove.
+            ⌘Z undo · ⌘C copy · ⌘V paste · ⌘D duplicate · Arrows nudge · Shift+arrow 10px · Delete remove · ⌘S save
           </p>
           <div className="space-y-1">
             {canvas.elements.map(el => (
               <button
                 key={el.id}
                 type="button"
-                onClick={() => selectElement(el.id)}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  engageCanvasKeyboard()
+                  selectElement(el.id)
+                }}
                 className={`w-full text-left px-2 py-1.5 rounded-lg text-xs font-medium capitalize ${
                   selectedId === el.id ? 'bg-curi-pink/15 text-curi-pink' : 'hover:bg-theme-subtle/5 text-theme-muted/60'
                 }`}
@@ -911,7 +1209,7 @@ export default forwardRef(function DesignCanvasEditor({
           </button>
 
           {selected && (
-            <div className="space-y-3 pt-2 border-t border-theme-border">
+            <div className="space-y-3 pt-2 border-t border-theme-border" data-skip-canvas-keys>
               <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">Properties</div>
               {(selected.type === 'text' || selected.type === 'button' || selected.type === 'badge') && (
                 <div>
@@ -1052,7 +1350,7 @@ export default forwardRef(function DesignCanvasEditor({
             </div>
           )}
 
-          <div className="pt-2 border-t border-theme-border space-y-2">
+          <div className="pt-2 border-t border-theme-border space-y-2" data-skip-canvas-keys>
             <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">Background</div>
             {canvas.background?.type === 'image' || canvas.background?.type === 'video' ? (
               <p className="text-[10px] text-theme-muted/50">

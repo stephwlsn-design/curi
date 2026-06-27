@@ -8,6 +8,7 @@ import Discover from './pages/Discover'
 import Create from './pages/Create'
 import DesignStudio from './pages/DesignStudio'
 import DesignTemplates from './pages/DesignTemplates'
+import SocialChannels from './pages/SocialChannels'
 import BrandHub from './pages/BrandHub'
 import SavedDesigns from './pages/SavedDesigns'
 import DesignCanvas from './pages/DesignCanvas'
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/discover" element={<Discover />} />
         <Route path="/create" element={<Create />} />
+        <Route path="/channels" element={<SocialChannels />} />
         <Route path="/brand-hub" element={<BrandHub />} />
         <Route path="/design" element={<Navigate to="/design/studio?step=1&panel=templates" replace />} />
         <Route path="/design/templates" element={<DesignTemplates />} />

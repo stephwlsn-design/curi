@@ -1,17 +1,18 @@
-import { Check } from 'lucide-react'
+import { Check, Rocket } from 'lucide-react'
 
 export const DESIGN_STEPS = [
   { id: 1, label: 'Inspiration', description: 'Upload reference & pick format' },
   { id: 2, label: 'Template', description: 'Choose your layout' },
   { id: 3, label: 'Media', description: 'Photos & videos' },
   { id: 4, label: 'Customize', description: 'Text & elements' },
-  { id: 5, label: 'Finalize', description: 'Review & save' },
+  { id: 5, label: 'Finalize', description: 'Save & launch' },
 ]
 
-export default function DesignStepGuide({ currentStep, onStepChange, completedSteps = [] }) {
+export default function DesignStepGuide({ currentStep, onStepChange, completedSteps = [], onProceedToLaunch }) {
   return (
     <div className="px-4 py-3 bg-theme-surface border-b border-theme-border">
-      <div className="flex items-center gap-1 overflow-x-auto">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">
         {DESIGN_STEPS.map((step, index) => {
           const isActive = currentStep === step.id
           const isComplete = completedSteps.includes(step.id) || currentStep > step.id
@@ -52,6 +53,17 @@ export default function DesignStepGuide({ currentStep, onStepChange, completedSt
             </div>
           )
         })}
+        </div>
+        {currentStep === 5 && onProceedToLaunch && (
+          <button
+            type="button"
+            onClick={onProceedToLaunch}
+            className="btn-primary text-sm py-2.5 px-4 flex-shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-clay-sm"
+          >
+            <Rocket size={16} />
+            Proceed to Launch
+          </button>
+        )}
       </div>
     </div>
   )

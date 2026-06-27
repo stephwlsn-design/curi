@@ -16,50 +16,140 @@ const LAYOUT_TEMPLATE_MAP = {
 let draftCounter = 0
 const nextDraftId = () => `draft-${Date.now()}-${++draftCounter}`
 
-const applySpecPlacements = (canvas, spec) => {
-  if (!spec?.placements) return canvas
-  const { width, height } = canvas
-  const elements = canvas.elements.map((el) => {
-    const p = spec.placements[el.id]
-    if (!p) return el
-    const patch = {}
-    if (p.x != null) patch.x = Math.round(p.x * width)
-    if (p.y != null) patch.y = Math.round(p.y * height)
-    if (p.width != null) patch.width = Math.round(p.width * width)
-    if (p.fontSize != null) patch.fontSize = p.fontSize
-    if (p.align) patch.align = p.align
-    if (el.id === 'headline' || el.id === 'subheadline') {
-      patch.color = spec.textColor || el.color
-      if (el.id === 'subheadline') patch.color = spec.subtextColor || patch.color
-    }
-    if (el.id === 'cta') {
-      patch.bgColor = spec.ctaBackground || el.bgColor
-      patch.color = spec.ctaTextColor || el.color
-    }
-    return { ...el, ...patch }
-  })
-  return { ...canvas, elements }
+/** Minimal replica spec when AI analysis is still pending — palette + decor only, no reference image. */
+export const buildMinimalAestheticSpec = (brandColors = []) => {
+  const palette = brandColors?.length
+    ? brandColors
+    : ['#FF6B9D', '#4DA8EE', '#1A2B48']
+  const accent = palette[1] || palette[0]
+  return {
+    colorPalette: palette,
+    backgroundColor: palette[0],
+    secondaryBackgroundColor: accent,
+    layout: 'centered',
+    backgroundMode: 'aesthetic',
+    textColor: '#ffffff',
+    subtextColor: 'rgba(255,255,255,0.85)',
+    ctaBackground: '#ffffff',
+    ctaTextColor: palette[0],
+    gradientAngle: 135,
+    decorElements: [
+      { shape: 'rect', x: 0, y: 0, width: 1, height: 0.06, fill: accent, borderRadius: 0 },
+      { shape: 'circle', x: 0.82, y: 0.06, width: 0.14, height: 0.14, fill: `${palette[2] || accent}44` },
+      { shape: 'rect', x: 0.06, y: 0.88, width: 0.22, height: 0.04, fill: 'rgba(255,255,255,0.2)', borderRadius: 8 },
+    ],
+    iconElements: [],
+    aestheticOnly: true,
+  }
 }
 
 export const buildCanvasWithDesignIdea = (design, ideaContext, dimensionId = '1080x1080', templateId) => {
+  const spec = ideaContext?.spec
+  if (!spec?.colorPalette?.length && !spec?.backgroundColor) {
+    return designToCanvas({ ...design, dimensions: { id: dimensionId } }, templateId)
+  }
+
   const resolvedTemplate = templateId
-    || (ideaContext?.spec?.layout
-      ? (LAYOUT_TEMPLATE_MAP[ideaContext.spec.layout] || 'centered-hero')
+    || (spec?.layout
+      ? (LAYOUT_TEMPLATE_MAP[spec.layout] || 'centered-hero')
       : (LAYOUT_TO_TEMPLATE[design?.layout] || 'centered-hero'))
 
   const canvas = designToCanvas({ ...design, dimensions: { id: dimensionId } }, resolvedTemplate)
-  if (!ideaContext?.imageUrl && !ideaContext?.spec?.colorPalette) return canvas
-
-  canvas.background = buildAestheticBackground(ideaContext.spec, ideaContext.imageUrl)
-  canvas.referenceImageUrl = ideaContext.imageUrl
+  canvas.background = buildAestheticBackground(spec)
   canvas.designIdeaBased = true
   canvas.aestheticOnly = true
 
-  if (ideaContext.spec) {
-    const styled = applyInspirationSpec(canvas, ideaContext.spec)
-    return applySpecTypography(styled, ideaContext.spec)
+  const styled = applyInspirationSpec(canvas, spec)
+  return applySpecTypography(styled, spec)
+}
+
+export const hasUsableInspirationSpec = (designIdea) => (
+  designIdea?.analyzedSpec?.inspirationAnalyzed === true
+)
+
+export const mergeDesignIdeaSources = (primary, fallback) => {
+  const a = primary || {}
+  const b = fallback || {}
+  if (
+    !a.notes && !a.filename && !a.imageUrl && !a.previewDataUrl && !a.analyzedDirection && !a.analyzedSpec
+    && !b.notes && !b.filename && !b.imageUrl && !b.previewDataUrl && !b.analyzedDirection && !b.analyzedSpec
+  ) {
+    return null
   }
-  return canvas
+  const analyzedSpec = a.analyzedSpec?.inspirationAnalyzed
+    ? a.analyzedSpec
+    : (b.analyzedSpec?.inspirationAnalyzed ? b.analyzedSpec : (a.analyzedSpec || b.analyzedSpec))
+  return {
+    notes: a.notes || b.notes || '',
+    filename: a.filename || b.filename,
+    imageUrl: a.imageUrl || b.imageUrl,
+    previewDataUrl: a.previewDataUrl || b.previewDataUrl,
+    analyzedDirection: a.analyzedDirection || b.analyzedDirection,
+    analyzedSpec,
+    uploadedAt: a.uploadedAt || b.uploadedAt,
+  }
+}
+
+export const mergeDesignIdeaRefs = (idea, imageRef) => {
+  const ref = imageRef || idea?.previewDataUrl || idea?.imageUrl
+  const isDataUrl = typeof ref === 'string' && ref.startsWith('data:')
+  const isBlobUrl = typeof ref === 'string' && ref.startsWith('blob:')
+  return {
+    ...(idea || {}),
+    notes: idea?.notes || '',
+    imageUrl: idea?.imageUrl || (!isDataUrl && !isBlobUrl ? ref : undefined),
+    previewDataUrl: idea?.previewDataUrl || (isDataUrl ? ref : undefined),
+    filename: idea?.filename,
+  }
+}
+
+/** Ensure inspiration has AI-extracted aesthetics before building canvas locally. */
+export const resolveInspirationForCanvas = async ({
+  api,
+  workspaceId,
+  designIdea,
+  imageRef,
+  brief = '',
+  dimensionId = '1080x1080',
+  postFormat = 'social_post',
+  creativeType = 'social_post',
+  templateId,
+}) => {
+  const merged = mergeDesignIdeaRefs(designIdea, imageRef)
+  const hasImage = Boolean(
+    merged?.filename
+    || merged?.imageUrl
+    || merged?.previewDataUrl,
+  )
+
+  if (hasUsableInspirationSpec(merged) && merged.analyzedDirection) {
+    return {
+      designIdea: merged,
+      ideaContext: {
+        spec: merged.analyzedSpec,
+        direction: merged.analyzedDirection,
+      },
+    }
+  }
+
+  const { data } = await api.post('/design/from-inspiration', {
+    workspaceId,
+    designIdea: merged,
+    prompt: brief,
+    dimensionId,
+    postFormat,
+    creativeType,
+    templateId,
+    analyzeOnly: true,
+  }, { timeout: 45000 })
+
+  const enriched = data.designIdea || merged
+  const ideaContext = data.ideaContext || {
+    spec: enriched.analyzedSpec,
+    direction: enriched.analyzedDirection,
+  }
+
+  return { designIdea: enriched, ideaContext }
 }
 
 export const buildDesignFromInspiration = ({
@@ -73,24 +163,39 @@ export const buildDesignFromInspiration = ({
   slideTotal = 1,
 }) => {
   const format = getPostFormat(postFormat)
-  const spec = ideaContext?.spec || designIdea?.analyzedSpec
-  const imageUrl = ideaContext?.imageUrl || designIdea?.imageUrl
-  const headline = prompt.split('\n')[0]?.slice(0, 80) || 'Your Headline'
-  const subheadline = prompt.slice(0, 120) || ''
-  const palette = spec?.colorPalette || brandColors || ['#FF6B9D', '#4DA8EE', '#1A2B48']
+  const palette = brandColors?.length
+    ? brandColors
+    : ['#FF6B9D', '#4DA8EE', '#1A2B48']
+  const spec = ideaContext?.spec || designIdea?.analyzedSpec || buildMinimalAestheticSpec(palette)
+  const promptLines = prompt.split('\n').map((line) => line.trim()).filter(Boolean)
+  const baseHeadline = promptLines[0]?.slice(0, 80)
+    || designIdea?.notes?.split('\n').map((l) => l.trim()).filter(Boolean)[0]?.slice(0, 80)
+    || 'Your Headline'
+  const subheadline = promptLines[1]?.slice(0, 120)
+    || prompt.slice(baseHeadline.length).trim().slice(0, 120)
+    || designIdea?.notes?.slice(0, 120)
+    || ''
   const templateId = format.templateId
+  const carouselCtas = ['Swipe →', 'Next →', 'Keep reading →', 'Learn more →', 'See more →']
+
+  let headline = baseHeadline
+  let cta = 'Learn More'
+  if (postFormat === 'carousel' && slideTotal > 1) {
+    headline = promptLines[slideIndex - 1]?.slice(0, 80)
+      || `${baseHeadline.replace(/\s*—\s*\d+$/, '')} — ${slideIndex}`
+    cta = slideIndex < slideTotal
+      ? carouselCtas[(slideIndex - 1) % carouselCtas.length]
+      : 'Learn More'
+  }
 
   const design = {
-    headline: postFormat === 'carousel' && slideTotal > 1
-      ? `${headline} (${slideIndex}/${slideTotal})`
-      : headline,
+    headline,
     subheadline,
-    cta: 'Learn More',
-    layout: spec?.layout || format.id,
+    cta,
+    layout: postFormat === 'carousel' ? 'carousel' : (spec?.layout || format.id),
     dimensions: { id: dimensionId },
-    colorPalette: palette,
+    colorPalette: spec?.colorPalette || palette,
     name: `${format.label}${slideTotal > 1 ? ` — Slide ${slideIndex}` : ''}`,
-    referenceImageUrl: imageUrl,
     designIdeaApplied: true,
     postFormat: format.id,
     creativeType: format.creativeType,
@@ -98,14 +203,11 @@ export const buildDesignFromInspiration = ({
   }
 
   const context = {
-    imageUrl,
     spec,
     direction: ideaContext?.direction || designIdea?.analyzedDirection,
   }
 
-  const canvasLayout = (imageUrl || spec)
-    ? buildCanvasWithDesignIdea(design, context, dimensionId, templateId)
-    : designToCanvas(design, templateId)
+  const canvasLayout = buildCanvasWithDesignIdea(design, context, dimensionId, templateId)
 
   if (postFormat === 'carousel' && slideTotal > 1) {
     const badge = canvasLayout.elements.find((e) => e.id === 'badge')
@@ -124,8 +226,8 @@ export const buildDesignFromInspiration = ({
     templateId: canvasLayout.templateId || templateId,
     designIdea: {
       notes: designIdea?.notes,
-      imageUrl,
-      referenceImageUrl: imageUrl,
+      analyzedDirection: designIdea?.analyzedDirection,
+      analyzedSpec: spec,
     },
   }
 }

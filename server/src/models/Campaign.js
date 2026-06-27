@@ -9,8 +9,20 @@ const campaignSchema = new mongoose.Schema({
   type: { type: String, enum: ['launch', 'promotion', 'awareness', 'seasonal', 'custom'], default: 'custom' },
   content: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Content' }],
   strategy: String,
+  timeline: { type: Number, default: 30 },
+  budget: String,
+  platforms: [{ type: String }],
+  sourceContent: {
+    contentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Content' },
+    designIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Content' }],
+    topic: String,
+  },
   startDate: Date,
   endDate: Date,
+  scheduleMode: { type: String, enum: ['immediate', 'scheduled'], default: 'immediate' },
+  scheduledLaunchAt: Date,
+  error: String,
+  metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Campaign', campaignSchema);

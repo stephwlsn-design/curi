@@ -1,4 +1,6 @@
 const { generateJSON } = require('./llmService');
+const logger = require('../utils/logger');
+const { buildFallbackTrends, buildFallbackCompetitorAnalysis } = require('../utils/growthFallbacks');
 
 const brandCtx = (bp) => `
 Brand: ${bp?.name || 'Brand'}
@@ -30,26 +32,52 @@ Return JSON: { "formats": [{ "type": "tweet|linkedin|instagram|email|video_scrip
 };
 
 const scanTrends = async ({ brandProfile, industry }) => {
-  return generateJSON({
-    label: 'Trends',
-    system: 'Return ONLY valid JSON.',
-    user: `${brandCtx(brandProfile)}
-Scan trending topics for ${industry || brandProfile?.industry || 'this industry'} relevant to this brand.
+  const resolvedIndustry = industry || brandProfile?.industry || 'General';
+  try {
+    const result = await generateJSON({
+      label: 'Trends',
+      system: 'Return ONLY valid JSON.',
+      user: `${brandCtx(brandProfile)}
+Scan trending topics for ${resolvedIndustry} relevant to this brand.
 Return JSON: { "trends": [{ "topic": "...", "platform": "linkedin|twitter|reddit", "relevance": 90, "contentIdea": "...", "hashtags": [] }] }`,
-  });
+      timeoutMs: process.env.VERCEL ? 12_000 : 15_000,
+    });
+    const trends = Array.isArray(result?.trends) ? result.trends.filter((t) => t?.topic) : [];
+    if (trends.length) return { trends, industry: resolvedIndustry, source: 'ai' };
+  } catch (err) {
+    logger.warn(`[trends] AI scan failed: ${err.message}`);
+  }
+  return {
+    trends: buildFallbackTrends(brandProfile, resolvedIndustry),
+    industry: resolvedIndustry,
+    source: 'fallback',
+  };
 };
 
 const analyzeCompetitor = async ({ brandProfile, competitorUrl, competitorName, competitorIntel }) => {
+  const target = competitorName || competitorUrl || 'Category leader';
   const intelBlock = competitorIntel
     ? `\nScraped competitor intel:\n${JSON.stringify(competitorIntel, null, 2)}`
     : '';
-  return generateJSON({
-    label: 'Competitor',
-    system: 'Return ONLY valid JSON.',
-    user: `${brandCtx(brandProfile)}
-Analyze competitor: ${competitorName || competitorUrl}${intelBlock}
+  try {
+    const result = await generateJSON({
+      label: 'Competitor',
+      system: 'Return ONLY valid JSON.',
+      user: `${brandCtx(brandProfile)}
+Analyze competitor: ${target}${intelBlock}
 Return JSON: { "competitor": "name", "strengths": [], "weaknesses": [], "contentStrategy": "...", "recommendations": [{ "action": "...", "impact": "high|medium|low", "priority": 1 }], "score": 72 }`,
-  });
+      timeoutMs: process.env.VERCEL ? 12_000 : 15_000,
+    });
+    if (result?.competitor || result?.strengths?.length) {
+      return { ...result, source: 'ai' };
+    }
+  } catch (err) {
+    logger.warn(`[competitor] AI analysis failed: ${err.message}`);
+  }
+  return {
+    ...buildFallbackCompetitorAnalysis(brandProfile, target),
+    source: 'fallback',
+  };
 };
 
 module.exports = { generateCalendar, repurposeContent, scanTrends, analyzeCompetitor };

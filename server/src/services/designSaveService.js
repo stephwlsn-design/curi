@@ -13,6 +13,8 @@ const formatDesign = (saved) => ({
   ...(saved.metadata?.toObject?.() ?? saved.metadata ?? {}),
   _id: saved._id,
   canvasLayout: saved.metadata?.canvasLayout,
+  createdAt: saved.createdAt,
+  updatedAt: saved.updatedAt,
 });
 
 async function saveDesignDraft({ user, workspaceId, body }) {
@@ -124,7 +126,7 @@ async function listDesignLibrary(workspaceId) {
     workspace: workspaceId,
     type: 'image',
     ...DESIGN_MODULE_FILTER,
-  }).sort({ createdAt: -1 }).limit(50);
+  }).sort({ updatedAt: -1, createdAt: -1 }).limit(50);
 
   return designs.map(formatDesign);
 }
