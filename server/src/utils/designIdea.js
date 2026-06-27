@@ -65,16 +65,27 @@ const normalizeDesignIdea = (designIdea = {}) => {
   const imagePath = materializeDesignIdeaImage({ ...designIdea, filename })
     || resolveDesignIdeaPath({ ...designIdea, filename });
   const hasStoredImage = Boolean(designIdea.previewDataUrl || designIdea.imageDataUrl);
+  const hasRemoteImage = Boolean(
+    designIdea.imageUrl
+    && !String(designIdea.imageUrl).startsWith('blob:'),
+  );
   return {
     notes,
     filename,
     imageUrl: designIdea.imageUrl || (filename ? toPublicImageUrl(filename) : null),
     previewDataUrl: designIdea.previewDataUrl || designIdea.imageDataUrl || null,
     imagePath,
-    hasImage: Boolean(imagePath || hasStoredImage),
+    hasImage: Boolean(imagePath || hasStoredImage || hasRemoteImage),
     analyzedDirection: designIdea.analyzedDirection || null,
     analyzedSpec: designIdea.analyzedSpec || null,
   };
+};
+
+/** Ensure preview is materialized on disk before Gemini vision analysis. */
+const ensureDesignIdeaForAnalysis = (designIdea = {}) => {
+  if (!designIdea?.previewDataUrl && !designIdea?.imageDataUrl) return designIdea;
+  materializeDesignIdeaImage(designIdea);
+  return designIdea;
 };
 
 const buildStoredDesignIdeaContext = (designIdea) => {
@@ -201,6 +212,7 @@ const buildFallbackIdeaContext = (designIdea, brandColors = []) => {
       decorElements: [],
       iconElements: [],
       aestheticOnly: true,
+      inspirationAnalyzed: true,
     },
   };
 };
@@ -217,5 +229,6 @@ module.exports = {
   attachPreviewFromBuffer,
   analyzeDesignIdeaIfNeeded,
   mergeDesignIdeaSources,
+  ensureDesignIdeaForAnalysis,
   UPLOAD_DIR,
 };

@@ -12,6 +12,7 @@ const { designToCanvas, BUILTIN_TEMPLATES, buildCanvasWithDesignIdea, buildMinim
 const { getGraphicTemplate, buildGraphicCanvas } = require('../utils/graphicCanvas');
 const pexelsService = require('../services/pexelsService');
 const { createUploadedDesign, scheduleContent } = require('../services/designUploadService');
+const { processFromInspiration } = require('../handlers/designFromInspiration');
 const PublishJob = require('../models/PublishJob');
 
 router.post('/idea', uploadDesignIdea.single('image'), async (req, res) => {
@@ -69,159 +70,21 @@ router.post('/idea', uploadDesignIdea.single('image'), async (req, res) => {
 });
 
 router.post('/from-inspiration', checkCredits(2), async (req, res) => {
-  const {
-    workspaceId,
-    designIdea: designIdeaInput,
-    prompt = '',
-    dimensionId = '1080x1080',
-    headline,
-    subheadline,
-    cta,
-    postFormat = 'social_post',
-    creativeType = 'social_post',
-    templateId,
-    analyzeOnly = false,
-  } = req.body;
-
-  const workspace = await findAccessibleWorkspace(workspaceId, req.user._id);
-  if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
-
-  const rawIdea = mergeDesignIdeaSources(designIdeaInput, workspace.brandProfile?.designIdea) || {};
-  const designIdea = normalizeDesignIdea(rawIdea);
-
-  if (!designIdea.notes && !designIdea.hasImage && !rawIdea.imageUrl && !rawIdea.previewDataUrl) {
-    return res.status(400).json({ error: 'Upload a design inspiration image or add creative notes first' });
-  }
-
   try {
-    const brandColors = workspace.brandProfile?.colors?.palette || ['#FF6B9D', '#4DA8EE', '#1A2B48'];
-    let ideaContext = buildStoredDesignIdeaContext(rawIdea);
-
-    const hasVisualReference = Boolean(
-      designIdea.hasImage || rawIdea.imageUrl || rawIdea.previewDataUrl,
-    );
-    const specIsAnalyzed = ideaContext?.spec?.inspirationAnalyzed === true;
-    let analysisRan = false;
-
-    if (hasVisualReference && !specIsAnalyzed) {
-      analysisRan = true;
-      try {
-        ideaContext = await Promise.race([
-          designService.resolveDesignIdeaContext({
-            ...rawIdea,
-            ...designIdea,
-            analyzedSpec: rawIdea.analyzedSpec,
-            analyzedDirection: rawIdea.analyzedDirection,
-          }),
-          new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Style analysis timed out')), 25_000);
-          }),
-        ]);
-      } catch (err) {
-        logger.warn(`[design] from-inspiration analysis fallback: ${err.message}`);
-        ideaContext = buildFallbackIdeaContext({ ...rawIdea, ...designIdea }, brandColors);
-      }
-    }
-
-    if (!ideaContext && (designIdea.notes || designIdea.hasImage)) {
-      ideaContext = buildFallbackIdeaContext({ ...rawIdea, ...designIdea }, brandColors);
-    }
-
-    const palette = workspace.brandProfile?.colors?.palette
-      || ideaContext?.spec?.colorPalette
-      || brandColors;
-
-    if (ideaContext && !ideaContext.spec) {
-      ideaContext = {
-        ...ideaContext,
-        spec: buildMinimalAestheticSpec(palette),
-      };
-    }
-
-    if (ideaContext?.spec || ideaContext?.direction) {
-      workspace.brandProfile = workspace.brandProfile || {};
-      workspace.brandProfile.designIdea = {
-        ...(workspace.brandProfile.designIdea || {}),
-        notes: rawIdea.notes || designIdea.notes,
-        filename: rawIdea.filename || designIdea.filename,
-        imageUrl: ideaContext.imageUrl || rawIdea.imageUrl || designIdea.imageUrl,
-        previewDataUrl: rawIdea.previewDataUrl || designIdea.previewDataUrl
-          || workspace.brandProfile.designIdea?.previewDataUrl,
-        analyzedDirection: ideaContext.direction,
-        analyzedSpec: ideaContext.spec,
-        uploadedAt: workspace.brandProfile.designIdea?.uploadedAt || new Date(),
-      };
-      await workspace.save();
-    }
-
-    if (analyzeOnly) {
-      if (analysisRan) await req.user.deductCredits(req.creditCost);
-      return res.json({
-        designIdea: workspace.brandProfile?.designIdea,
-        ideaContext: ideaContext ? {
-          direction: ideaContext.direction,
-          spec: ideaContext.spec,
-          imageUrl: ideaContext.imageUrl,
-        } : null,
-      });
-    }
-
-    const design = {
-      headline: headline || prompt.split('\n')[0]?.slice(0, 80) || 'Your Headline',
-      subheadline: subheadline ?? prompt.slice(0, 120) ?? '',
-      cta: cta || 'Learn More',
-      layout: ideaContext?.spec?.layout || 'centered',
-      dimensions: { id: dimensionId },
-      colorPalette: ideaContext?.spec?.colorPalette || palette,
-      name: 'Inspired Design',
-      designIdeaApplied: true,
-      postFormat,
-      creativeType,
-      compositionNotes: ideaContext?.direction
-        ? `Aesthetic replica (text stripped): ${ideaContext.direction.slice(0, 200)}`
-        : undefined,
-    };
-
-    const enriched = designService.applyDesignIdeaToDesign(design, ideaContext);
-    const canvasLayout = ideaContext?.spec
-      ? buildCanvasWithDesignIdea(enriched, ideaContext, dimensionId, templateId)
-      : designToCanvas(enriched, templateId);
-
-    const saved = await Content.create({
-      workspace: workspaceId,
-      createdBy: req.user._id,
-      type: 'image',
-      platform: 'universal',
-      title: enriched.name,
-      content: enriched.headline,
-      metadata: {
-        ...enriched,
-        module: 'design',
-        canvasLayout,
-        designIdea: {
-          notes: rawIdea.notes || designIdea.notes,
-          analyzedDirection: ideaContext?.direction,
-          analyzedSpec: ideaContext?.spec,
-        },
-        inspirationExtracted: true,
-        aestheticOnly: true,
-      },
-      status: 'draft',
+    const payload = await processFromInspiration({
+      user: req.user,
+      body: req.body,
+      creditCost: req.creditCost,
     });
-
-    workspace.stats.imagesGenerated = (workspace.stats.imagesGenerated || 0) + 1;
-    await workspace.save();
-    await req.user.deductCredits(req.creditCost);
-
-    res.status(201).json({
-      design: { ...(saved.metadata?.toObject?.() ?? saved.metadata ?? {}), _id: saved._id },
-      designIdea: workspace.brandProfile?.designIdea,
-    });
+    if (req.body?.analyzeOnly) {
+      return res.json(payload);
+    }
+    return res.status(201).json(payload);
   } catch (err) {
     const msg = err.message?.includes('quota') || err.status === 429
       ? 'AI quota exceeded — check your Gemini or OpenAI billing'
       : err.message || 'Could not extract design from inspiration';
-    res.status(502).json({ error: msg });
+    return res.status(err.status || 502).json({ error: msg });
   }
 });
 

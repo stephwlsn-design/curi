@@ -125,6 +125,11 @@ const isDesignIdeaRequest = (req) => {
   return req.method === 'POST' && pathOnly === '/api/design/idea';
 };
 
+const isDesignFromInspirationRequest = (req) => {
+  const pathOnly = requestPath(req);
+  return req.method === 'POST' && pathOnly === '/api/design/from-inspiration';
+};
+
 const isDesignUploadRequest = (req) => {
   const pathOnly = requestPath(req);
   return req.method === 'POST' && pathOnly === '/api/design/upload';
@@ -666,9 +671,8 @@ const handleDesignIdea = async (req, res) => {
   const fs = require('fs');
   const pathMod = require('path');
   const { connectDB } = require('../server/src/config/database');
-  const designService = require('../server/src/services/designService');
   const { findAccessibleWorkspace } = require('../server/src/utils/workspaceAccess');
-  const { toPublicImageUrl, attachPreviewFromBuffer, analyzeDesignIdeaIfNeeded } = require('../server/src/utils/designIdea');
+  const { toPublicImageUrl, attachPreviewFromBuffer } = require('../server/src/utils/designIdea');
   const { UPLOAD_DIR } = require('../server/src/middleware/upload');
 
   await connectDB();
@@ -725,27 +729,9 @@ const handleDesignIdea = async (req, res) => {
   workspace.brandProfile.designIdea = designIdea;
   await workspace.save();
 
-  const needsAnalysis = Boolean(designIdea.previewDataUrl || (designIdea.imageUrl && file));
-  sendJson(res, 200, { designIdea });
-
-  if (needsAnalysis) {
-    const savedIdea = { ...designIdea };
-    const savedUserId = user._id;
-    setImmediate(async () => {
-      try {
-        const ws = await findAccessibleWorkspace(workspaceId, savedUserId);
-        if (!ws) return;
-        const analyzed = await analyzeDesignIdeaIfNeeded(savedIdea, designService);
-        ws.brandProfile = ws.brandProfile || {};
-        ws.brandProfile.designIdea = analyzed;
-        await ws.save();
-      } catch (err) {
-        console.warn('[api] design idea background analysis skipped:', err.message);
-      }
-    });
-  }
-
-  return undefined;
+  // Aesthetic analysis runs when creating a design (POST /design/from-inspiration).
+  // Do not block upload on AI — serverless instances cannot reliably finish background work.
+  return sendJson(res, 200, { designIdea });
 };
 
 const handleDesignIdeaFileGet = async (req, res) => {
@@ -766,6 +752,49 @@ const handleDesignIdeaFileGet = async (req, res) => {
   res.setHeader('Content-Type', mime);
   res.setHeader('Cache-Control', 'public, max-age=3600');
   res.end(fs.readFileSync(filePath));
+};
+
+const handleDesignFromInspiration = async (req, res) => {
+  const { connectDB } = require('../server/src/config/database');
+  const User = require('../server/src/models/User');
+  const { processFromInspiration } = require('../server/src/handlers/designFromInspiration');
+
+  await connectDB();
+  const user = await authenticateRequest(req);
+  await parseRequestBody(req);
+  const body = req.body || {};
+
+  if (!body.workspaceId) {
+    return sendJson(res, 400, { error: 'Workspace not loaded. Sign out and sign in again.' });
+  }
+
+  const creditCost = 2;
+  const userWithCredits = await User.findById(user._id);
+  if (!userWithCredits) return sendJson(res, 401, { error: 'User not found' });
+  if (userWithCredits.credits < creditCost) {
+    return sendJson(res, 402, {
+      error: 'Insufficient credits',
+      required: creditCost,
+      available: userWithCredits.credits,
+    });
+  }
+
+  try {
+    const payload = await processFromInspiration({
+      user: userWithCredits,
+      body,
+      creditCost,
+    });
+    if (body.analyzeOnly) {
+      return sendJson(res, 200, payload);
+    }
+    return sendJson(res, 201, payload);
+  } catch (err) {
+    const msg = err.message?.includes('quota') || err.status === 429
+      ? 'AI quota exceeded — check your Gemini or OpenAI billing'
+      : err.message || 'Could not extract design from inspiration';
+    return sendJson(res, err.status || 502, { error: msg });
+  }
 };
 
 const handleDesignUpload = async (req, res) => {
@@ -1230,6 +1259,17 @@ module.exports = async (req, res) => {
     } catch (err) {
       console.error('[api] design idea file failed:', err);
       return sendJson(res, err.status || 404, { error: err.message || 'Not found' });
+    }
+  }
+
+  if (isDesignFromInspirationRequest(req)) {
+    try {
+      normalizeRequestUrl(req);
+      await parseRequestBody(req);
+      return await handleDesignFromInspiration(req, res);
+    } catch (err) {
+      console.error('[api] design from-inspiration failed:', err);
+      return sendJson(res, err.status || 502, { error: err.message || 'Could not extract design from inspiration' });
     }
   }
 

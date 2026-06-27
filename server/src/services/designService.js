@@ -1,6 +1,6 @@
 const { generateJSON } = require('./llmService');
 const { CHANNELS, DIMENSIONS } = require('../constants/creative');
-const { normalizeDesignIdea, buildFallbackIdeaContext } = require('../utils/designIdea');
+const { normalizeDesignIdea, buildFallbackIdeaContext, ensureDesignIdeaForAnalysis } = require('../utils/designIdea');
 const { normalizeSpec } = require('../utils/inspirationTypography');
 
 const scoreDesign = (design) => ({
@@ -24,7 +24,8 @@ const buildDesignIdeaSection = (designIdea) => {
 };
 
 const resolveDesignIdeaContext = async (designIdea) => {
-  const idea = normalizeDesignIdea(designIdea);
+  const prepared = ensureDesignIdeaForAnalysis(designIdea);
+  const idea = normalizeDesignIdea(prepared);
   if (!idea.notes && !idea.hasImage) return null;
 
   if (
@@ -49,6 +50,10 @@ const resolveDesignIdeaContext = async (designIdea) => {
       imageUrl: null,
       spec: null,
     };
+  }
+
+  if (!idea.imagePath) {
+    return buildFallbackIdeaContext(prepared);
   }
 
   try {

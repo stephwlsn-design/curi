@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { API } from '../context/AuthContext'
+import { compressImageForInspiration, enrichDesignIdeaWithPreview } from '../utils/inspirationImage'
 import toast from 'react-hot-toast'
 import { Upload, X, ImageIcon, Loader2 } from 'lucide-react'
 
@@ -37,7 +38,14 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
       if (file) formData.append('image', file)
 
       const { data } = await API.post('/design/idea', formData, { timeout: 55000 })
-      onChange?.(data.designIdea)
+      let idea = data.designIdea
+      if (file && !idea?.previewDataUrl) {
+        idea = await enrichDesignIdeaWithPreview({
+          ...idea,
+          imageUrl: idea?.imageUrl || localPreview,
+        })
+      }
+      onChange?.(idea)
       if (file) {
         if (localPreview?.startsWith('blob:')) URL.revokeObjectURL(localPreview)
         setLocalPreview(null)
@@ -61,7 +69,7 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
     }
   }
 
-  const onFileChange = (e) => {
+  const onFileChange = async (e) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
@@ -69,9 +77,10 @@ export default function DesignIdeaUpload({ workspaceId, value, onChange, compact
       toast.error('Image must be under 8 MB')
       return
     }
-    const blobUrl = URL.createObjectURL(file)
+    const prepared = await compressImageForInspiration(file)
+    const blobUrl = URL.createObjectURL(prepared)
     setLocalPreview(blobUrl)
-    saveIdea(file, notes)
+    saveIdea(prepared, notes)
   }
 
   const onNotesBlur = () => {

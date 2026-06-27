@@ -1,4 +1,4 @@
-import { designToCanvas } from './designCanvas'
+import { enrichDesignIdeaWithPreview } from './inspirationImage'
 import { LAYOUT_TO_TEMPLATE } from '../constants/designTemplates'
 import { buildAestheticBackground } from './aestheticBackground'
 import { applySpecTypography } from './inspirationTypography'
@@ -115,7 +115,7 @@ export const resolveInspirationForCanvas = async ({
   creativeType = 'social_post',
   templateId,
 }) => {
-  const merged = mergeDesignIdeaRefs(designIdea, imageRef)
+  const merged = await enrichDesignIdeaWithPreview(mergeDesignIdeaRefs(designIdea, imageRef))
   const hasImage = Boolean(
     merged?.filename
     || merged?.imageUrl

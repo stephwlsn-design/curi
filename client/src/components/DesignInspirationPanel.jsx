@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react'
 import { Upload, Sparkles, X, Loader2, ImageIcon, Layers, Palette, ImagePlus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { API } from '../context/AuthContext'
+import { compressImageForInspiration, enrichDesignIdeaWithPreview } from '../utils/inspirationImage'
 import { POST_FORMATS, getPostFormat, getDimensionOptions } from '../constants/postFormats'
 import UserDesignUpload from './UserDesignUpload'
 
@@ -53,7 +54,14 @@ export default function DesignInspirationPanel({
       const { data } = await API.post('/design/idea', formData, {
         timeout: 55000,
       })
-      onChange?.(data.designIdea)
+      let idea = data.designIdea
+      if (file && !idea?.previewDataUrl) {
+        idea = await enrichDesignIdeaWithPreview({
+          ...idea,
+          imageUrl: idea?.imageUrl || localPreview,
+        })
+      }
+      onChange?.(idea)
       if (file) {
         if (localPreview?.startsWith('blob:')) URL.revokeObjectURL(localPreview)
         setLocalPreview(null)
@@ -81,9 +89,10 @@ export default function DesignInspirationPanel({
       toast.error('Image must be under 8 MB')
       return
     }
-    const blobUrl = URL.createObjectURL(file)
+    const prepared = await compressImageForInspiration(file)
+    const blobUrl = URL.createObjectURL(prepared)
     setLocalPreview(blobUrl)
-    await saveIdea(file, notes)
+    await saveIdea(prepared, notes)
   }
 
   const clearIdea = async () => {
