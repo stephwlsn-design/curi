@@ -619,9 +619,9 @@ const readRequestBuffer = async (req) => {
   });
 };
 
-const parseMultipartForm = async (req, { multiFileField = null } = {}) => {
+const parseMultipartForm = async (req, { multiFileField = null, readTimeoutMs = 20000 } = {}) => {
   const Busboy = require('busboy');
-  const buffer = await withTimeout(readRequestBuffer(req), 20000, 'Upload read timed out');
+  const buffer = await withTimeout(readRequestBuffer(req), readTimeoutMs, 'Upload read timed out');
   if (!buffer.length) return { fields: {}, file: null, fileMeta: null, files: [] };
 
   return new Promise((resolve, reject) => {
@@ -673,7 +673,7 @@ const handleDesignIdea = async (req, res) => {
 
   await connectDB();
   const user = await authenticateRequest(req);
-  const { fields, file, fileMeta } = await parseMultipartForm(req);
+  const { fields, file, fileMeta } = await parseMultipartForm(req, { readTimeoutMs: 45000 });
 
   const workspaceId = fields.workspaceId;
   const notes = fields.notes || '';
@@ -723,15 +723,29 @@ const handleDesignIdea = async (req, res) => {
 
   workspace.brandProfile = workspace.brandProfile || {};
   workspace.brandProfile.designIdea = designIdea;
-
-  if (designIdea.previewDataUrl || (designIdea.imageUrl && file)) {
-    designIdea = await analyzeDesignIdeaIfNeeded(designIdea, designService);
-    workspace.brandProfile.designIdea = designIdea;
-  }
-
   await workspace.save();
 
-  return sendJson(res, 200, { designIdea });
+  const needsAnalysis = Boolean(designIdea.previewDataUrl || (designIdea.imageUrl && file));
+  sendJson(res, 200, { designIdea });
+
+  if (needsAnalysis) {
+    const savedIdea = { ...designIdea };
+    const savedUserId = user._id;
+    setImmediate(async () => {
+      try {
+        const ws = await findAccessibleWorkspace(workspaceId, savedUserId);
+        if (!ws) return;
+        const analyzed = await analyzeDesignIdeaIfNeeded(savedIdea, designService);
+        ws.brandProfile = ws.brandProfile || {};
+        ws.brandProfile.designIdea = analyzed;
+        await ws.save();
+      } catch (err) {
+        console.warn('[api] design idea background analysis skipped:', err.message);
+      }
+    });
+  }
+
+  return undefined;
 };
 
 const handleDesignIdeaFileGet = async (req, res) => {

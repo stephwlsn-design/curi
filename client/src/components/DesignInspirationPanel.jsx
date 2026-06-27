@@ -51,7 +51,7 @@ export default function DesignInspirationPanel({
       if (file) formData.append('image', file)
 
       const { data } = await API.post('/design/idea', formData, {
-        timeout: 20000,
+        timeout: 55000,
       })
       onChange?.(data.designIdea)
       if (file) {
