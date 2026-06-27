@@ -510,7 +510,7 @@ export default function DesignStudio() {
     } catch (err) {
       const msg = err.code === 'ECONNABORTED'
         ? 'Request timed out — try again with a smaller image'
-        : (err.response?.data?.error || 'Could not extract design from inspiration')
+        : (err.response?.data?.error || err.message || 'Could not extract design from inspiration')
       toast.error(msg)
     } finally {
       setExtracting(false)

@@ -1,4 +1,5 @@
 import { enrichDesignIdeaWithPreview } from './inspirationImage'
+import { designToCanvas } from './designCanvas'
 import { LAYOUT_TO_TEMPLATE } from '../constants/designTemplates'
 import { buildAestheticBackground } from './aestheticBackground'
 import { applySpecTypography } from './inspirationTypography'
