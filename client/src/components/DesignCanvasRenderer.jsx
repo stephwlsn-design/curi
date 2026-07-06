@@ -1,9 +1,11 @@
 import TalkingCharacterLayer from './TalkingCharacterLayer'
+import { normalizeCanvas } from '../utils/designCanvas'
 
 export default function DesignCanvasRenderer({ canvas, scale = 1, selectedId, onSelect, interactive = false }) {
   if (!canvas) return null
 
-  const { width, height, background, elements, audio } = canvas
+  const safeCanvas = normalizeCanvas(canvas)
+  const { width, height, background, elements, audio } = safeCanvas
   const bgStyle = background?.type === 'solid'
     ? { background: background.color || background.colors?.[0] || '#1A2B48' }
     : background?.type === 'gradient' || background?.type === 'aesthetic'

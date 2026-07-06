@@ -35,7 +35,8 @@ export const applySpecDecor = (canvas, spec) => {
   })
 
   if (!decor.length && !icons.length) return canvas
-  return { ...canvas, elements: [...decor, ...icons, ...canvas.elements] }
+  const baseElements = Array.isArray(canvas.elements) ? canvas.elements : []
+  return { ...canvas, elements: [...decor, ...icons, ...baseElements] }
 }
 
 export const applyInspirationSpec = (canvas, spec) => {
@@ -43,9 +44,10 @@ export const applyInspirationSpec = (canvas, spec) => {
   let next = canvas
   if (spec.placements) {
     const { width, height } = next
+    const baseElements = Array.isArray(next.elements) ? next.elements : []
     next = {
       ...next,
-      elements: next.elements.map((el) => {
+      elements: baseElements.map((el) => {
         const p = spec.placements[el.id]
         if (!p) return el
         const patch = {}

@@ -15,9 +15,10 @@ export const applySpecTypography = (canvas, spec) => {
   const ctaFont = resolveCanvasFont(spec.fontCta || spec.fontHeadline || spec.typography)
   const letterSpacing = spec.letterSpacing ?? null
 
+  const baseElements = Array.isArray(canvas.elements) ? canvas.elements : []
   return {
     ...canvas,
-    elements: canvas.elements.map((el) => {
+    elements: baseElements.map((el) => {
       if (el.id === 'headline') {
         return {
           ...el,

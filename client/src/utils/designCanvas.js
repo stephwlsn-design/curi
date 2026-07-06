@@ -13,7 +13,29 @@ export const parseDimensions = (design) => {
   return DIM_MAP[id] || DIM_MAP['1080x1080']
 }
 
-const defaultColors = (design) => design?.colorPalette || ['#FF6B9D', '#4DA8EE', '#1A2B48']
+/** Guard saved/partial canvas payloads so renderers never spread undefined elements. */
+export const normalizeCanvas = (canvas, fallbackDesign = null) => {
+  if (!canvas) {
+    return fallbackDesign ? designToCanvas(fallbackDesign) : {
+      width: 1080,
+      height: 1080,
+      templateId: 'centered-hero',
+      background: { type: 'solid', color: '#1A2B48' },
+      elements: [],
+    }
+  }
+  return {
+    ...canvas,
+    width: canvas.width || 1080,
+    height: canvas.height || 1080,
+    elements: Array.isArray(canvas.elements) ? canvas.elements : [],
+  }
+}
+
+const defaultColors = (design) => {
+  const palette = design?.colorPalette
+  return Array.isArray(palette) && palette.length ? palette : ['#FF6B9D', '#4DA8EE', '#1A2B48']
+}
 
 const buildDecorElements = (template, dims) => {
   if (!template?.decorElements?.length) return []
@@ -148,7 +170,8 @@ export const applyTemplateToCanvas = (canvas, templateId, customPlacements) => {
   if (!template) return canvas
 
   const { width, height } = canvas
-  const elements = canvas.elements.map(el => {
+  const baseElements = Array.isArray(canvas.elements) ? canvas.elements : []
+  const elements = baseElements.map(el => {
     const p = template.placements[el.id]
     if (!p) return el
     return {
@@ -177,7 +200,7 @@ export const canvasToDesignFields = (canvas) => {
 
 export const syncCanvasTextFromDesign = (canvas, design) => ({
   ...canvas,
-  elements: canvas.elements.map(el => {
+  elements: (Array.isArray(canvas.elements) ? canvas.elements : []).map(el => {
     if (el.id === 'headline') return { ...el, text: design.headline ?? el.text }
     if (el.id === 'subheadline') return { ...el, text: design.subheadline ?? el.text, visible: Boolean(design.subheadline ?? el.text) }
     if (el.id === 'cta') return { ...el, text: design.cta ?? el.text, visible: Boolean(design.cta ?? el.text) }

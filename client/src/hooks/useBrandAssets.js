@@ -31,12 +31,11 @@ export function useBrandAssets(workspaceId) {
         API.get(`/video/library?workspaceId=${workspaceId}`),
         API.get(`/drafts?workspaceId=${workspaceId}`),
       ])
-      setDesigns(designRes.data.designs || [])
-      setTemplates([
-        ...(templateRes.data.builtin || []),
-        ...(templateRes.data.templates || []),
-      ])
-      setContent(contentRes.data.content || [])
+      setDesigns(Array.isArray(designRes.data.designs) ? designRes.data.designs : [])
+      const builtin = Array.isArray(templateRes.data.builtin) ? templateRes.data.builtin : []
+      const userTemplates = Array.isArray(templateRes.data.templates) ? templateRes.data.templates : []
+      setTemplates([...builtin, ...userTemplates])
+      setContent(Array.isArray(contentRes.data.content) ? contentRes.data.content : [])
       setVideos((videoRes.data.videos || []).map((v) => ({
         ...(v.metadata?.toObject?.() ?? v.metadata ?? {}),
         _id: v._id,

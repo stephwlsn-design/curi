@@ -496,6 +496,7 @@ const handleDesignFast = async (req, res) => {
   const {
     saveDesignDraft, patchDesign, getDesignById, listDesignLibrary,
   } = require('../server/src/services/designSaveService');
+  const { BUILTIN_TEMPLATES } = require('../server/src/utils/designCanvas');
   const DesignTemplate = require('../server/src/models/DesignTemplate');
   const { findAccessibleWorkspace } = require('../server/src/utils/workspaceAccess');
 
@@ -531,7 +532,15 @@ const handleDesignFast = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();
-    return sendJson(res, 200, { templates: userTemplates });
+    return sendJson(res, 200, {
+      builtin: BUILTIN_TEMPLATES.map((t) => ({
+        id: t.id,
+        name: t.name || t.id,
+        category: 'builtin',
+        placements: t.placements,
+      })),
+      templates: userTemplates,
+    });
   }
 
   if (pathOnly === '/api/design/save' && req.method === 'POST') {

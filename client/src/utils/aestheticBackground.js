@@ -1,8 +1,9 @@
 /** Build a text-free aesthetic background from extracted specs — never embeds the reference upload. */
 
 export const buildAestheticBackground = (spec) => {
-  const colors = spec?.colorPalette?.length
-    ? spec.colorPalette
+  const palette = Array.isArray(spec?.colorPalette) ? spec.colorPalette : []
+  const colors = palette.length
+    ? palette
     : [spec?.backgroundColor || '#FF6B9D', spec?.secondaryBackgroundColor || '#4DA8EE', '#1A2B48']
 
   const underlay = spec?.backgroundColor || colors[0]

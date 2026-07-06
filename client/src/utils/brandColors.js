@@ -21,7 +21,8 @@ const countColors = (values) => {
 }
 
 export const buildBrandColorSummary = ({ brandProfile, designs = [] }) => {
-  const palette = (brandProfile?.colors?.palette || brandProfile?.onboarding?.brandColors || [])
+  const rawPalette = brandProfile?.colors?.palette || brandProfile?.onboarding?.brandColors || []
+  const palette = (Array.isArray(rawPalette) ? rawPalette : [])
     .map(normalizeHex)
     .filter(Boolean)
 

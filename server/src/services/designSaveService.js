@@ -9,13 +9,24 @@ const DESIGN_MODULE_FILTER = {
   ],
 };
 
-const formatDesign = (saved) => ({
-  ...(saved.metadata?.toObject?.() ?? saved.metadata ?? {}),
-  _id: saved._id,
-  canvasLayout: saved.metadata?.canvasLayout,
-  createdAt: saved.createdAt,
-  updatedAt: saved.updatedAt,
-});
+const normalizeCanvasLayout = (canvasLayout) => {
+  if (!canvasLayout) return canvasLayout
+  return {
+    ...canvasLayout,
+    elements: Array.isArray(canvasLayout.elements) ? canvasLayout.elements : [],
+  }
+}
+
+const formatDesign = (saved) => {
+  const meta = saved.metadata?.toObject?.() ?? saved.metadata ?? {}
+  return {
+    ...meta,
+    _id: saved._id,
+    canvasLayout: normalizeCanvasLayout(meta.canvasLayout),
+    createdAt: saved.createdAt,
+    updatedAt: saved.updatedAt,
+  }
+}
 
 async function saveDesignDraft({ user, workspaceId, body }) {
   const workspace = await findAccessibleWorkspace(workspaceId, user._id);

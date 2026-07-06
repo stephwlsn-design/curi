@@ -1,14 +1,19 @@
 import { Star, Pencil } from 'lucide-react'
 import DesignCanvasRenderer from './DesignCanvasRenderer'
-import { designToCanvas } from '../utils/designCanvas'
+import { designToCanvas, normalizeCanvas } from '../utils/designCanvas'
 
 export default function DesignPreview({ design, onFavorite, onEdit, compact = false }) {
-  const colors = design.colorPalette || ['#FF6B9D', '#4DA8EE', '#1A2B48']
+  const palette = design.colorPalette
+  const colors = Array.isArray(palette) && palette.length
+    ? palette
+    : ['#FF6B9D', '#4DA8EE', '#1A2B48']
   const bg = `linear-gradient(135deg, ${colors[0]} 0%, ${colors[1] || colors[0]} 100%)`
   const isUploaded = design.mediaUrl || design.metadata?.source === 'user-upload' || design.source === 'user-upload'
   const isPexelsVideo = design.pexels?.mediaType === 'video' || design.metadata?.pexels?.mediaType === 'video'
   const isReferenceBased = design.canvasLayout?.designIdeaBased || design.canvasLayout?.background?.type === 'image' || design.referenceImageUrl
-  const canvas = !isUploaded ? (design.canvasLayout || designToCanvas(design)) : null
+  const canvas = !isUploaded
+    ? normalizeCanvas(design.canvasLayout || designToCanvas(design), design)
+    : null
   const previewScale = canvas ? (compact ? 0.26 : Math.min(300 / canvas.width, 300 / canvas.height)) : 1
 
   return (
