@@ -948,29 +948,43 @@ const handleAccess = async (req, res) => {
     signAccessToken,
     verifyAccessToken,
     verifyCredentials,
-  } = require('../server/src/utils/siteAccess');
+    bootstrapGate,
+  } = require('../server/src/services/siteAccessService');
 
   const pathOnly = requestPath(req);
 
   if (pathOnly === '/api/access/status' && req.method === 'GET') {
-    if (!isGateEnabled()) {
-      return sendJson(res, 200, { enabled: false, granted: true });
+    const enabled = await isGateEnabled();
+    if (!enabled) {
+      return sendJson(res, 200, { enabled: false, granted: true, configured: false });
     }
     const header = req.headers.authorization?.split(' ')[1];
     const granted = verifyAccessToken(header);
-    return sendJson(res, 200, { enabled: true, granted });
+    return sendJson(res, 200, { enabled: true, granted, configured: true });
   }
 
   if (pathOnly === '/api/access/verify' && req.method === 'POST') {
     await parseRequestBody(req);
-    if (!isGateEnabled()) {
+    const enabled = await isGateEnabled();
+    if (!enabled) {
       return sendJson(res, 200, { ok: true, disabled: true, token: null });
     }
     const { username, code } = req.body || {};
-    if (!verifyCredentials(username, code)) {
+    if (!(await verifyCredentials(username, code))) {
       return sendJson(res, 401, { error: 'Invalid username or access code' });
     }
     return sendJson(res, 200, { ok: true, token: signAccessToken() });
+  }
+
+  if (pathOnly === '/api/access/bootstrap' && req.method === 'POST') {
+    await parseRequestBody(req);
+    try {
+      const { username, code, secret } = req.body || {};
+      await bootstrapGate({ username, code, secret });
+      return sendJson(res, 200, { ok: true, configured: true });
+    } catch (err) {
+      return sendJson(res, err.status || 500, { error: err.message || 'Bootstrap failed' });
+    }
   }
 
   return sendJson(res, 404, { error: 'Not found' });
