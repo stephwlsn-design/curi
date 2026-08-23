@@ -26,8 +26,9 @@ export const SiteAccessProvider = ({ children }) => {
       if (data.enabled && !data.granted) {
         localStorage.removeItem(STORAGE_KEY);
       }
-    } catch {
-      // If the check fails, don't block local dev without env configured.
+    } catch (err) {
+      console.error('[SiteAccess] status check failed:', err?.message || err);
+      // Fail open only when the gate env is not configured (local dev).
       setEnabled(false);
       setGranted(true);
     } finally {

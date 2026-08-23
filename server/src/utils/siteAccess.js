@@ -4,7 +4,19 @@ const jwt = require('jsonwebtoken');
 const TOKEN_KEY = 'curi_site_access';
 const TOKEN_TYPE = 'site_access';
 
-const isGateEnabled = () => Boolean(process.env.SITE_ACCESS_CODE?.trim());
+/** Read env vars; strip wrapping quotes (needed when values contain # or spaces). */
+const readEnv = (name) => {
+  let value = process.env[name]?.trim() || '';
+  if (
+    (value.startsWith('"') && value.endsWith('"'))
+    || (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+  return value;
+};
+
+const isGateEnabled = () => Boolean(readEnv('SITE_ACCESS_CODE'));
 
 const safeEqual = (a, b) => {
   const left = String(a ?? '');
@@ -34,8 +46,8 @@ const verifyAccessToken = (token) => {
 
 const verifyCredentials = (username, code) => {
   if (!isGateEnabled()) return true;
-  const expectedUser = process.env.SITE_ACCESS_USERNAME?.trim() || '';
-  const expectedCode = process.env.SITE_ACCESS_CODE?.trim() || '';
+  const expectedUser = readEnv('SITE_ACCESS_USERNAME');
+  const expectedCode = readEnv('SITE_ACCESS_CODE');
   return safeEqual(username, expectedUser) && safeEqual(code, expectedCode);
 };
 
