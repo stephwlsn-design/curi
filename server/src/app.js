@@ -38,6 +38,7 @@ const mountRoutes = (app) => {
   const discoverService = require('./services/discoverService');
 
   app.use('/api/auth', require('./routes/auth'));
+  app.use('/api/access', require('./routes/access'));
   app.post('/api/discover/roast', async (req, res) => {
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL is required' });

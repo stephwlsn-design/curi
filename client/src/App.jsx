@@ -28,6 +28,8 @@ import Settings from './pages/Settings'
 import Roast from './pages/Roast'
 import LoadingMascot from './components/LoadingMascot'
 import ErrorBoundary from './components/ErrorBoundary'
+import SiteAccessGate from './components/SiteAccessGate'
+import { useSiteAccess } from './context/SiteAccessContext'
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth()
@@ -39,9 +41,8 @@ const ProtectedRoute = ({ children }) => {
   return user ? children : <Navigate to="/auth" replace />
 }
 
-export default function App() {
+function AppRoutes() {
   return (
-    <ErrorBoundary>
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/auth" element={<Auth />} />
@@ -75,6 +76,27 @@ export default function App() {
         <Route path="/settings" element={<Settings />} />
       </Route>
     </Routes>
+  )
+}
+
+export default function App() {
+  const { loading, needsGate } = useSiteAccess()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-theme-bg flex items-center justify-center">
+        <LoadingMascot size="xl" />
+      </div>
+    )
+  }
+
+  if (needsGate) {
+    return <SiteAccessGate />
+  }
+
+  return (
+    <ErrorBoundary>
+      <AppRoutes />
     </ErrorBoundary>
   )
 }

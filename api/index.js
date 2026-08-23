@@ -937,6 +937,45 @@ const handleAuthMe = async (req, res) => {
   return sendJson(res, 200, { user: formatUser(user), workspace });
 };
 
+const isAccessRequest = (req) => {
+  const pathOnly = requestPath(req);
+  return pathOnly.startsWith('/api/access') || pathOnly.startsWith('/access');
+};
+
+const handleAccess = async (req, res) => {
+  const {
+    isGateEnabled,
+    signAccessToken,
+    verifyAccessToken,
+    verifyCredentials,
+  } = require('../server/src/utils/siteAccess');
+
+  const pathOnly = requestPath(req);
+
+  if (pathOnly === '/api/access/status' && req.method === 'GET') {
+    if (!isGateEnabled()) {
+      return sendJson(res, 200, { enabled: false, granted: true });
+    }
+    const header = req.headers.authorization?.split(' ')[1];
+    const granted = verifyAccessToken(header);
+    return sendJson(res, 200, { enabled: true, granted });
+  }
+
+  if (pathOnly === '/api/access/verify' && req.method === 'POST') {
+    await parseRequestBody(req);
+    if (!isGateEnabled()) {
+      return sendJson(res, 200, { ok: true, disabled: true, token: null });
+    }
+    const { username, code } = req.body || {};
+    if (!verifyCredentials(username, code)) {
+      return sendJson(res, 401, { error: 'Invalid username or access code' });
+    }
+    return sendJson(res, 200, { ok: true, token: signAccessToken() });
+  }
+
+  return sendJson(res, 404, { error: 'Not found' });
+};
+
 const isAuthRequest = (req) => {
   const pathOnly = requestPath(req);
   if (pathOnly.startsWith('/api/auth') || pathOnly.startsWith('/auth')) return true;
@@ -1210,6 +1249,15 @@ module.exports = async (req, res) => {
     } catch (err) {
       console.error('[api] health failed:', err);
       return sendJson(res, 503, { status: 'error', error: err.message });
+    }
+  }
+
+  if (isAccessRequest(req)) {
+    try {
+      return await handleAccess(req, res);
+    } catch (err) {
+      console.error('[api] access failed:', err);
+      return sendJson(res, err.status || 500, { error: err.message || 'Access check failed' });
     }
   }
 
