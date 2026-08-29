@@ -7,6 +7,7 @@ export default function CoreWorkflowNav({
   canProceed = true,
   proceedLabel = 'Next',
   onBeforeNext,
+  onBeforeLeave,
   hideNext = false,
   nextPath,
 }) {
@@ -17,13 +18,23 @@ export default function CoreWorkflowNav({
   const isOptional = current?.optional
   const destination = nextPath || next?.path
 
-  const goTo = (path) => navigate(path)
+  const leaveAndNavigate = async (path) => {
+    if (onBeforeLeave) {
+      const ok = await onBeforeLeave()
+      if (ok === false) return
+    }
+    navigate(path)
+  }
 
   const handleNext = async () => {
     if (!destination) return
     if (onBeforeNext) {
       const ok = await onBeforeNext()
       if (!ok) return
+    }
+    if (onBeforeLeave) {
+      const ok = await onBeforeLeave()
+      if (ok === false) return
     }
     navigate(destination)
   }
@@ -42,7 +53,7 @@ export default function CoreWorkflowNav({
                 {i > 0 && <span className="text-theme-muted/20 text-sm mx-0.5">›</span>}
                 <button
                   type="button"
-                  onClick={() => goTo(step.path)}
+                  onClick={() => leaveAndNavigate(step.path)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
                     active
                       ? 'bg-curi-gradient text-white shadow-clay-sm'
@@ -67,7 +78,7 @@ export default function CoreWorkflowNav({
       <div className="flex items-center justify-between gap-3">
         <div>
           {prev ? (
-            <button type="button" onClick={() => goTo(prev.path)} className="btn-secondary text-base py-2.5 px-5">
+            <button type="button" onClick={() => leaveAndNavigate(prev.path)} className="btn-secondary text-base py-2.5 px-5">
               ← Back
             </button>
           ) : <span />}
@@ -75,7 +86,7 @@ export default function CoreWorkflowNav({
         <div className="flex items-center gap-2">
           <SaveDraftButton compact />
           {isOptional && next && (
-            <button type="button" onClick={() => goTo(next.path)} className="btn-secondary text-base py-2.5 px-5">
+            <button type="button" onClick={() => leaveAndNavigate(next.path)} className="btn-secondary text-base py-2.5 px-5">
               Skip
             </button>
           )}

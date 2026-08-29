@@ -10,7 +10,7 @@ import LaunchActivity from '../components/launch/LaunchActivity'
 import DesignPreview from '../components/DesignPreview'
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
-import { AlertCircle, CheckCircle2, FileText, LayoutTemplate, Rocket, Calendar, Clock } from 'lucide-react'
+import { AlertCircle, CheckCircle2, FileText, LayoutTemplate, Rocket, Calendar, Clock, Film } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
 const PLATFORM_OPTIONS = [
@@ -294,6 +294,7 @@ export default function Launch() {
 
   const hasCreateSource = Boolean(workflow.contentId && workflow.contentText)
   const hasDesignSource = workflowDesigns.length > 0
+  const hasVideoSource = Boolean(workflow.videoSaved && (workflow.videoTitle || workflow.videoIds?.length))
 
   return (
     <PageShell>
@@ -353,6 +354,29 @@ export default function Launch() {
                     Go to Curi Design
                   </button>{' '}
                   and use Proceed to Launch.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2 font-semibold text-theme-text text-sm mb-2">
+                <Film size={14} className="text-curi-green" />
+                Curi Video
+              </div>
+              {hasVideoSource ? (
+                <div className="rounded-xl bg-theme-bg/50 border border-theme-subtle/10 p-4">
+                  <p className="text-sm font-bold text-theme-text">{workflow.videoTitle}</p>
+                  <p className="text-xs text-theme-muted/50 mt-1">
+                    {workflow.videoIds?.length || 1} video script{(workflow.videoIds?.length || 1) === 1 ? '' : 's'} saved — use scenes and captions when planning posts.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-theme-muted/50">
+                  Optional video scripts from{' '}
+                  <button type="button" onClick={() => navigate('/video')} className="text-curi-pink hover:underline font-semibold">
+                    Curi Video
+                  </button>
+                  .
                 </p>
               )}
             </div>

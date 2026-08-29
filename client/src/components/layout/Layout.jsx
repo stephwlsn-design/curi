@@ -12,8 +12,10 @@ const PRIMARY_NAV = [
 ]
 
 const SECONDARY_NAV = [
-  { path: '/drafts', label: 'Drafts', section: 'CORE' },
-  { path: '/scheduled', label: 'Scheduled Posts', section: 'CORE' },
+  { path: '/drafts', label: 'Drafts', section: 'MORE' },
+  { path: '/planner', label: 'Planner', section: 'MORE' },
+  { path: '/scheduled', label: 'Curi Scheduler', section: 'MORE' },
+  { path: '/engagement', label: 'Engage+', section: 'GROWTH' },
   { path: '/calendar', label: 'Curi Calendar', section: 'GROWTH' },
   { path: '/repurpose', label: 'Curi Repurpose', section: 'GROWTH' },
   { path: '/trends', label: 'Curi Trends', section: 'GROWTH' },
@@ -120,7 +122,7 @@ export default function Layout() {
               <div key={item.path}>
                 {showSection && item.section && (
                   <div className="text-xs font-bold text-theme-muted/30 tracking-widest uppercase px-3 pt-3 pb-1.5">
-                    {item.section === 'CORE' ? 'MORE' : item.section}
+                    {item.section}
                   </div>
                 )}
                 <button

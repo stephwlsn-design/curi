@@ -1,91 +1,322 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { API, useAuth } from '../context/AuthContext'
 import { useCoreWorkflow } from '../context/CoreWorkflowContext'
 import { useDraftModule } from '../context/DraftContext'
 import CoreWorkflowNav from '../components/CoreWorkflowNav'
 import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
-import { motion, AnimatePresence } from 'framer-motion'
-import VideoPreview from '../components/VideoPreview'
-import { VIDEO_TYPES, VIDEO_STYLES, VOICES, VIDEO_VARIANT_COUNTS } from '../constants/creative'
+import { motion } from 'framer-motion'
+import VideoStoryboardPlayer from '../components/VideoStoryboardPlayer'
+import { VIDEO_TYPES, VIDEO_STYLES, VOICES } from '../constants/creative'
+import { Pencil, Rocket, Save, Sparkles } from 'lucide-react'
+
+const buildGeneratePrompt = (creativeBrief, narrationBrief) => {
+  const creative = creativeBrief.trim()
+  const narration = narrationBrief.trim()
+  if (creative && narration) return `${creative}\n\n--- NARRATION ---\n\n${narration}`
+  return narration || creative
+}
+
+const NARRATION_LOADING = (label) => `Writing concise ${label} narration…
+
+Hook · Scene beats · Short visuals`
+
+const isLoadingNarration = (text) => /^Writing concise|^Generating |Hook · Scene beats/i.test(String(text || '').trim())
+
+const extractTopicSeed = (creative, workflow) => {
+  const workflowSeed = (workflow.contentText || workflow.topic || '').trim()
+  const creativeText = String(creative || '').trim()
+  if (!creativeText) return workflowSeed
+  const focus = creativeText.match(/^Focus angle:\s*(.+)$/im)?.[1]?.trim()
+  if (focus) return focus
+  if (/^(Audience|Core message|Structure|Tone):/im.test(creativeText)) return workflowSeed
+  return workflowSeed || creativeText.slice(0, 240)
+}
+
+const buildEditableScenes = (video) => {
+  if (!video) return []
+  const rows = []
+  if (video.hook) {
+    rows.push({
+      key: 'hook',
+      label: 'Hook',
+      script: video.hook,
+      visual: video.hookVisual || 'Opening shot',
+      duration: 3,
+      isHook: true,
+      stockMedia: video.hookStockMedia || null,
+    })
+  }
+  for (const [i, scene] of (video.scenes || []).entries()) {
+    rows.push({
+      key: `scene-${i}`,
+      label: scene.label || `Scene ${i + 1}`,
+      script: scene.script || '',
+      visual: scene.visual || '',
+      duration: scene.duration || 5,
+      stockMedia: scene.stockMedia || null,
+    })
+  }
+  if (video.cta) {
+    rows.push({ key: 'cta', label: 'CTA', script: video.cta, visual: 'Call to action', duration: 4, isCta: true })
+  }
+  return rows
+}
+
+const scenesToPayload = (rows, baseVideo) => {
+  const hookRow = rows.find((r) => r.isHook)
+  const ctaRow = rows.find((r) => r.isCta)
+  const sceneRows = rows.filter((r) => !r.isHook && !r.isCta)
+  return {
+    ...baseVideo,
+    hook: hookRow?.script || baseVideo.hook,
+    cta: ctaRow?.script || baseVideo.cta,
+    scenes: sceneRows.map((row, i) => ({
+      label: row.label || `Scene ${i + 1}`,
+      script: row.script,
+      visual: row.visual,
+      duration: Number(row.duration) || 5,
+      stockMedia: row.stockMedia || baseVideo.scenes?.[i]?.stockMedia || null,
+    })),
+  }
+}
 
 export default function Video() {
-  const { workspaceId, fetchMe } = useAuth()
-  const { workflow } = useCoreWorkflow()
-  const [prompt, setPrompt] = useState(workflow.contentText || '')
+  const navigate = useNavigate()
+  const { workspaceId, workspace, fetchMe } = useAuth()
+  const { workflow, addVideo } = useCoreWorkflow()
+  const industry = workspace?.brandProfile?.industry || workspace?.onboarding?.industry || 'your industry'
+
+  const [creativeBrief, setCreativeBrief] = useState(workflow.contentText || '')
+  const [narrationBrief, setNarrationBrief] = useState('')
   const [videoType, setVideoType] = useState('motion_graphics')
+  const videoTypeRef = useRef('motion_graphics')
+  const selectedVideoType = VIDEO_TYPES.find((t) => t.id === videoType) || VIDEO_TYPES[2]
   const [style, setStyle] = useState('Professional')
   const [voice, setVoice] = useState('Professional')
-  const [variantCount, setVariantCount] = useState(5)
   const [duration, setDuration] = useState(30)
   const [loading, setLoading] = useState(false)
-  const [videos, setVideos] = useState([])
-  const [selected, setSelected] = useState(null)
+  const [briefLoading, setBriefLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [video, setVideo] = useState(null)
+  const [editing, setEditing] = useState(false)
+  const [editRows, setEditRows] = useState([])
+  const [playRequest, setPlayRequest] = useState(0)
+  const briefLoadingRef = useRef(false)
 
   useDraftModule('video', () => ({
-    prompt, videoType, style, voice, variantCount, duration, videos, selectedId: selected?._id, selected,
+    creativeBrief, narrationBrief, prompt: buildGeneratePrompt(creativeBrief, narrationBrief),
+    videoType, style, voice, duration, video, selected: video,
   }), (s) => {
-    if (s.prompt) setPrompt(s.prompt)
+    if (s.creativeBrief) setCreativeBrief(s.creativeBrief)
+    if (s.narrationBrief) setNarrationBrief(s.narrationBrief)
+    if (s.prompt && !s.creativeBrief && !s.narrationBrief) setCreativeBrief(s.prompt)
     if (s.videoType) setVideoType(s.videoType)
     if (s.style) setStyle(s.style)
     if (s.voice) setVoice(s.voice)
-    if (s.variantCount) setVariantCount(s.variantCount)
     if (s.duration) setDuration(s.duration)
-    if (s.videos) setVideos(s.videos)
-    if (s.selected) setSelected(s.selected)
+    if (s.video || s.selected) setVideo(s.video || s.selected)
   })
 
   useEffect(() => {
-    if (workflow.contentText && !prompt) setPrompt(workflow.contentText)
+    videoTypeRef.current = videoType
+  }, [videoType])
+
+  useEffect(() => {
+    if (workflow.contentText && !creativeBrief && !narrationBrief) setCreativeBrief(workflow.contentText)
   }, [workflow.contentText])
 
+  const generateBrief = async ({ typeId = videoType, silent = false, topicHint: topicOverride } = {}) => {
+    if (!workspaceId) return toast.error('Workspace not loaded')
+    if (briefLoadingRef.current) return
+
+    const typeMeta = VIDEO_TYPES.find((t) => t.id === typeId) || VIDEO_TYPES[2]
+    briefLoadingRef.current = true
+    setBriefLoading(true)
+    setNarrationBrief(NARRATION_LOADING(typeMeta.label))
+    try {
+      const topicHint = topicOverride ?? extractTopicSeed(creativeBrief, workflow)
+      const { data } = await API.post('/video/brief', {
+        workspaceId,
+        videoType: typeId,
+        style: style.toLowerCase(),
+        duration,
+        topicHint,
+      }, { timeout: 45000 })
+      if (!data.brief?.trim() && !data.narrationBrief?.trim()) {
+        toast.error('Could not generate brief — try again')
+        setNarrationBrief('')
+        return
+      }
+      if (data.creativeBrief) setCreativeBrief(data.creativeBrief.trim())
+      if (data.narrationBrief) setNarrationBrief(data.narrationBrief.trim())
+      else if (data.brief) {
+        const parts = data.brief.split(/\n---\s*NARRATION\s*---\n/i)
+        if (parts[0]) setCreativeBrief(parts[0].trim())
+        if (parts[1]) setNarrationBrief(parts[1].trim())
+        else setCreativeBrief(data.brief.trim())
+      }
+      if (!silent) {
+        const briefLabel = data.videoTypeLabel || typeMeta.label
+        if (data.warning) toast(data.warning, { icon: 'ℹ️' })
+        else if (data.source === 'fallback') {
+          toast.success(`${briefLabel} brief + narration drafted from brand profile`)
+        } else {
+          toast.success(`${briefLabel} brief + narration generated`)
+        }
+      }
+    } catch (err) {
+      setNarrationBrief('')
+      const isTimeout = err.code === 'ECONNABORTED' || String(err.message || '').includes('timeout')
+      toast.error(isTimeout ? 'Brief generation timed out — try again' : (err.response?.data?.error || 'Brief generation failed'))
+    } finally {
+      briefLoadingRef.current = false
+      setBriefLoading(false)
+    }
+  }
+
+  const selectVideoType = (id) => {
+    if (id === videoType || briefLoadingRef.current || loading) return
+    videoTypeRef.current = id
+    setVideoType(id)
+    setVideo(null)
+    setEditing(false)
+    setCreativeBrief('')
+    setNarrationBrief(NARRATION_LOADING(VIDEO_TYPES.find((t) => t.id === id)?.label || 'video'))
+    generateBrief({
+      typeId: id,
+      topicHint: workflow.contentText || workflow.topic || '',
+      silent: true,
+    })
+  }
+
   const generate = async () => {
-    if (!prompt.trim()) return toast.error('Enter a script or content brief')
+    if (briefLoading || isLoadingNarration(narrationBrief)) {
+      return toast.error('Wait for the brief to finish generating')
+    }
+    const narration = narrationBrief.trim()
+    const creative = creativeBrief.trim()
+    const validNarration = narration && !isLoadingNarration(narration)
+    const briefText = buildGeneratePrompt(creative, validNarration ? narration : '')
+    if (!briefText) return toast.error('Enter a script or content brief')
+    if (!workspaceId) return toast.error('Workspace not loaded')
+    const activeVideoType = videoTypeRef.current
     setLoading(true)
+    setEditing(false)
     try {
       const { data } = await API.post('/video/generate', {
-        workspaceId, prompt, videoType,
+        workspaceId,
+        prompt: briefText,
+        creativeBrief: creative,
+        narrationBrief: validNarration ? narration : '',
+        videoType: activeVideoType,
         style: style.toLowerCase(), voice: voice.toLowerCase(),
-        variantCount, duration,
-      })
-      setVideos(data.videos)
-      setSelected(data.videos[0] || null)
-      toast.success(`Generated ${data.videos.length} video variants`)
+        duration,
+      }, { timeout: 120000 })
+      const created = data.videos?.[0]
+      if (!created) {
+        toast.error('Video could not be generated — try again')
+        return
+      }
+      setVideo(created)
+      addVideo(created)
+      setPlayRequest((n) => n + 1)
+      if (data.warning) toast(data.warning, { icon: '⚠️' })
+      else {
+        const typeLabel = created.videoTypeLabel || selectedVideoType.label
+        toast.success(`${typeLabel} video created with industry stock media`)
+      }
       fetchMe?.()
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Video generation failed')
+      const isTimeout = err.code === 'ECONNABORTED' || String(err.message || '').includes('timeout')
+      toast.error(
+        isTimeout
+          ? 'Video generation timed out — try a shorter brief'
+          : (err.response?.data?.error || 'Video generation failed'),
+      )
     } finally { setLoading(false) }
   }
 
-  const favorite = async (video) => {
-    if (!video._id) return
+  const startEditing = () => {
+    if (!video) return
+    setEditRows(buildEditableScenes(video))
+    setEditing(true)
+  }
+
+  const persistVideo = async ({ silent = false } = {}) => {
+    if (!video?._id || !workspaceId) return true
+
+    if (!editing) {
+      addVideo(video)
+      return true
+    }
+
+    setSaving(true)
     try {
-      await API.post(`/video/favorite/${video._id}`)
-      setVideos(prev => prev.map(v => v._id === video._id ? { ...v, favorited: true } : v))
-      toast.success('Added to favorites')
-    } catch { toast.error('Could not save favorite') }
+      const payload = scenesToPayload(editRows, video)
+      const { data } = await API.patch(`/video/${video._id}`, {
+        workspaceId,
+        title: payload.title,
+        hook: payload.hook,
+        cta: payload.cta,
+        scenes: payload.scenes,
+        captions: payload.captions,
+        highlightWords: payload.highlightWords,
+      })
+      const updated = data.video || payload
+      setVideo(updated)
+      addVideo(updated)
+      setEditing(false)
+      if (!silent) toast.success('Video saved')
+      return true
+    } catch {
+      toast.error('Could not save video')
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveEdits = () => persistVideo()
+
+  const handleBeforeLeave = async () => persistVideo({ silent: true })
+
+  const updateRow = (key, field, value) => {
+    setEditRows((prev) => prev.map((row) => (row.key === key ? { ...row, [field]: value } : row)))
+  }
+
+  const continueToLaunch = async () => {
+    const ok = await persistVideo({ silent: true })
+    if (!ok) return
+    navigate('/launch')
   }
 
   return (
     <PageShell>
-      <CoreWorkflowNav stepId="video" canProceed proceedLabel="Continue to Mail" />
+      <CoreWorkflowNav stepId="video" canProceed proceedLabel="Continue to Mail" onBeforeLeave={handleBeforeLeave} />
 
       <PageHeader
         title="Curi Video"
-        description="Transform content into short-form and long-form video assets with scene breakdowns, captions, and multi-variant generation."
+        description={`Create one on-brand video for ${industry} with AI script, stock b-roll, and voice preview — edit before you launch.`}
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 mb-6">
         <div className="page-card">
           <div className="section-label mb-3">Video Type</div>
-          <div className="space-y-1">
+          <div className="space-y-1 max-h-64 overflow-y-auto">
             {VIDEO_TYPES.map(t => (
-              <button key={t.id} onClick={() => setVideoType(t.id)}
-                className={`w-full text-left px-3 py-2.5 rounded-xl text-base font-medium transition-all ${videoType === t.id ? 'bg-curi-blue/15 text-curi-blue' : 'text-theme-muted/60 hover:bg-theme-subtle/5'}`}>
+              <button key={t.id} onClick={() => selectVideoType(t.id)}
+                disabled={briefLoading || loading}
+                className={`w-full text-left px-3 py-2.5 rounded-xl text-base font-medium transition-all disabled:opacity-50 ${videoType === t.id ? 'bg-curi-blue/15 text-curi-blue' : 'text-theme-muted/60 hover:bg-theme-subtle/5'}`}>
                 {t.label}
               </button>
             ))}
           </div>
+          <p className="mt-3 text-xs text-theme-muted/55 leading-relaxed border-t border-theme-border/40 pt-3">
+            {selectedVideoType.hint}
+            {briefLoading ? ' · Updating brief…' : ' · Brief regenerates when you switch type.'}
+          </p>
         </div>
 
         <div className="page-card space-y-4">
@@ -110,17 +341,6 @@ export default function Video() {
 
         <div className="page-card space-y-4">
           <div>
-            <div className="section-label mb-2">Variants</div>
-            <div className="flex gap-2">
-              {VIDEO_VARIANT_COUNTS.map(n => (
-                <button key={n} onClick={() => setVariantCount(n)}
-                  className={`flex-1 py-2.5 rounded-xl text-base font-bold transition-all ${variantCount === n ? 'bg-curi-blue text-white' : 'bg-theme-subtle/5 text-theme-muted/60'}`}>
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
             <div className="section-label mb-2">Duration</div>
             <select className="input w-full" value={duration} onChange={e => setDuration(Number(e.target.value))}>
               <option value={15}>15 seconds</option>
@@ -129,88 +349,191 @@ export default function Video() {
               <option value={90}>90 seconds</option>
             </select>
           </div>
+          <div className="rounded-xl bg-theme-subtle/5 border border-theme-border/40 p-3 text-xs text-theme-muted/60 leading-relaxed">
+            Stock photos and videos from Pexels are matched automatically using your <span className="font-bold text-theme-text">{industry}</span> industry profile.
+          </div>
         </div>
       </div>
 
       <div className="page-card mb-6">
-        <div className="section-label mb-3">Script / Brief</div>
-        <textarea
-          className="input resize-none h-32 lg:h-36 text-base w-full"
-          placeholder="Paste a script, product page content, blog, or describe your video concept..."
-          value={prompt}
-          onChange={e => setPrompt(e.target.value)}
-        />
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div className="section-label">Brief &amp; Narration</div>
+          <button
+            type="button"
+            onClick={() => generateBrief()}
+            disabled={briefLoading || loading}
+            className="btn-secondary text-sm flex items-center gap-2"
+          >
+            <Sparkles size={14} />
+            {briefLoading ? `Creating ${selectedVideoType.label} brief…` : `Generate ${selectedVideoType.label} brief`}
+          </button>
+        </div>
+        <p className="text-xs text-theme-muted/55 mb-4 leading-relaxed">
+          Generate a creative brief and scene-by-scene narration from your Brand Hub profile, or write your own.
+          {workflow.contentText && !creativeBrief ? ' Workflow content will seed the brief.' : ''}
+        </p>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wide text-theme-muted/50 mb-2">Creative brief</div>
+            <textarea
+              className="input resize-none h-36 lg:h-40 text-sm w-full"
+              placeholder={`Strategy for your ${selectedVideoType.label.toLowerCase()} — audience, message, angle…`}
+              value={creativeBrief}
+              onChange={(e) => setCreativeBrief(e.target.value)}
+              disabled={briefLoading}
+            />
+          </div>
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wide text-theme-muted/50 mb-2 flex items-center gap-2">
+              Narration brief
+              {briefLoading && <span className="text-curi-blue normal-case font-medium animate-pulse">Writing voiceover…</span>}
+            </div>
+            <textarea
+              className={`input resize-none h-36 lg:h-40 text-sm w-full ${briefLoading ? 'opacity-80' : ''}`}
+              placeholder={`Short voiceover lines only — ~8-14 words per scene for ${selectedVideoType.label.toLowerCase()}…`}
+              value={narrationBrief}
+              onChange={(e) => setNarrationBrief(e.target.value)}
+              disabled={briefLoading}
+            />
+          </div>
+        </div>
         <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
-          <span className="text-sm text-theme-muted/50 font-medium">20 credits per generation</span>
-          <button onClick={generate} disabled={loading} className="btn-primary text-base px-6 py-3">
-            {loading ? 'Generating...' : `Generate ${variantCount} Videos`}
+          <span className="text-sm text-theme-muted/50 font-medium">
+            20 credits · {selectedVideoType.label} · 1 video
+          </span>
+          <button onClick={generate} disabled={loading || briefLoading} className="btn-primary text-base px-6 py-3">
+            {loading ? `Creating ${selectedVideoType.label}…` : briefLoading ? 'Waiting for brief…' : `Create ${selectedVideoType.label}`}
           </button>
         </div>
       </div>
 
-      {selected && (
-        <div className="page-card mb-6">
-          <div className="section-label mb-4">Scene Builder — {selected.title}</div>
+      {video && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="page-card mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <div className="section-label mb-1">Your video</div>
+              <h2 className="text-xl font-bold text-theme-text">{video.title}</h2>
+              <p className="text-xs text-theme-muted/55 mt-1">
+                {(video.videoTypeLabel || selectedVideoType.label).replace(/_/g, ' ')}
+                {video.stockIndustry ? ` · Stock media · ${video.stockIndustry}` : ''}
+              </p>
+              {video.sourceBrief && (
+                <p className="text-xs text-theme-muted/45 mt-2 line-clamp-2" title={video.sourceBrief}>
+                  From brief: {video.sourceBrief.slice(0, 120)}{video.sourceBrief.length > 120 ? '…' : ''}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {!editing ? (
+                <button type="button" onClick={startEditing} className="btn-secondary text-sm flex items-center gap-2">
+                  <Pencil size={14} /> Edit before launch
+                </button>
+              ) : (
+                <>
+                  <button type="button" onClick={() => setEditing(false)} className="btn-secondary text-sm">Cancel</button>
+                  <button type="button" onClick={saveEdits} disabled={saving} className="btn-primary text-sm flex items-center gap-2">
+                    <Save size={14} /> {saving ? 'Saving…' : 'Save changes'}
+                  </button>
+                </>
+              )}
+              <button type="button" onClick={continueToLaunch} className="btn-primary text-sm flex items-center gap-2">
+                <Rocket size={14} /> Continue to Launch
+              </button>
+            </div>
+          </div>
+
+          <div id="video-storyboard-player">
+            <VideoStoryboardPlayer video={video} autoPlayToken={playRequest} />
+          </div>
+
+          <div className="section-label mb-4 mt-6">{editing ? 'Edit scenes' : 'Scene breakdown'}</div>
           <div className="relative">
             <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-theme-border" />
             <div className="space-y-4">
-              {[{ label: 'Hook', script: selected.hook, visual: 'Opening shot' }, ...(selected.scenes || [])].map((scene, i) => (
-                <div key={i} className="flex gap-4 pl-2">
+              {(editing ? editRows : buildEditableScenes(video)).map((scene) => (
+                <div key={scene.key} className="flex gap-4 pl-2">
                   <div className="w-5 h-5 rounded-full bg-curi-gradient flex-shrink-0 relative z-10 mt-0.5" />
                   <div className="flex-1 bg-theme-subtle/5 rounded-xl p-4">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-sm font-bold text-curi-pink">{scene.label}</span>
-                      {scene.duration && <span className="text-xs text-theme-muted/50">{scene.duration}s</span>}
+                    <div className="flex justify-between items-center mb-2 gap-3">
+                      {editing ? (
+                        <input
+                          className="input text-sm flex-1"
+                          value={scene.label}
+                          onChange={(e) => updateRow(scene.key, 'label', e.target.value)}
+                          disabled={scene.isHook || scene.isCta}
+                        />
+                      ) : (
+                        <span className="text-sm font-bold text-curi-pink">{scene.label}</span>
+                      )}
+                      {!scene.isHook && !scene.isCta && editing && (
+                        <input
+                          type="number"
+                          min={2}
+                          max={30}
+                          className="input text-xs w-20"
+                          value={scene.duration}
+                          onChange={(e) => updateRow(scene.key, 'duration', e.target.value)}
+                        />
+                      )}
+                      {!editing && scene.duration && (
+                        <span className="text-xs text-theme-muted/50">{scene.duration}s</span>
+                      )}
                     </div>
-                    <p className="text-base text-theme-text font-medium">{scene.script}</p>
-                    {scene.visual && <p className="text-sm text-theme-muted/50 mt-1">{scene.visual}</p>}
+                    {editing ? (
+                      <>
+                        <textarea
+                          className="input text-sm w-full min-h-[72px] mb-2"
+                          value={scene.script}
+                          onChange={(e) => updateRow(scene.key, 'script', e.target.value)}
+                        />
+                        {!scene.isHook && !scene.isCta && (
+                          <input
+                            className="input text-sm w-full"
+                            placeholder="Visual direction"
+                            value={scene.visual}
+                            onChange={(e) => updateRow(scene.key, 'visual', e.target.value)}
+                          />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-base text-theme-text font-medium">{scene.script}</p>
+                        {scene.visual && <p className="text-sm text-theme-muted/50 mt-1">{scene.visual}</p>}
+                      </>
+                    )}
+                    {scene.stockMedia?.url && !editing && (
+                      <div className="mt-3 flex items-center gap-2">
+                        <div className="w-16 h-10 rounded-lg overflow-hidden border border-theme-border/40 bg-theme-subtle/10 flex-shrink-0">
+                          {scene.stockMedia.type === 'video' ? (
+                            <video src={scene.stockMedia.url} className="w-full h-full object-cover" muted playsInline />
+                          ) : (
+                            <img src={scene.stockMedia.thumbnailUrl || scene.stockMedia.url} alt="" className="w-full h-full object-cover" />
+                          )}
+                        </div>
+                        <span className="text-[10px] text-theme-muted/45 uppercase tracking-wide">
+                          Stock {scene.stockMedia.type} · Pexels
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
-              {selected.cta && (
-                <div className="flex gap-4 pl-2">
-                  <div className="w-5 h-5 rounded-full bg-curi-yellow flex-shrink-0 relative z-10 mt-0.5" />
-                  <div className="flex-1 bg-curi-yellow/10 rounded-xl p-4">
-                    <span className="text-sm font-bold text-curi-yellow">CTA</span>
-                    <p className="text-base text-theme-text font-medium mt-1">{selected.cta}</p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
-          {selected.captions?.length > 0 && (
+
+          {video.captions?.length > 0 && !editing && (
             <div className="mt-5 pt-4 border-t border-theme-border">
               <div className="section-label mb-3">Auto Captions</div>
               <div className="flex flex-wrap gap-2">
-                {selected.captions.map((c, i) => (
+                {video.captions.map((c, i) => (
                   <span key={i} className="badge bg-theme-subtle/10 text-theme-muted/60">{c}</span>
                 ))}
               </div>
-              {selected.highlightWords?.length > 0 && (
-                <div className="mt-2 text-sm text-theme-muted/50">
-                  Highlight words: {selected.highlightWords.join(', ')}
-                </div>
-              )}
             </div>
           )}
-        </div>
+        </motion.div>
       )}
-
-      <AnimatePresence>
-        {videos.length > 0 && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <h2 className="text-xl font-bold text-theme-text mb-4">Video Variants</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-              {videos.map((v, i) => (
-                <motion.div key={v._id || v.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                  onClick={() => setSelected(v)} className={`cursor-pointer rounded-2xl ${selected?._id === v._id ? 'ring-2 ring-curi-blue' : ''}`}>
-                  <VideoPreview video={v} onFavorite={favorite} />
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </PageShell>
   )
 }

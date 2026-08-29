@@ -5,7 +5,8 @@ import { PageShell, PageHeader } from '../components/layout/PageShell'
 import SocialChannelsPanel from '../components/brand/SocialChannelsPanel'
 import SocialEngagementStats from '../components/social/SocialEngagementStats'
 import toast from 'react-hot-toast'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, MessagesSquare } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 export default function SocialChannels() {
   const { workspaceId } = useAuth()
@@ -52,12 +53,18 @@ export default function SocialChannels() {
     <PageShell>
       <PageHeader
         title="Social Channels"
-        description="Connect your brand's social accounts, track engagement, and power Curi Launch publishing."
+        description="Connect accounts, view performance metrics, and power Curi Launch publishing. Use Engage+ for comment and DM management."
         action={(
-          <button type="button" onClick={loadStats} className="btn-secondary text-sm flex items-center gap-1.5">
-            <RefreshCw size={14} />
-            Refresh stats
-          </button>
+          <div className="flex items-center gap-2">
+            <Link to="/engagement" className="btn-secondary text-sm flex items-center gap-1.5">
+              <MessagesSquare size={14} />
+              Engage+
+            </Link>
+            <button type="button" onClick={loadStats} className="btn-secondary text-sm flex items-center gap-1.5">
+              <RefreshCw size={14} />
+              Refresh stats
+            </button>
+          </div>
         )}
       />
 

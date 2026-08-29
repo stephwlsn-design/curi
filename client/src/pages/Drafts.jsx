@@ -16,6 +16,7 @@ const STEP_LABELS = {
   mail: 'Mail',
   launch: 'Launch',
   autonomous: 'Autonomous',
+  competitor: 'Competitor Watch',
 }
 
 export default function Drafts() {
@@ -63,6 +64,7 @@ export default function Drafts() {
     if (mods.video?.videos?.length) parts.push(`${mods.video.videos.length} videos`)
     if (mods.launch?.goal) parts.push('Launch')
     if (mods.autonomous?.days) parts.push('Autonomous')
+    if (mods.competitor?.analysis) parts.push('Competitor')
     return parts.length ? parts.join(' · ') : 'Workflow in progress'
   }
 

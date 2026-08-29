@@ -225,6 +225,25 @@ const isWorkspaceFastRequest = (req) => {
   return false;
 };
 
+const isCompetitorFastRequest = (req) => {
+  const pathOnly = requestPath(req);
+  if (pathOnly === '/api/competitor/preview' && req.method === 'GET') return true;
+  if (pathOnly === '/api/competitor/saved' && req.method === 'GET') return true;
+  if (pathOnly === '/api/competitor/analyze' && req.method === 'POST') return true;
+  if (pathOnly === '/api/competitor/save' && req.method === 'POST') return true;
+  return false;
+};
+
+const isVideoFastRequest = (req) => {
+  const pathOnly = requestPath(req);
+  if (pathOnly === '/api/video/brief' && req.method === 'POST') return true;
+  if (pathOnly === '/api/video/generate' && req.method === 'POST') return true;
+  if (pathOnly === '/api/video/library' && req.method === 'GET') return true;
+  if (/^\/api\/video\/favorite\/[^/]+$/.test(pathOnly) && req.method === 'POST') return true;
+  if (/^\/api\/video\/[^/]+$/.test(pathOnly) && req.method === 'PATCH') return true;
+  return false;
+};
+
 const isApprovalsFastRequest = (req) => {
   const pathOnly = requestPath(req);
   if (pathOnly === '/api/approvals/queue' && req.method === 'GET') return true;
@@ -375,6 +394,177 @@ const handleWorkspaceFast = async (req, res) => {
   }
 
   return sendJson(res, 404, { error: 'Not found' });
+};
+
+const handleCompetitorFast = async (req, res) => {
+  const { connectDB } = require('../server/src/config/database');
+  const {
+    getPreview,
+    getSaved,
+    runAnalyze,
+    saveAnalysis,
+  } = require('../server/src/handlers/competitorFast');
+
+  await connectDB();
+  const user = await authenticateRequest(req);
+  const pathOnly = requestPath(req);
+  const q = getQueryParams(req);
+  const body = req.body || {};
+
+  try {
+    if (pathOnly === '/api/competitor/preview' && req.method === 'GET') {
+      if (!q.workspaceId) return sendJson(res, 400, { error: 'Workspace is required' });
+      const payload = await getPreview({ user, workspaceId: q.workspaceId });
+      return sendJson(res, 200, payload);
+    }
+
+    if (pathOnly === '/api/competitor/saved' && req.method === 'GET') {
+      if (!q.workspaceId) return sendJson(res, 400, { error: 'Workspace is required' });
+      const payload = await getSaved({ user, workspaceId: q.workspaceId });
+      return sendJson(res, 200, payload);
+    }
+
+    if (pathOnly === '/api/competitor/analyze' && req.method === 'POST') {
+      if (!body.workspaceId) return sendJson(res, 400, { error: 'Workspace is required' });
+      const payload = await runAnalyze({ user, body });
+      return sendJson(res, 200, payload);
+    }
+
+    if (pathOnly === '/api/competitor/save' && req.method === 'POST') {
+      const payload = await saveAnalysis({ user, body });
+      return sendJson(res, 200, payload);
+    }
+
+    return sendJson(res, 404, { error: 'Not found' });
+  } catch (err) {
+    return sendJson(res, err.status || 500, { error: err.message || 'Competitor request failed' });
+  }
+};
+
+const handleVideoFast = async (req, res) => {
+  const { connectDB } = require('../server/src/config/database');
+  const User = require('../server/src/models/User');
+  const {
+    generateVideos,
+    generateVideosEmergency,
+    generateVideoBrief,
+    getLibrary,
+    favoriteVideo,
+    updateVideo,
+    formatVideoError,
+    createSaveGate,
+  } = require('../server/src/handlers/videoFast');
+
+  await connectDB();
+  const user = await authenticateRequest(req);
+  const pathOnly = requestPath(req);
+  const q = getQueryParams(req);
+  const body = req.body || {};
+  const VIDEO_CREDIT_COST = 20;
+
+  try {
+    if (pathOnly === '/api/video/brief' && req.method === 'POST') {
+      let payload;
+      try {
+        payload = await generateVideoBrief({ user, body });
+      } catch (err) {
+        const videoService = require('../server/src/services/videoService');
+        const workspace = await require('../server/src/utils/workspaceAccess').findAccessibleWorkspace(body.workspaceId, user._id);
+        if (!workspace) throw err;
+        payload = {
+          ...videoService.buildFallbackBrief({
+            brandProfile: workspace.brandProfile,
+            onboarding: workspace.onboarding,
+            videoType: body.videoType,
+            style: body.style,
+            duration: body.duration,
+            topicHint: body.topicHint,
+          }),
+          warning: 'Drafted from brand profile — edit before creating video',
+        };
+      }
+      return sendJson(res, 200, payload);
+    }
+
+    if (pathOnly === '/api/video/generate' && req.method === 'POST') {
+      const dbUser = await User.findById(user._id);
+      if (!dbUser) return sendJson(res, 401, { error: 'User not found' });
+      if (dbUser.credits < VIDEO_CREDIT_COST) {
+        return sendJson(res, 402, {
+          error: 'Insufficient credits',
+          required: VIDEO_CREDIT_COST,
+          available: dbUser.credits,
+        });
+      }
+
+      const saveGate = createSaveGate();
+      const primaryPromise = generateVideos({
+        user: dbUser,
+        body,
+        creditCost: VIDEO_CREDIT_COST,
+        saveGate,
+      });
+
+      let result;
+      try {
+        result = await withTimeout(
+          primaryPromise,
+          process.env.VERCEL ? 58_000 : 95_000,
+          'Video generation timed out — try again with a shorter brief',
+        );
+      } catch (err) {
+        if (!/timed out/i.test(String(err.message || ''))) throw err;
+        result = await Promise.race([
+          primaryPromise.catch(() => null),
+          new Promise((resolve) => { setTimeout(() => resolve(null), 2500); }),
+        ]);
+        if (!result?.videos?.length) {
+          result = await generateVideosEmergency({
+            user: dbUser,
+            body,
+            creditCost: VIDEO_CREDIT_COST,
+            saveGate,
+          });
+        }
+        if (!result?.videos?.length) {
+          return sendJson(res, 504, { error: 'Video generation timed out — try again with a shorter brief' });
+        }
+        result.warning = [result.warning, 'Recovered from timeout using your brief'].filter(Boolean).join(' — ');
+      }
+      await dbUser.deductCredits(VIDEO_CREDIT_COST);
+      return sendJson(res, 201, {
+        videos: result.videos,
+        source: result.source,
+        warning: result.warning,
+      });
+    }
+
+    if (pathOnly === '/api/video/library' && req.method === 'GET') {
+      const payload = await getLibrary({ workspaceId: q.workspaceId });
+      return sendJson(res, 200, payload);
+    }
+
+    const favoriteMatch = pathOnly.match(/^\/api\/video\/favorite\/([^/]+)$/);
+    if (favoriteMatch && req.method === 'POST') {
+      const payload = await favoriteVideo({ videoId: favoriteMatch[1], userId: user._id });
+      return sendJson(res, 200, payload);
+    }
+
+    const patchMatch = pathOnly.match(/^\/api\/video\/([^/]+)$/);
+    if (patchMatch && req.method === 'PATCH') {
+      const payload = await updateVideo({
+        videoId: patchMatch[1],
+        userId: user._id,
+        workspaceId: body.workspaceId,
+        updates: body,
+      });
+      return sendJson(res, 200, payload);
+    }
+
+    return sendJson(res, 404, { error: 'Not found' });
+  } catch (err) {
+    return sendJson(res, err.status || 502, { error: formatVideoError(err) });
+  }
 };
 
 const handleAutonomousFast = async (req, res) => {
@@ -821,15 +1011,23 @@ const handleDesignUpload = async (req, res) => {
   const workspaceId = fields.workspaceId;
   const platform = fields.platform || 'instagram';
   const scheduledAt = fields.scheduledAt || null;
+  const uploadModule = fields.module || 'upload';
+  const singleCaption = fields.caption || null;
   const workspace = await findAccessibleWorkspace(workspaceId, user._id);
   if (!workspace) return sendJson(res, 404, { error: 'Workspace not found' });
   if (!files?.length) return sendJson(res, 400, { error: 'Upload at least one design image' });
 
   let titleList = [];
+  let captionList = [];
   try {
     titleList = fields.titles ? JSON.parse(fields.titles) : [];
   } catch {
     titleList = [];
+  }
+  try {
+    captionList = fields.captions ? JSON.parse(fields.captions) : [];
+  } catch {
+    captionList = [];
   }
 
   if (!fs.existsSync(USER_DESIGN_DIR)) fs.mkdirSync(USER_DESIGN_DIR, { recursive: true });
@@ -851,8 +1049,9 @@ const handleDesignUpload = async (req, res) => {
       file,
       platform,
       title: titleList[i] || file.originalname,
+      caption: captionList[i] || singleCaption || titleList[i] || file.originalname,
       scheduledAt: scheduledAt || null,
-      module: 'upload',
+      module: uploadModule,
     });
     if (entry.buffer.length < 1200000) {
       design.previewDataUrl = `data:${mime};base64,${entry.buffer.toString('base64')}`;
@@ -1384,6 +1583,28 @@ module.exports = async (req, res) => {
     } catch (err) {
       console.error('[api] workspace fast failed:', err);
       return sendJson(res, err.status || 502, { error: err.message });
+    }
+  }
+
+  if (isCompetitorFastRequest(req)) {
+    try {
+      normalizeRequestUrl(req);
+      if (req.method !== 'GET') await parseRequestBody(req);
+      return await handleCompetitorFast(req, res);
+    } catch (err) {
+      console.error('[api] competitor fast failed:', err);
+      return sendJson(res, err.status || 502, { error: err.message || 'Competitor request failed' });
+    }
+  }
+
+  if (isVideoFastRequest(req)) {
+    try {
+      normalizeRequestUrl(req);
+      if (req.method !== 'GET') await parseRequestBody(req);
+      return await handleVideoFast(req, res);
+    } catch (err) {
+      console.error('[api] video fast failed:', err);
+      return sendJson(res, err.status || 502, { error: err.message || 'Video generation failed' });
     }
   }
 

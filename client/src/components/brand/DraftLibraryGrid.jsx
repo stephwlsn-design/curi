@@ -12,6 +12,7 @@ const STEP_LABELS = {
   mail: 'Mail',
   launch: 'Launch',
   autonomous: 'Autonomous',
+  competitor: 'Competitor Watch',
 }
 
 export default function DraftLibraryGrid({ drafts, emptyMessage, onReload }) {

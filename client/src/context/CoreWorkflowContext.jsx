@@ -13,6 +13,10 @@ const defaultState = {
   designIds: [],
   designName: '',
   designSaved: false,
+  videoId: null,
+  videoIds: [],
+  videoTitle: '',
+  videoSaved: false,
 }
 
 const loadState = () => {
@@ -61,6 +65,21 @@ export const CoreWorkflowProvider = ({ children }) => {
     })
   }, [])
 
+  const addVideo = useCallback((video) => {
+    if (!video?._id && !video?.id) return
+    const id = video._id || video.id
+    setWorkflow((prev) => {
+      const ids = [...new Set([...(prev.videoIds || []), id].map(String))]
+      return {
+        ...prev,
+        videoId: id,
+        videoTitle: video.title || video.hook || 'Video',
+        videoIds: ids,
+        videoSaved: true,
+      }
+    })
+  }, [])
+
   const markDiscoverComplete = useCallback(() => {
     patch({ discoverComplete: true })
   }, [patch])
@@ -71,7 +90,7 @@ export const CoreWorkflowProvider = ({ children }) => {
   }, [])
 
   return (
-    <CoreWorkflowContext.Provider value={{ workflow, patch, setContent, addDesign, markDiscoverComplete, resetWorkflow }}>
+    <CoreWorkflowContext.Provider value={{ workflow, patch, setContent, addDesign, addVideo, markDiscoverComplete, resetWorkflow }}>
       {children}
     </CoreWorkflowContext.Provider>
   )

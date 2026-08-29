@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import BrandColorsPanel from './BrandColorsPanel'
 import {
   Loader2, RefreshCw, Sparkles, LayoutTemplate, FileText, Film, FolderOpen, Share2,
+  LayoutGrid, Calendar, MessagesSquare, Target,
 } from 'lucide-react'
 import { useBrandAssets } from '../../hooks/useBrandAssets'
 import DesignLibraryGrid from './DesignLibraryGrid'
@@ -35,6 +36,11 @@ export default function BrandHubSection({ workspaceId, initialTab = 'all' }) {
     }
     setTab(initialTab || 'all')
   }, [initialTab, location.hash, navigate])
+
+  const competitors = [
+    ...(workspace?.brandProfile?.competitors || []),
+    ...(workspace?.onboarding?.competitors || []),
+  ].filter(Boolean)
 
   const selectTab = (id) => {
     setTab(id)
@@ -146,11 +152,50 @@ export default function BrandHubSection({ workspaceId, initialTab = 'all' }) {
         <div className="flex-1 min-w-0">
           <div className="font-bold text-theme-text">Social channels</div>
           <p className="text-sm text-theme-muted/55 mt-0.5">
-            Connect accounts, view engagement stats, and publish via Curi Launch
+            Connect accounts, view performance metrics, publish via Launch, and power Engage+ inbox
           </p>
         </div>
         <span className="badge shrink-0 bg-theme-subtle/10 text-theme-muted/60">Open</span>
       </button>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
+        {[
+          { path: '/planner', label: 'Planner', desc: 'Upload & schedule', icon: LayoutGrid },
+          { path: '/scheduled', label: 'Curi Scheduler', desc: 'Queued posts', icon: Calendar },
+          { path: '/engagement', label: 'Engage+', desc: 'Comments & DMs', icon: MessagesSquare },
+          { path: '/competitor', label: 'Competitor Watch', desc: 'Market intel', icon: Target },
+        ].map(({ path, label, desc, icon: Icon }) => (
+          <button
+            key={path}
+            type="button"
+            onClick={() => navigate(path)}
+            className="p-3 rounded-xl border border-theme-border text-left hover:border-curi-pink/30 hover:bg-curi-pink/5 transition-all"
+          >
+            <Icon size={16} className="text-curi-pink mb-2" />
+            <div className="text-xs font-bold text-theme-text">{label}</div>
+            <div className="text-[10px] text-theme-muted/50 mt-0.5">{desc}</div>
+          </button>
+        ))}
+      </div>
+
+      {competitors.length > 0 && (
+        <button
+          type="button"
+          onClick={() => navigate('/competitor')}
+          className="w-full mb-4 p-4 rounded-2xl border text-left transition-all flex items-center gap-4 border-curi-green/20 bg-curi-green/5 hover:border-curi-green/40"
+        >
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 bg-curi-green/15 text-curi-green">
+            <Target size={20} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-theme-text">Competitor Watch</div>
+            <p className="text-sm text-theme-muted/55 mt-0.5">
+              {competitors.length} competitor{competitors.length === 1 ? '' : 's'} in your profile — run a live analysis
+            </p>
+          </div>
+          <span className="badge shrink-0 bg-curi-green/15 text-curi-green">Analyze</span>
+        </button>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex flex-wrap gap-2">

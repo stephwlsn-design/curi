@@ -4,7 +4,7 @@ import { API, useAuth } from '../context/AuthContext'
 import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
-import { Calendar, Rocket, Zap, Clock, UserCheck, Sparkles, Search, SlidersHorizontal, X } from 'lucide-react'
+import { Calendar, Rocket, Zap, Clock, UserCheck, Sparkles, Search, SlidersHorizontal, X, LayoutGrid } from 'lucide-react'
 import { format, isToday, isTomorrow, parseISO } from 'date-fns'
 import DesignPreview from '../components/DesignPreview'
 import VideoPreview from '../components/VideoPreview'
@@ -12,6 +12,7 @@ import { toDesignPreview, toVideoPreview } from '../utils/creative'
 
 const TABS = [
   { id: 'all', label: 'All Scheduled' },
+  { id: 'planner', label: 'Planner' },
   { id: 'launch', label: 'Curi Launch' },
   { id: 'autonomous', label: 'Autonomous' },
 ]
@@ -113,6 +114,7 @@ const hasActiveFilters = (filters) => (
 )
 
 const SOURCE_META = {
+  planner: { label: 'Planner', icon: LayoutGrid, className: 'bg-curi-green/15 text-curi-green' },
   launch: { label: 'Launch', icon: Rocket, className: 'bg-curi-blue/15 text-curi-blue' },
   autonomous: { label: 'Autonomous', icon: Zap, className: 'bg-curi-pink/15 text-curi-pink' },
   other: { label: 'Other', icon: Clock, className: 'bg-theme-subtle/10 text-theme-muted/50' },
@@ -195,7 +197,7 @@ const ApprovalLine = ({ approval, fallback }) => {
 export default function Scheduled() {
   const { workspaceId } = useAuth()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const initialTab = searchParams.get('tab')
   const [tab, setTab] = useState(
     TABS.some((t) => t.id === initialTab) ? initialTab : 'all',
@@ -220,8 +222,24 @@ export default function Scheduled() {
 
   useEffect(() => { load() }, [workspaceId])
 
+  useEffect(() => {
+    const urlTab = searchParams.get('tab')
+    if (urlTab && TABS.some((t) => t.id === urlTab) && urlTab !== tab) {
+      setTab(urlTab)
+    }
+  }, [searchParams, tab])
+
+  const selectTab = (id) => {
+    setTab(id)
+    const next = new URLSearchParams(searchParams)
+    if (id === 'all') next.delete('tab')
+    else next.set('tab', id)
+    setSearchParams(next, { replace: true })
+  }
+
   const counts = useMemo(() => ({
     all: allPosts.length,
+    planner: allPosts.filter(p => p.source === 'planner').length,
     launch: allPosts.filter(p => p.source === 'launch').length,
     autonomous: allPosts.filter(p => p.source === 'autonomous').length,
   }), [allPosts])
@@ -258,10 +276,12 @@ export default function Scheduled() {
   return (
     <PageShell>
       <PageHeader
-        title="Scheduled Posts"
-        description="Upcoming publishes with creative snapshots, scores, and approval details."
+        title="Curi Scheduler"
+        description="Unified queue for Planner uploads, Launch campaigns, and Autonomous runs. Items approved in Approvals also land here when scheduled."
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => navigate('/planner')} className="btn-primary text-base">Planner</button>
+            <button type="button" onClick={() => navigate('/engagement')} className="btn-secondary text-base">Engage+</button>
             <button type="button" onClick={() => navigate('/launch')} className="btn-secondary text-base">Launch</button>
             <button type="button" onClick={() => navigate('/autonomous')} className="btn-secondary text-base">Autonomous</button>
           </div>
@@ -273,7 +293,7 @@ export default function Scheduled() {
           <button
             key={t.id}
             type="button"
-            onClick={() => setTab(t.id)}
+            onClick={() => selectTab(t.id)}
             className={`px-4 py-2.5 rounded-xl text-base font-bold transition-all ${
               tab === t.id ? 'bg-curi-gradient text-white' : 'bg-theme-subtle/5 text-theme-muted/60 hover:text-theme-text'
             }`}
@@ -386,7 +406,7 @@ export default function Scheduled() {
           </p>
           <p className="text-sm text-theme-muted/40 mb-6">
             {allPosts.length === 0
-              ? 'Run Curi Launch or the Autonomous Engine to auto-schedule campaigns, or schedule content from Approvals.'
+              ? 'Schedule posts from Planner, run Curi Launch, or use the Autonomous Engine.'
               : 'Try adjusting your search terms or clearing filters to see more results.'}
           </p>
           <div className="flex gap-3 justify-center">
@@ -394,7 +414,8 @@ export default function Scheduled() {
               <button type="button" onClick={clearFilters} className="btn-primary text-sm">Clear filters</button>
             ) : (
               <>
-                <button type="button" onClick={() => navigate('/launch')} className="btn-primary text-sm">Go to Launch</button>
+                <button type="button" onClick={() => navigate('/planner')} className="btn-primary text-sm">Open Planner</button>
+                <button type="button" onClick={() => navigate('/launch')} className="btn-secondary text-sm">Go to Launch</button>
                 <button type="button" onClick={() => navigate('/autonomous')} className="btn-secondary text-sm">Go to Autonomous</button>
               </>
             )}

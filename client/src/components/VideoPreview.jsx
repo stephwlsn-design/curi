@@ -1,10 +1,20 @@
-import { Star } from 'lucide-react'
+import { Star, Play } from 'lucide-react'
 
-export default function VideoPreview({ video, onFavorite, compact = false }) {
+export default function VideoPreview({ video, onFavorite, onPlay, compact = false }) {
   if (compact) {
     return (
       <div className="rounded-xl overflow-hidden border border-theme-subtle/10 bg-theme-subtle/5">
-        <div className="bg-gradient-to-br from-curi-navy to-curi-blue p-3 min-h-[72px] flex flex-col justify-end">
+        <div className="bg-gradient-to-br from-curi-navy to-curi-blue p-3 min-h-[72px] flex flex-col justify-end relative group">
+          {onPlay && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onPlay(video) }}
+              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/15 hover:bg-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Play preview"
+            >
+              <Play size={12} fill="white" className="text-white ml-0.5" />
+            </button>
+          )}
           <span className="badge bg-white/15 text-white text-[10px] mb-1 w-fit">{video.videoType?.replace(/_/g, ' ') || 'Video'}</span>
           <p className="text-white font-bold text-xs leading-snug line-clamp-2">"{video.hook}"</p>
         </div>
@@ -17,16 +27,28 @@ export default function VideoPreview({ video, onFavorite, compact = false }) {
 
   return (
     <div className="card overflow-hidden hover:scale-[1.02] transition-all">
-      <div className="bg-gradient-to-br from-curi-navy to-curi-blue p-5 min-h-[140px] flex flex-col justify-between">
-        <div className="flex justify-between">
+      <div className="bg-gradient-to-br from-curi-navy to-curi-blue p-5 min-h-[140px] flex flex-col justify-between relative group">
+        <div className="flex justify-between items-start">
           <span className="badge bg-white/15 text-white text-xs">{video.videoType?.replace(/_/g, ' ')}</span>
-          <button
-            type="button"
-            onClick={() => onFavorite?.(video)}
-            className={video.favorited ? 'text-curi-yellow' : 'text-white/50 hover:text-white'}
-          >
-            <Star size={18} fill={video.favorited ? 'currentColor' : 'none'} />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {onPlay && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onPlay(video) }}
+                className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 flex items-center justify-center opacity-80 group-hover:opacity-100 transition-all"
+                title="Play preview"
+              >
+                <Play size={14} fill="white" className="text-white ml-0.5" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onFavorite?.(video) }}
+              className={video.favorited ? 'text-curi-yellow' : 'text-white/50 hover:text-white'}
+            >
+              <Star size={18} fill={video.favorited ? 'currentColor' : 'none'} />
+            </button>
+          </div>
         </div>
         <p className="text-white font-bold text-sm leading-snug line-clamp-3">"{video.hook}"</p>
       </div>

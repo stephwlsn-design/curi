@@ -10,6 +10,7 @@ const { findAccessibleWorkspace } = require('../utils/workspaceAccess');
 const detectSource = (content, job, launchContentIds, campaignByContent) => {
   if (job?.autonomousRun) return 'autonomous';
   const meta = content?.metadata || {};
+  if (meta.module === 'planner' || meta.source === 'planner') return 'planner';
   if (meta.module === 'autonomous' || meta.runId) return 'autonomous';
   if (content?.campaign || launchContentIds.has(String(content?._id))) return 'launch';
   if (campaignByContent.get(String(content?._id))) return 'launch';
@@ -234,6 +235,7 @@ router.get('/', async (req, res) => {
     all: posts.length,
     launch: posts.filter(p => p.source === 'launch').length,
     autonomous: posts.filter(p => p.source === 'autonomous').length,
+    planner: posts.filter(p => p.source === 'planner').length,
     other: posts.filter(p => p.source === 'other').length,
   };
 

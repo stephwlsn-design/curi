@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { API, useAuth } from '../context/AuthContext'
 import { PageShell, PageHeader } from '../components/layout/PageShell'
 import toast from 'react-hot-toast'
-import { RefreshCw, Search, X, ChevronDown, ChevronRight, Eye, Pencil } from 'lucide-react'
+import { RefreshCw, Search, X, ChevronDown, ChevronRight, Eye, Pencil, Calendar } from 'lucide-react'
 import DesignPreview from '../components/DesignPreview'
 import DesignCanvasEditor from '../components/DesignCanvasEditor'
 import VideoPreview from '../components/VideoPreview'
@@ -224,6 +224,16 @@ export default function Approvals() {
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           Refresh
         </button>
+        {tab === 'scheduled' && (
+          <button
+            type="button"
+            onClick={() => navigate('/scheduled')}
+            className="btn-secondary text-sm px-3 py-2 flex items-center gap-1.5"
+          >
+            <Calendar size={14} />
+            Curi Scheduler
+          </button>
+        )}
         {tab === 'review' && (statusCounts.review || 0) > 0 && (
           <button type="button" onClick={approveAll} className="btn-primary text-sm px-3 py-2">
             Approve & schedule all

@@ -11,8 +11,8 @@ const STAT_CARDS = [
   { label: 'Images Created', key: 'imagesCreated', color: 'text-curi-blue' },
   { label: 'Videos Made', key: 'videosMade', color: 'text-curi-green' },
   { label: 'Published', key: 'published', color: 'text-curi-yellow' },
-  { label: 'Scheduled', key: 'scheduled', color: 'text-curi-blue' },
-  { label: 'Autonomous Runs', key: 'autonomousRuns', color: 'text-curi-pink' },
+  { label: 'Scheduled', key: 'scheduled', color: 'text-curi-blue', path: '/scheduled' },
+  { label: 'Autonomous Runs', key: 'autonomousRuns', color: 'text-curi-pink', path: '/autonomous' },
 ]
 
 const QUICK_START = [
@@ -20,6 +20,13 @@ const QUICK_START = [
   { path: '/create', label: 'Create', desc: 'New post' },
   { path: '/design/studio', label: 'Design', desc: 'Creative' },
   { path: '/autonomous', label: 'Autonomous', desc: '30-day plan' },
+]
+
+const PUBLISH_TOOLS = [
+  { path: '/planner', label: 'Planner', desc: 'Upload & schedule' },
+  { path: '/scheduled', label: 'Curi Scheduler', desc: 'All queued posts' },
+  { path: '/engagement', label: 'Engage+', desc: 'Comments & DMs' },
+  { path: '/competitor', label: 'Competitor Watch', desc: 'Market intel' },
 ]
 
 export default function Dashboard() {
@@ -65,18 +72,21 @@ export default function Dashboard() {
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
           {STAT_CARDS.map((s, i) => (
-            <motion.div
+            <motion.button
               key={s.label}
+              type="button"
+              onClick={() => s.path && navigate(s.path)}
+              disabled={!s.path}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.04 }}
-              className="page-card"
+              className={`page-card text-left transition-all ${s.path ? 'hover:border-curi-pink/30 hover:bg-curi-pink/5 cursor-pointer' : ''}`}
             >
               <div className={`text-2xl lg:text-3xl font-black ${s.color} mb-0.5`}>
                 {stats[s.key] ?? 0}
               </div>
               <div className="text-theme-muted/50 text-xs lg:text-sm font-medium">{s.label}</div>
-            </motion.div>
+            </motion.button>
           ))}
         </div>
 
@@ -127,6 +137,26 @@ export default function Dashboard() {
             >
               Full analytics report
             </button>
+          </div>
+        </div>
+
+        <div className="page-card mt-5">
+          <div className="text-sm font-bold text-theme-text mb-1">Publish & engage</div>
+          <p className="text-xs text-theme-muted/50 mb-3">
+            Planner and Engage+ sit outside the AI workflow — use them for direct uploads, scheduling, and inbox management.
+          </p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            {PUBLISH_TOOLS.map((item) => (
+              <button
+                key={item.path}
+                type="button"
+                onClick={() => navigate(item.path)}
+                className="text-left p-3 rounded-xl border border-theme-border hover:border-curi-blue/30 hover:bg-curi-blue/5 transition-all"
+              >
+                <div className="text-xs font-bold text-theme-text">{item.label}</div>
+                <div className="text-[10px] text-theme-muted/50">{item.desc}</div>
+              </button>
+            ))}
           </div>
         </div>
       </section>

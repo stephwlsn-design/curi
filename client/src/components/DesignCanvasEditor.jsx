@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle, useMemo } from 'react'
 import { X, Save, LayoutTemplate, Plus, Trash2, Volume2, Play, Mic, Upload, ChevronRight, Rocket, Cloud, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { API } from '../context/AuthContext'
+import { API, useAuth } from '../context/AuthContext'
 import DesignCanvasRenderer from './DesignCanvasRenderer'
 import { BUILTIN_TEMPLATES } from '../constants/designTemplates'
 import PexelsMediaPanel from './PexelsMediaPanel'
@@ -16,6 +16,7 @@ import {
 } from '../utils/designCanvas'
 import { isDraftDesign } from '../utils/localDesign'
 import { CANVAS_FONTS, FONT_WEIGHTS, fontFamilyToId, resolveCanvasFont } from '../constants/canvasFonts'
+import { buildBrandColorSummary } from '../utils/brandColors'
 
 export default forwardRef(function DesignCanvasEditor({
   design,
@@ -34,6 +35,11 @@ export default forwardRef(function DesignCanvasEditor({
   autoSave = false,
   carouselSlideIndex,
 }, ref) {
+  const { workspace } = useAuth()
+  const brandColorSummary = useMemo(
+    () => buildBrandColorSummary({ brandProfile: workspace?.brandProfile }),
+    [workspace?.brandProfile],
+  )
   const containerRef = useRef(null)
   const editorRootRef = useRef(null)
   const canvasFocusRef = useRef(null)
@@ -44,7 +50,7 @@ export default forwardRef(function DesignCanvasEditor({
   const clipboardRef = useRef(null)
   const editorEngagedRef = useRef(true)
 
-  const CORE_LAYER_IDS = ['headline', 'subheadline', 'cta', 'badge']
+  const CORE_LAYER_IDS = ['headline', 'subheadline', 'cta']
   const [scale, setScale] = useState(0.45)
   const [canvas, setCanvas] = useState(() => {
     const base = design.canvasLayout || designToCanvas(design)
@@ -709,6 +715,29 @@ export default forwardRef(function DesignCanvasEditor({
     focusCanvas()
   }, [focusCanvas])
 
+  const applyBrandColorToBackground = useCallback((hex, colorIndex = 0) => {
+    recordUndo()
+    setCanvas((prev) => {
+      const bg = prev.background || {}
+      if (bg.type === 'image' || bg.type === 'video') {
+        return { ...prev, background: { ...bg, underlayColor: hex } }
+      }
+      const colors = [...(bg.colors || ['#FF6B9D', '#4DA8EE'])]
+      colors[colorIndex] = hex
+      if (colorIndex === 0 && colors.length === 1) colors.push(hex)
+      return {
+        ...prev,
+        background: {
+          ...bg,
+          type: bg.type === 'solid' ? 'solid' : (bg.type || 'gradient'),
+          color: colorIndex === 0 && bg.type === 'solid' ? hex : bg.color,
+          colors,
+        },
+      }
+    })
+    toast.success('Background color updated')
+  }, [recordUndo])
+
   const applyPexelsPhoto = (item, useAs = 'background') => {
     setCanvas((prev) => applyPexelsPhotoToCanvas(prev, item.url, useAs))
     toast.success(useAs === 'background' ? 'Background updated' : 'Photo layer added')
@@ -1006,7 +1035,7 @@ export default forwardRef(function DesignCanvasEditor({
                       width: Math.max(bounds.width * scale, 24),
                       height: Math.max(bounds.height * scale, 24),
                       cursor: 'pointer',
-                      zIndex: 10,
+                      zIndex: 10 + (el.zIndex ?? 2),
                     }}
                     onPointerDown={e => onPointerDown(e, el.id)}
                     onDoubleClick={(e) => {
@@ -1322,7 +1351,7 @@ export default forwardRef(function DesignCanvasEditor({
                   </div>
                 </>
               )}
-              {!['headline', 'subheadline', 'cta', 'badge'].includes(selected.id) && (
+              {!CORE_LAYER_IDS.includes(selected.id) && (
                 <button type="button" onClick={deleteSelected} className="text-xs text-red-400 flex items-center gap-1 hover:underline">
                   <Trash2 size={12} /> Delete layer
                 </button>
@@ -1352,6 +1381,51 @@ export default forwardRef(function DesignCanvasEditor({
 
           <div className="pt-2 border-t border-theme-border space-y-2" data-skip-canvas-keys>
             <div className="text-xs font-semibold text-theme-muted/40 uppercase tracking-wider">Background</div>
+            {brandColorSummary.hasColors && (
+              <div className="space-y-2">
+                <div>
+                  <label className="text-[10px] text-theme-muted/40 font-bold uppercase">Brand colors</label>
+                  <p className="text-[10px] text-theme-muted/45 mt-0.5">From Discover — click to apply</p>
+                </div>
+                {Object.entries(brandColorSummary.named).some(([, hex]) => hex) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      ['Primary', brandColorSummary.named.primary],
+                      ['Secondary', brandColorSummary.named.secondary],
+                      ['Accent', brandColorSummary.named.accent],
+                    ].filter(([, hex]) => hex).map(([label, hex]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        title={`${label}: ${hex}`}
+                        onClick={() => applyBrandColorToBackground(hex, 0)}
+                        className="flex items-center gap-1.5 rounded-lg border border-theme-border px-1.5 py-1 hover:border-curi-pink/40"
+                      >
+                        <span className="w-5 h-5 rounded-md border border-theme-border/60 shrink-0" style={{ backgroundColor: hex }} />
+                        <span className="text-[9px] font-bold uppercase text-theme-muted/55">{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-1.5">
+                  {brandColorSummary.ranked.slice(0, 10).map(({ hex }) => (
+                    <button
+                      key={hex}
+                      type="button"
+                      title={hex}
+                      onClick={() => applyBrandColorToBackground(hex, 0)}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        applyBrandColorToBackground(hex, 1)
+                      }}
+                      className="w-7 h-7 rounded-md border border-theme-border hover:ring-2 hover:ring-curi-pink/40"
+                      style={{ backgroundColor: hex }}
+                    />
+                  ))}
+                </div>
+                <p className="text-[9px] text-theme-muted/40">Right-click a swatch to set the second gradient stop</p>
+              </div>
+            )}
             {canvas.background?.type === 'image' || canvas.background?.type === 'video' ? (
               <p className="text-[10px] text-theme-muted/50">
                 {canvas.background.type === 'video' ? 'Stock video' : 'Stock photo'} background — adjust overlay below

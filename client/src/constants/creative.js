@@ -43,15 +43,15 @@ export const DESIGN_STYLES = [
 ]
 
 export const VIDEO_TYPES = [
-  { id: 'talking_head', label: 'Talking Head' },
-  { id: 'ai_avatar', label: 'AI Avatar' },
-  { id: 'motion_graphics', label: 'Motion Graphics' },
-  { id: 'product_showcase', label: 'Product Showcase' },
-  { id: 'animated_explainer', label: 'Animated Explainer' },
-  { id: 'ugc_style', label: 'UGC Style' },
-  { id: 'broll_storytelling', label: 'B-Roll Storytelling' },
-  { id: 'slideshow', label: 'Slideshow' },
-  { id: 'podcast_clip', label: 'Podcast Clip' },
+  { id: 'talking_head', label: 'Talking Head', hint: 'Presenter-led, direct-to-camera script with cutaway b-roll.' },
+  { id: 'ai_avatar', label: 'AI Avatar', hint: 'Digital host on a virtual set with polished transitions.' },
+  { id: 'motion_graphics', label: 'Motion Graphics', hint: 'Kinetic typography and animated data — no on-camera presenter.' },
+  { id: 'product_showcase', label: 'Product Showcase', hint: 'Hero product shots, features, and lifestyle context.' },
+  { id: 'animated_explainer', label: 'Animated Explainer', hint: 'Problem → solution arc with illustrated step-by-step scenes.' },
+  { id: 'ugc_style', label: 'UGC Style', hint: 'Casual, authentic phone-filmed feel — review or testimonial tone.' },
+  { id: 'broll_storytelling', label: 'B-Roll Storytelling', hint: 'Cinematic voiceover with mood-driven b-roll sequences.' },
+  { id: 'slideshow', label: 'Slideshow', hint: 'One idea per slide — headline copy over full-bleed images.' },
+  { id: 'podcast_clip', label: 'Podcast Clip', hint: 'Studio clip highlight that teases a longer episode.' },
 ]
 
 export const VIDEO_STYLES = [

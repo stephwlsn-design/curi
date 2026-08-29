@@ -36,7 +36,7 @@ export default function Competitor() {
     setError('')
     try {
       try {
-        const { data: savedRes } = await API.get(`/competitor/saved?workspaceId=${workspaceId}`, { timeout: 15000 })
+        const { data: savedRes } = await API.get(`/competitor/saved?workspaceId=${workspaceId}`, { timeout: 25000 })
         if (savedRes.analysis) {
           applyAnalysisPayload(savedRes)
           return
@@ -44,10 +44,15 @@ export default function Competitor() {
         if (savedRes.competitors?.length) setProfileCompetitors(savedRes.competitors)
       } catch { /* fall through to preview */ }
 
-      const { data } = await API.get(`/competitor/preview?workspaceId=${workspaceId}`, { timeout: 15000 })
+      const { data } = await API.get(`/competitor/preview?workspaceId=${workspaceId}`, { timeout: 25000 })
       applyAnalysisPayload(data)
     } catch (err) {
-      setError(err.response?.data?.error || err.message || 'Could not load competitor analysis')
+      const isTimeout = err.code === 'ECONNABORTED' || String(err.message || '').includes('timeout')
+      setError(
+        isTimeout
+          ? 'Loading timed out — the server may be waking up. Try again or run Live AI analysis.'
+          : (err.response?.data?.error || err.message || 'Could not load competitor analysis'),
+      )
     } finally {
       setLoading(false)
     }
@@ -70,7 +75,7 @@ export default function Competitor() {
       const payload = { workspaceId }
       if (nameOverride) payload.competitorName = nameOverride
 
-      const { data } = await API.post('/competitor/analyze', payload, { timeout: 30000 })
+      const { data } = await API.post('/competitor/analyze', payload, { timeout: 55000 })
       applyAnalysisPayload(data, nameOverride)
       if (data.warning) toast(data.warning, { icon: '⚠️' })
       else toast.success(data.scraped ? 'Live analysis complete (site scraped)' : 'Live analysis complete')
@@ -204,7 +209,7 @@ export default function Competitor() {
               <RefreshCw size={14} /> Reload
             </button>
             <button type="button" onClick={saveAnalysis} disabled={saving} className="btn-secondary text-sm">
-              {saving ? 'Saving…' : 'Save to Brand Hub drafts'}
+              {saving ? 'Saving…' : 'Save to drafts'}
             </button>
           </div>
           <div className="page-card flex flex-wrap items-center justify-between gap-4">

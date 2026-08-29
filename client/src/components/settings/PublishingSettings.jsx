@@ -215,10 +215,22 @@ export default function PublishingSettings({ oauthConnected, oauthError }) {
         )}
       </div>
 
-      <div className="page-card text-sm text-theme-muted/50">
-        <p className="font-semibold text-theme-text mb-2">Scheduling</p>
+      <div className="page-card text-sm text-theme-muted/50 space-y-4">
+        <div>
+          <p className="font-semibold text-theme-text mb-2">Scheduling</p>
+          <p>
+            AI-generated posts from Launch and Autonomous appear in Curi Scheduler.
+            For your own finished graphics, use Planner — it shares the same queue and publish pipeline.
+          </p>
+        </div>
+        <div>
+          <p className="font-semibold text-theme-text mb-2">Engage+</p>
+          <p>
+            After publishing, manage comments and DMs in Engage+.
+            Connect Instagram and Facebook here first — Social Channels handles metrics; Engage+ handles conversations.
+          </p>
+        </div>
         <p>
-          Scheduled posts appear under Scheduled Posts and publish automatically at the chosen time.
           LinkedIn and X support text posts; Instagram and Facebook require an image on the content.
         </p>
       </div>

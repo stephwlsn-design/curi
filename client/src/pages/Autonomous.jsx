@@ -882,8 +882,11 @@ export default function Autonomous() {
                   </div>
                 )}
                 {run.status === 'completed' && (
-                  <div className="flex gap-3 mt-4">
+                  <div className="flex flex-wrap gap-3 mt-4">
                     <button onClick={() => navigate('/approvals')} className="btn-secondary text-sm">Review Approvals</button>
+                    {(run.stats?.scheduled ?? 0) > 0 && (
+                      <button onClick={() => navigate('/scheduled?tab=autonomous')} className="btn-secondary text-sm">Curi Scheduler</button>
+                    )}
                     <button onClick={() => navigate('/design')} className="btn-secondary text-sm">Open Design Library</button>
                     <button onClick={() => navigate('/calendar')} className="btn-secondary text-sm">View Calendar</button>
                   </div>

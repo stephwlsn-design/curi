@@ -24,6 +24,8 @@ import Approvals from './pages/Approvals'
 import Analytics from './pages/Analytics'
 import Drafts from './pages/Drafts'
 import Scheduled from './pages/Scheduled'
+import Planner from './pages/Planner'
+import Engagement from './pages/Engagement'
 import Settings from './pages/Settings'
 import Roast from './pages/Roast'
 import LoadingMascot from './components/LoadingMascot'
@@ -71,7 +73,9 @@ function AppRoutes() {
         <Route path="/autonomous" element={<Autonomous />} />
         <Route path="/approvals" element={<Approvals />} />
         <Route path="/drafts" element={<Drafts />} />
+        <Route path="/planner" element={<Planner />} />
         <Route path="/scheduled" element={<Scheduled />} />
+        <Route path="/engagement" element={<Engagement />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/settings" element={<Settings />} />
       </Route>

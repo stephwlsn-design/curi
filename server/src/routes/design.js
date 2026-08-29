@@ -585,16 +585,30 @@ router.post('/favorite/:id', async (req, res) => {
 });
 
 router.post('/upload', uploadUserDesigns.array('images', 20), async (req, res) => {
-  const { workspaceId, platform = 'instagram', scheduledAt, titles } = req.body;
+  const {
+    workspaceId,
+    platform = 'instagram',
+    scheduledAt,
+    titles,
+    captions,
+    module: uploadModule,
+    caption: singleCaption,
+  } = req.body;
   const workspace = await findAccessibleWorkspace(workspaceId, req.user._id);
   if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
   if (!req.files?.length) return res.status(400).json({ error: 'Upload at least one design image' });
 
   let titleList = [];
+  let captionList = [];
   try {
     titleList = titles ? JSON.parse(titles) : [];
   } catch {
     titleList = [];
+  }
+  try {
+    captionList = captions ? JSON.parse(captions) : [];
+  } catch {
+    captionList = [];
   }
 
   const designs = await Promise.all(req.files.map(async (file, i) => {
@@ -604,8 +618,9 @@ router.post('/upload', uploadUserDesigns.array('images', 20), async (req, res) =
       file,
       platform,
       title: titleList[i] || file.originalname,
+      caption: captionList[i] || singleCaption || titleList[i] || file.originalname,
       scheduledAt: scheduledAt || null,
-      module: 'upload',
+      module: uploadModule || 'upload',
     });
     try {
       const fs = require('fs');

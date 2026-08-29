@@ -66,6 +66,7 @@ const createUploadedDesign = async ({
   file,
   platform = 'universal',
   title,
+  caption,
   scheduledAt,
   calendarEntryId,
   runId,
@@ -74,6 +75,7 @@ const createUploadedDesign = async ({
 }) => {
   const imageUrl = toPublicUrl(file.filename);
   const name = title || file.originalname || 'Uploaded Design';
+  const postCaption = caption?.trim() || name;
 
   const design = await Content.create({
     workspace: workspaceId,
@@ -81,17 +83,18 @@ const createUploadedDesign = async ({
     type: 'image',
     platform,
     title: name,
-    content: name,
+    content: postCaption,
     mediaUrl: imageUrl,
     thumbnailUrl: imageUrl,
     metadata: {
       module,
-      source: 'user-upload',
+      source: module === 'planner' ? 'planner' : 'user-upload',
       filename: file.filename,
       originalName: file.originalname,
       runId: runId ? String(runId) : undefined,
       headline: name,
       name,
+      caption: postCaption,
       colorPalette: ['#1A2B48', '#4DA8EE', '#FF6B9D'],
       layout: 'uploaded',
     },
