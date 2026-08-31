@@ -11,19 +11,45 @@ const STATS = [
   { value: '4.8/5', label: 'Brand satisfaction' },
 ]
 
+const WHATS_NEW = [
+  {
+    badge: 'New',
+    title: 'Video Studio',
+    desc: 'Pick from 9 video formats — UGC, podcast clips, B-Roll, motion graphics, and more. Curi writes a type-specific brief and narration, matches industry stock b-roll, and lets you preview & edit before launch.',
+  },
+  {
+    badge: 'New',
+    title: 'Planner',
+    desc: 'Upload a creative, write your caption, and schedule or publish straight to connected Instagram, LinkedIn, Facebook, and X — without leaving Curi.',
+  },
+  {
+    badge: 'New',
+    title: 'Engage+',
+    desc: 'One inbox for comments and DMs. Reply faster with comment-to-DM automations, keyword auto-replies, and conversation management across your channels.',
+  },
+  {
+    badge: 'Updated',
+    title: 'Design Studio',
+    desc: 'Drop in inspiration, get on-brand layouts instantly, and auto-save as you edit. Display ads, carousels, stories, and social creatives — all from your Brand Hub profile.',
+  },
+]
+
 const FEATURES = [
   { name: 'Discover', desc: 'Paste any URL — Curi extracts your brand voice, colors, audience, and strategy in seconds.', status: 'Live' },
   { name: 'Create', desc: 'Generate platform-native posts for LinkedIn, X, Instagram, TikTok, and more — in your voice.', status: 'Live' },
-  { name: 'Launch', desc: 'One goal to 20 posts, ad copy, emails, and a full campaign strategy. One click.', status: 'Live' },
+  { name: 'Launch', desc: 'One goal to 20 posts, ad copy, emails, and a full campaign strategy — with channel validation before you ship.', status: 'Live' },
   { name: 'Autonomous', desc: 'Generate your next 30 days — topics, content, designs, videos, and scheduling automatically.', status: 'Live' },
+  { name: 'Video', desc: 'Nine video types with brand-aware briefs, scene narration, storyboard preview, and industry stock media. Edit every scene before launch.', status: 'Live', highlight: true },
+  { name: 'Design', desc: 'Design Studio with inspiration upload, canvas editor, and auto-save. Ads, carousels, stories, and banners on-brand.', status: 'Live', highlight: true },
+  { name: 'Planner', desc: 'Upload creative, add a caption, and schedule or publish to connected social channels from one screen.', status: 'Live', highlight: true },
+  { name: 'Engage+', desc: 'Unified inbox for comments and DMs — plus automations for comment-to-DM, keyword replies, and faster community management.', status: 'Live', highlight: true },
+  { name: 'Scheduled', desc: 'See every queued post across Planner and Autonomous — edit timing, platforms, and captions before go-live.', status: 'Live' },
   { name: 'Roast', desc: 'Free website audit with honest scores on conversion, branding, SEO, and marketing.', status: 'Free' },
-  { name: 'Design', desc: 'On-brand display ads, banners, carousels, and social creatives — auto-generated.', status: 'Live' },
-  { name: 'Video', desc: 'Product videos, reels, and UGC-style clips from a URL or brief.', status: 'Live' },
-  { name: 'Mail', desc: 'Full email sequences — welcome flows, launches, abandoned cart, newsletters.', status: 'Soon' },
   { name: 'Calendar', desc: 'Auto-generate a 30/60/90-day content calendar with captions and publish dates.', status: 'Live' },
   { name: 'Repurpose', desc: 'Turn one blog or article into 10 platform-ready content formats instantly.', status: 'Live' },
   { name: 'Trends', desc: 'Discover viral topics and content ideas tailored to your brand.', status: 'Live' },
-  { name: 'Competitor', desc: 'Analyze competitor strategy and get actionable recommendations.', status: 'Live' },
+  { name: 'Competitor', desc: 'Instant competitor previews with ads, social content, and actionable recommendations to beat them.', status: 'Live' },
+  { name: 'Mail', desc: 'Full email sequences — welcome flows, launches, abandoned cart, newsletters.', status: 'Soon' },
 ]
 
 const USPS = [
@@ -77,9 +103,9 @@ const TRACTION = [
 ]
 
 const STEPS = [
-  { step: '01', title: 'Drop your URL', desc: 'Curi analyzes your website and builds your complete brand profile.' },
-  { step: '02', title: 'Pick your module', desc: 'Discover, Create, Launch — or try a free Roast of your site.' },
-  { step: '03', title: 'Ship content', desc: 'Copy, schedule, or publish across every platform. Done.' },
+  { step: '01', title: 'Drop your URL', desc: 'Curi analyzes your website and builds your complete brand profile in Brand Hub.' },
+  { step: '02', title: 'Create & refine', desc: 'Posts, designs, and type-specific videos — briefs, narration, and storyboard previews included.' },
+  { step: '03', title: 'Plan & publish', desc: 'Schedule in Planner, queue in Curi Scheduler, and manage replies in Engage+.' },
 ]
 
 const CONTAINER = 'max-w-[88rem] mx-auto px-4 sm:px-5 lg:px-8'
@@ -110,6 +136,7 @@ export default function Landing() {
             <span className="font-extrabold text-theme-text text-xl">Curi</span>
           </Link>
           <div className="hidden md:flex items-center gap-8 text-base font-semibold text-theme-muted/60">
+            <a href="#whats-new" className="hover:text-curi-pink transition-colors">What's new</a>
             <a href="#features" className="hover:text-curi-pink transition-colors">Features</a>
             <a href="#why-curi" className="hover:text-curi-pink transition-colors">Why Curi</a>
             <a href="#traction" className="hover:text-curi-pink transition-colors">Results</a>
@@ -145,7 +172,7 @@ export default function Landing() {
               <span className="bg-curi-gradient bg-clip-text text-transparent">complete marketing engine</span>
             </h1>
             <p className="text-xl text-theme-muted/60 font-medium leading-relaxed mb-8 max-w-xl">
-              Curi discovers your brand, creates content for every platform, and launches full campaigns — all from a single website link. No agency. No guesswork.
+              Curi discovers your brand, creates content for every platform, produces type-specific videos with stock b-roll, and publishes through Planner and Engage+ — all from a single website link.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link to="/auth/register" className="btn-primary py-3.5 px-7 text-lg">
@@ -195,8 +222,8 @@ export default function Landing() {
         <div className="grid md:grid-cols-3 gap-6">
           {[
             { title: 'One input', desc: 'Your website URL is all Curi needs to understand who you are, who you serve, and how you talk.' },
-            { title: '11 AI modules', desc: 'From brand discovery to campaign launch — specialized agents for every stage of your marketing.' },
-            { title: 'Every output', desc: 'Social posts, ad copy, emails, videos, calendars, and competitive intel — all on-brand, all ready to ship.' },
+            { title: '15+ AI modules', desc: 'From brand discovery to video studio, design, scheduling, and engagement — specialized agents for every stage.' },
+            { title: 'Create to publish', desc: 'Social posts, ad copy, videos, designs, calendars, and a full publish stack — all on-brand, ready to ship.' },
           ].map((item, i) => (
             <motion.div key={item.title} {...fadeUp} transition={{ delay: i * 0.1 }} className="card p-7 text-center hover:scale-[1.02] transition-transform">
               <h3 className="font-extrabold text-theme-text text-xl mb-3">{item.title}</h3>
@@ -206,11 +233,40 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* What's new */}
+      <section id="whats-new" className="relative z-10 bg-curi-gradient-soft border-y border-theme-border py-20">
+        <div className={CONTAINER}>
+          <motion.div {...fadeUp} className="text-center max-w-3xl mx-auto mb-14">
+            <span className="badge bg-curi-pink/15 text-curi-pink mb-4 text-sm">Just shipped</span>
+            <h2 className="text-4xl md:text-5xl font-extrabold text-theme-text mb-4">What's new in Curi</h2>
+            <p className="text-theme-muted/60 font-medium text-xl leading-relaxed">
+              Video Studio, Planner, Engage+, and a rebuilt Design Studio — the full create-to-publish loop, in one platform.
+            </p>
+          </motion.div>
+          <div className="grid md:grid-cols-2 gap-6">
+            {WHATS_NEW.map((item, i) => (
+              <motion.div
+                key={item.title}
+                {...fadeUp}
+                transition={{ delay: i * 0.08 }}
+                className="card p-7 border-curi-pink/20 hover:border-curi-pink/40 hover:scale-[1.01] transition-all"
+              >
+                <span className={`badge text-xs mb-3 inline-flex ${
+                  item.badge === 'New' ? 'bg-curi-pink/15 text-curi-pink' : 'bg-curi-blue/15 text-curi-blue'
+                }`}>{item.badge}</span>
+                <h3 className="font-extrabold text-theme-text text-xl mb-3">{item.title}</h3>
+                <p className="text-theme-muted/50 text-base font-medium leading-relaxed">{item.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
-      <section id="features" className={`relative z-10 ${CONTAINER} pb-20`}>
+      <section id="features" className={`relative z-10 ${CONTAINER} pb-20 pt-20`}>
         <motion.div {...fadeUp} className="mb-10">
           <h2 className="text-4xl md:text-5xl font-extrabold text-theme-text mb-3">Everything you need to market smarter</h2>
-          <p className="text-theme-muted/50 font-medium text-lg">Eight modules live today. More shipping every sprint.</p>
+          <p className="text-theme-muted/50 font-medium text-lg">Fourteen modules live today. More shipping every sprint.</p>
         </motion.div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {FEATURES.map((f, i) => (
@@ -218,13 +274,20 @@ export default function Landing() {
               key={f.name}
               {...fadeUp}
               transition={{ delay: i * 0.05 }}
-              className="card p-6 hover:border-curi-pink/30 hover:scale-[1.02] transition-all group"
+              className={`card p-6 hover:border-curi-pink/30 hover:scale-[1.02] transition-all group ${
+                f.highlight ? 'ring-1 ring-curi-pink/15' : ''
+              }`}
             >
-              <span className={`badge text-xs mb-3 inline-flex ${
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className={`badge text-xs inline-flex ${
                   f.status === 'Live' ? 'bg-curi-green/15 text-curi-green'
                   : f.status === 'Free' ? 'bg-curi-yellow/15 text-curi-yellow'
                   : 'bg-curi-blue/15 text-curi-blue'
                 }`}>{f.status}</span>
+                {f.highlight && (
+                  <span className="badge text-xs bg-curi-pink/15 text-curi-pink">New</span>
+                )}
+              </div>
               <h3 className="font-extrabold text-theme-text text-lg mb-2">Curi {f.name}</h3>
               <p className="text-theme-muted/50 text-sm font-medium leading-relaxed">{f.desc}</p>
             </motion.div>
