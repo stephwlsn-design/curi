@@ -419,10 +419,6 @@ export default function GrowPlus() {
           <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
             <div>
               <h2 className="text-2xl font-extrabold text-theme-text">Grow+ pricing</h2>
-              <p className="text-sm text-theme-muted/55 mt-1">
-                Separate from AI credits · 2.5–3× direct-cost model · 55–67% gross margin target
-                {catalog?.paymentsEnabled ? ' · Stripe checkout enabled' : ' · Dev mode (instant activation)'}
-              </p>
             </div>
             <div className="flex rounded-xl bg-theme-subtle/10 p-1">
               {['packages', 'subscriptions'].map((tab) => (
