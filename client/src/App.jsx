@@ -28,6 +28,7 @@ import Planner from './pages/Planner'
 import Engagement from './pages/Engagement'
 import Settings from './pages/Settings'
 import Roast from './pages/Roast'
+import GrowPlus from './pages/GrowPlus'
 import LoadingMascot from './components/LoadingMascot'
 import ErrorBoundary from './components/ErrorBoundary'
 import SiteAccessGate from './components/SiteAccessGate'
@@ -50,6 +51,7 @@ function AppRoutes() {
       <Route path="/auth" element={<Auth />} />
       <Route path="/auth/register" element={<Auth />} />
       <Route path="/roast" element={<Roast />} />
+      <Route path="/grow" element={<GrowPlus />} />
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/discover" element={<Discover />} />

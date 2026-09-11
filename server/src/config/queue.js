@@ -7,6 +7,7 @@ const QUEUE_NAMES = {
   TOPIC_DISCOVERY: 'topic-discovery',
   PUBLISH: 'publish-jobs',
   LAUNCH: 'launch-campaign',
+  GROW_CAMPAIGN: 'grow-campaign',
 };
 
 const queues = {};

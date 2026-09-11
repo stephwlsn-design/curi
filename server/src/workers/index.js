@@ -3,6 +3,7 @@ const { runAutonomousPipeline } = require('../services/autonomousEngineService')
 const { discoverTopics } = require('../services/topicDiscoveryService');
 const { generateCampaign, advanceLaunchCampaign } = require('../services/launchService');
 const { processPublishJob, processDuePublishJobs } = require('../services/publishJobRunner');
+const { deployGrowCampaign, processActiveGrowCampaigns } = require('../services/growCampaignWorker');
 const PublishJob = require('../models/PublishJob');
 const Workspace = require('../models/Workspace');
 const logger = require('../utils/logger');
@@ -12,6 +13,7 @@ const startWorkers = () => {
   const topicQueue = getQueue(QUEUE_NAMES.TOPIC_DISCOVERY);
   const publishQueue = getQueue(QUEUE_NAMES.PUBLISH);
   const launchQueue = getQueue(QUEUE_NAMES.LAUNCH);
+  const growQueue = getQueue(QUEUE_NAMES.GROW_CAMPAIGN);
 
   if (launchQueue) {
     launchQueue.process(async (job) => {
@@ -71,6 +73,18 @@ const startWorkers = () => {
   }, 60_000);
 
   pollDuePublishJobs().catch(() => {});
+
+  if (growQueue) {
+    growQueue.process(async (job) => {
+      await deployGrowCampaign(job.data.campaignId);
+    });
+  }
+
+  setInterval(() => {
+    processActiveGrowCampaigns().catch((err) => logger.error(`Grow+ metrics poll failed: ${err.message}`));
+  }, 5 * 60_000);
+
+  processActiveGrowCampaigns().catch(() => {});
 
   logger.info(`Queue workers started${publishQueue ? '' : ' (publish: in-process fallback)'}`);
 };

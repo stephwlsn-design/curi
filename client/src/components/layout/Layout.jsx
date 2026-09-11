@@ -15,6 +15,7 @@ const SECONDARY_NAV = [
   { path: '/drafts', label: 'Drafts', section: 'MORE' },
   { path: '/planner', label: 'Planner', section: 'MORE' },
   { path: '/scheduled', label: 'Curi Scheduler', section: 'MORE' },
+  { path: '/grow', label: 'Grow+', section: 'GROWTH' },
   { path: '/engagement', label: 'Engage+', section: 'GROWTH' },
   { path: '/calendar', label: 'Curi Calendar', section: 'GROWTH' },
   { path: '/repurpose', label: 'Curi Repurpose', section: 'GROWTH' },

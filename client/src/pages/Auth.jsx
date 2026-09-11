@@ -12,6 +12,7 @@ export default function Auth() {
     ? 'register'
     : (searchParams.get('mode') === 'register' ? 'register' : 'login')
   const inviteToken = searchParams.get('invite') || ''
+  const redirectTo = searchParams.get('redirect') || '/dashboard'
 
   const [mode, setMode] = useState(initialMode)
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' })
@@ -48,7 +49,7 @@ export default function Auth() {
       if (mode === 'login') await login(form.email, form.password)
       else await register(form.name, form.email, form.password, inviteToken || undefined)
       toast.success(mode === 'login' ? 'Welcome back!' : 'Account created!')
-      navigate('/dashboard')
+      navigate(redirectTo.startsWith('/') ? redirectTo : '/dashboard')
     } catch (err) {
       const data = err.response?.data
       toast.error(data?.error || data?.errors?.[0]?.msg || 'Something went wrong')

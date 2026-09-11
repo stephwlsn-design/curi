@@ -32,6 +32,12 @@ const WHATS_NEW = [
     title: 'Design Studio',
     desc: 'Drop in inspiration, get on-brand layouts instantly, and auto-save as you edit. Display ads, carousels, stories, and social creatives — all from your Brand Hub profile.',
   },
+  {
+    badge: 'New',
+    title: 'Grow+',
+    desc: 'Purchase real follower and engagement growth across Instagram, Facebook, YouTube, TikTok, and LinkedIn. Separate packages from AI credits — policy-compliant acquisition via paid social and creator distribution.',
+    link: '/grow',
+  },
 ]
 
 const FEATURES = [
@@ -44,7 +50,8 @@ const FEATURES = [
   { name: 'Planner', desc: 'Upload creative, add a caption, and schedule or publish to connected social channels from one screen.', status: 'Live', highlight: true },
   { name: 'Engage+', desc: 'Unified inbox for comments and DMs — plus automations for comment-to-DM, keyword replies, and faster community management.', status: 'Live', highlight: true },
   { name: 'Scheduled', desc: 'See every queued post across Planner and Autonomous — edit timing, platforms, and captions before go-live.', status: 'Live' },
-  { name: 'Roast', desc: 'Free website audit with honest scores on conversion, branding, SEO, and marketing.', status: 'Free' },
+  { name: 'Grow+', desc: 'Buy follower and engagement growth across all major social platforms. One-time packages from $59 or monthly subscriptions — separate from AI credits.', status: 'Live', highlight: true, link: '/grow' },
+  { name: 'Roast', desc: 'Free website audit with honest scores on conversion, branding, SEO, and marketing.', status: 'Free', link: '/roast' },
   { name: 'Calendar', desc: 'Auto-generate a 30/60/90-day content calendar with captions and publish dates.', status: 'Live' },
   { name: 'Repurpose', desc: 'Turn one blog or article into 10 platform-ready content formats instantly.', status: 'Live' },
   { name: 'Trends', desc: 'Discover viral topics and content ideas tailored to your brand.', status: 'Live' },
@@ -140,6 +147,7 @@ export default function Landing() {
             <a href="#features" className="hover:text-curi-pink transition-colors">Features</a>
             <a href="#why-curi" className="hover:text-curi-pink transition-colors">Why Curi</a>
             <a href="#traction" className="hover:text-curi-pink transition-colors">Results</a>
+            <Link to="/grow" className="hover:text-curi-pink transition-colors">Grow+</Link>
             <Link to="/roast" className="hover:text-curi-pink transition-colors">Free Roast</Link>
           </div>
           <div className="flex items-center gap-3">
@@ -177,6 +185,9 @@ export default function Landing() {
             <div className="flex flex-wrap gap-3">
               <Link to="/auth/register" className="btn-primary py-3.5 px-7 text-lg">
                 Get started free →
+              </Link>
+              <Link to="/grow" className="btn-secondary py-3.5 px-7 text-lg">
+                Explore Grow+
               </Link>
               <Link to="/roast" className="btn-secondary py-3.5 px-7 text-lg">
                 Try free Roast
@@ -240,24 +251,33 @@ export default function Landing() {
             <span className="badge bg-curi-pink/15 text-curi-pink mb-4 text-sm">Just shipped</span>
             <h2 className="text-4xl md:text-5xl font-extrabold text-theme-text mb-4">What's new in Curi</h2>
             <p className="text-theme-muted/60 font-medium text-xl leading-relaxed">
-              Video Studio, Planner, Engage+, and a rebuilt Design Studio — the full create-to-publish loop, in one platform.
+              Video Studio, Planner, Engage+, Grow+, and a rebuilt Design Studio — the full create-to-publish loop, in one platform.
             </p>
           </motion.div>
           <div className="grid md:grid-cols-2 gap-6">
-            {WHATS_NEW.map((item, i) => (
-              <motion.div
-                key={item.title}
-                {...fadeUp}
-                transition={{ delay: i * 0.08 }}
-                className="card p-7 border-curi-pink/20 hover:border-curi-pink/40 hover:scale-[1.01] transition-all"
-              >
-                <span className={`badge text-xs mb-3 inline-flex ${
-                  item.badge === 'New' ? 'bg-curi-pink/15 text-curi-pink' : 'bg-curi-blue/15 text-curi-blue'
-                }`}>{item.badge}</span>
-                <h3 className="font-extrabold text-theme-text text-xl mb-3">{item.title}</h3>
-                <p className="text-theme-muted/50 text-base font-medium leading-relaxed">{item.desc}</p>
-              </motion.div>
-            ))}
+            {WHATS_NEW.map((item, i) => {
+              const Card = item.link ? Link : 'div'
+              const cardProps = item.link ? { to: item.link } : {}
+              return (
+                <motion.div key={item.title} {...fadeUp} transition={{ delay: i * 0.08 }}>
+                  <Card
+                    {...cardProps}
+                    className="card p-7 border-curi-pink/20 hover:border-curi-pink/40 hover:scale-[1.01] transition-all block h-full"
+                  >
+                    <span className={`badge text-xs mb-3 inline-flex ${
+                      item.badge === 'New' ? 'bg-curi-pink/15 text-curi-pink' : 'bg-curi-blue/15 text-curi-blue'
+                    }`}>{item.badge}</span>
+                    <h3 className="font-extrabold text-theme-text text-xl mb-3">{item.title}</h3>
+                    <p className="text-theme-muted/50 text-base font-medium leading-relaxed">{item.desc}</p>
+                    {item.link && (
+                      <span className="inline-flex items-center gap-1 text-curi-pink font-bold text-sm mt-4">
+                        Learn more →
+                      </span>
+                    )}
+                  </Card>
+                </motion.div>
+              )
+            })}
           </div>
         </div>
       </section>
@@ -266,32 +286,36 @@ export default function Landing() {
       <section id="features" className={`relative z-10 ${CONTAINER} pb-20 pt-20`}>
         <motion.div {...fadeUp} className="mb-10">
           <h2 className="text-4xl md:text-5xl font-extrabold text-theme-text mb-3">Everything you need to market smarter</h2>
-          <p className="text-theme-muted/50 font-medium text-lg">Fourteen modules live today. More shipping every sprint.</p>
+          <p className="text-theme-muted/50 font-medium text-lg">Fifteen modules live today. More shipping every sprint.</p>
         </motion.div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {FEATURES.map((f, i) => (
-            <motion.div
-              key={f.name}
-              {...fadeUp}
-              transition={{ delay: i * 0.05 }}
-              className={`card p-6 hover:border-curi-pink/30 hover:scale-[1.02] transition-all group ${
-                f.highlight ? 'ring-1 ring-curi-pink/15' : ''
-              }`}
-            >
-              <div className="flex flex-wrap items-center gap-2 mb-3">
-                <span className={`badge text-xs inline-flex ${
-                  f.status === 'Live' ? 'bg-curi-green/15 text-curi-green'
-                  : f.status === 'Free' ? 'bg-curi-yellow/15 text-curi-yellow'
-                  : 'bg-curi-blue/15 text-curi-blue'
-                }`}>{f.status}</span>
-                {f.highlight && (
-                  <span className="badge text-xs bg-curi-pink/15 text-curi-pink">New</span>
-                )}
-              </div>
-              <h3 className="font-extrabold text-theme-text text-lg mb-2">Curi {f.name}</h3>
-              <p className="text-theme-muted/50 text-sm font-medium leading-relaxed">{f.desc}</p>
-            </motion.div>
-          ))}
+          {FEATURES.map((f, i) => {
+            const Card = f.link ? Link : 'div'
+            const cardProps = f.link ? { to: f.link } : {}
+            return (
+              <motion.div key={f.name} {...fadeUp} transition={{ delay: i * 0.05 }}>
+                <Card
+                  {...cardProps}
+                  className={`card p-6 hover:border-curi-pink/30 hover:scale-[1.02] transition-all group block h-full ${
+                    f.highlight ? 'ring-1 ring-curi-pink/15' : ''
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <span className={`badge text-xs inline-flex ${
+                      f.status === 'Live' ? 'bg-curi-green/15 text-curi-green'
+                      : f.status === 'Free' ? 'bg-curi-yellow/15 text-curi-yellow'
+                      : 'bg-curi-blue/15 text-curi-blue'
+                    }`}>{f.status}</span>
+                    {f.highlight && (
+                      <span className="badge text-xs bg-curi-pink/15 text-curi-pink">New</span>
+                    )}
+                  </div>
+                  <h3 className="font-extrabold text-theme-text text-lg mb-2">Curi {f.name}</h3>
+                  <p className="text-theme-muted/50 text-sm font-medium leading-relaxed">{f.desc}</p>
+                </Card>
+              </motion.div>
+            )
+          })}
         </div>
       </section>
 
@@ -359,6 +383,58 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Grow+ */}
+      <section id="grow-plus" className="relative z-10 bg-curi-gradient-soft border-y border-theme-border py-20">
+        <div className={CONTAINER}>
+          <motion.div {...fadeUp} className="grid lg:grid-cols-2 gap-10 items-center">
+            <div>
+              <span className="badge bg-curi-green/15 text-curi-green mb-4 text-sm">New · Separate pricing</span>
+              <h2 className="text-4xl md:text-5xl font-extrabold text-theme-text mb-4">
+                Grow+ — real followers, every platform
+              </h2>
+              <p className="text-theme-muted/60 font-medium text-lg leading-relaxed mb-6">
+                Purchase policy-compliant follower and engagement growth across Instagram, Facebook, YouTube, TikTok, and LinkedIn. No bots, no fake accounts — paid social, creator distribution, and optimization bundled into clear packages.
+              </p>
+              <ul className="space-y-3 mb-8">
+                {[
+                  'One-time packages from $59 · subscriptions from $99/mo',
+                  'Separate from AI credits — dedicated growth budgets',
+                  'Multi-platform campaigns with live dashboard tracking',
+                ].map((line) => (
+                  <li key={line} className="flex items-start gap-2 text-theme-muted/60 font-medium">
+                    <span className="text-curi-green font-bold mt-0.5">✓</span>
+                    {line}
+                  </li>
+                ))}
+              </ul>
+              <Link to="/grow" className="btn-primary py-3.5 px-8 text-lg inline-flex">
+                View Grow+ packages →
+              </Link>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {[
+                { name: 'Starter', price: '$59', desc: '14-day kickstart · Instagram & Facebook' },
+                { name: 'Growth', price: '$119', desc: '30-day multi-channel · Most popular', popular: true },
+                { name: 'Pro', price: '$299', desc: '45-day cross-platform scale' },
+                { name: 'Scale', price: '$599', desc: '60-day enterprise acquisition' },
+              ].map((pkg) => (
+                <div
+                  key={pkg.name}
+                  className={`card p-5 ${pkg.popular ? 'ring-2 ring-curi-pink/30 border-curi-pink/30' : ''}`}
+                >
+                  {pkg.popular && (
+                    <span className="badge text-xs bg-curi-pink/15 text-curi-pink mb-2">Popular</span>
+                  )}
+                  <div className="font-extrabold text-theme-text text-lg">{pkg.name}</div>
+                  <div className="text-2xl font-extrabold text-curi-pink my-1">{pkg.price}</div>
+                  <p className="text-theme-muted/50 text-sm font-medium">{pkg.desc}</p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className={`relative z-10 ${CONTAINER} pb-20`}>
         <motion.div {...fadeUp} className="card p-10 md:p-14 text-center bg-gradient-to-br from-curi-pink/10 via-curi-blue/10 to-curi-yellow/10 border-curi-pink/20 relative overflow-hidden">
@@ -374,6 +450,9 @@ export default function Landing() {
           <div className="flex flex-wrap justify-center gap-3">
             <Link to="/auth/register" className="btn-primary py-3.5 px-8 text-lg">
               Start free — no card needed
+            </Link>
+            <Link to="/grow" className="btn-secondary py-3.5 px-8 text-lg">
+              Buy Grow+ packages
             </Link>
             <Link to="/roast" className="btn-secondary py-3.5 px-8 text-lg">
               Roast my website first
@@ -392,6 +471,7 @@ export default function Landing() {
           <div className="flex gap-6 text-sm font-semibold text-theme-muted/40">
             <Link to="/auth/register" className="hover:text-curi-pink transition-colors">Sign up</Link>
             <Link to="/auth" className="hover:text-curi-pink transition-colors">Sign in</Link>
+            <Link to="/grow" className="hover:text-curi-pink transition-colors">Grow+</Link>
             <Link to="/roast" className="hover:text-curi-pink transition-colors">Free Roast</Link>
             <a href="#features" className="hover:text-curi-pink transition-colors">Features</a>
           </div>

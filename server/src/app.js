@@ -46,6 +46,16 @@ const mountRoutes = (app) => {
     res.json({ roast });
   });
 
+  const growRouter = require('./routes/grow');
+  app.get('/api/grow/catalog', growRouter.catalogHandler);
+  app.post('/api/grow/estimate', growRouter.estimateHandler);
+  app.post('/api/grow/purchase', growRouter.purchaseHandler);
+  app.get('/api/grow/checkout/complete', growRouter.checkoutCompleteHandler);
+  app.get('/api/grow/orders', growRouter.guestOrdersHandler);
+  app.get('/api/grow/public/campaigns/:id', growRouter.publicCampaignHandler);
+  app.get('/api/grow/public/campaigns/:id/report', growRouter.publicReportHandler);
+  app.use('/api/grow', authenticate, growRouter);
+
   app.use('/api/workspace', authenticate, require('./routes/workspace'));
   app.use('/api/discover', authenticate, require('./routes/discover'));
   app.use('/api/create', authenticate, require('./routes/create'));
@@ -104,6 +114,9 @@ const createApp = async () => {
     credentials: true,
   }));
   app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) } }));
+
+  app.post('/api/webhook/stripe', express.raw({ type: 'application/json' }), require('./routes/webhook'));
+
   const jsonParser = express.json({ limit: '50mb' });
   const urlencodedParser = express.urlencoded({ extended: true, limit: '50mb' });
   app.use((req, res, next) => {
@@ -144,6 +157,16 @@ const createApp = async () => {
     }
     const { processDuePublishJobs } = require('./services/publishJobRunner');
     const results = await processDuePublishJobs();
+    res.json({ processed: results.length, results });
+  });
+
+  app.get('/api/cron/grow-metrics', async (req, res) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const { processActiveGrowCampaigns } = require('./services/growCampaignWorker');
+    const results = await processActiveGrowCampaigns();
     res.json({ processed: results.length, results });
   });
 
